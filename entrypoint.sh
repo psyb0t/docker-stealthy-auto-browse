@@ -1,6 +1,7 @@
 #!/bin/bash
 
 PIDS=()
+LISTEN_HOST="${LISTEN_HOST:-localhost}"
 
 cleanup() {
     echo ""
@@ -40,7 +41,11 @@ if [ -z "$DISPLAY" ] || [ "$DISPLAY" = ":99" ]; then
 fi
 
 # Start x11vnc
-x11vnc -display :99 -rfbport 5901 -nopw -forever -shared -localhost &
+if [ "$LISTEN_HOST" != "localhost" ]; then
+    x11vnc -display :99 -rfbport 5901 -nopw -forever -shared &
+else
+    x11vnc -display :99 -rfbport 5901 -nopw -forever -shared -localhost &
+fi
 PIDS+=($!)
 sleep 0.3
 
@@ -68,8 +73,8 @@ echo "=============================================="
 echo "  STEALTHY AUTO-BROWSE"
 echo "=============================================="
 echo ""
-echo "  VNC:  http://localhost:5900/"
-echo "  API:  http://localhost:8080"
+echo "  VNC:  http://${LISTEN_HOST}:5900/"
+echo "  API:  http://${LISTEN_HOST}:8080  # always listens on 0.0.0.0"
 echo ""
 echo "  Ctrl+C to exit"
 echo "=============================================="

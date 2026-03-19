@@ -484,6 +484,7 @@ Now when you `goto` any URL on `news-site.com`, all of this happens automaticall
 
 | Variable | Default | What It Does |
 |----------|---------|-------------|
+| `LISTEN_HOST` | `localhost` | Host address for VNC and API to bind to. Set to `0.0.0.0` to allow external connections. The API always listens on `0.0.0.0`; VNC respects this setting. |
 | `XVFB_RESOLUTION` | `1920x1080` | Virtual display resolution. The browser runs at this size. Can go smaller (e.g. `1280x720`, `1366x768`) but **not larger** than 1920x1080 — the virtual framebuffer maxes out at that size. |
 | `XVFB_DEPTH` | `24` | Color depth of the virtual display (16, 24, or 32 bit). 24 is fine for everything. |
 | `TZ` | `UTC` | **Timezone — this one matters for stealth.** Bot detectors compare your browser's timezone against your IP's geographic location. If your IP says you're in Romania but your timezone says UTC, that's a red flag. Set this to match your IP: `Europe/Bucharest`, `America/New_York`, `Asia/Tokyo`, etc. |
@@ -493,6 +494,11 @@ Now when you `goto` any URL on `news-site.com`, all of this happens automaticall
 | `PROXY_URL` | — | Routes all browser traffic through an HTTP proxy. Format: `http://user:pass@host:port`. Useful with residential proxies to match your IP to a specific location. |
 
 ### Examples
+
+**Allow external connections (from other hosts):**
+```bash
+docker run -d -e LISTEN_HOST=0.0.0.0 -p 8080:8080 -p 5900:5900 psyb0t/stealthy-auto-browse
+```
 
 **Match timezone to IP location (important for stealth):**
 ```bash
