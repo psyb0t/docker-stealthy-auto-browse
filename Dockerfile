@@ -26,6 +26,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     x11vnc novnc websockify \
     && rm -rf /var/lib/apt/lists/*
 
+# Window manager for better handling of pop-up windows
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openbox \
+    && rm -rf /var/lib/apt/lists/*
+
 # noVNC auto-connect redirect
 RUN echo '<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=vnc.html?autoconnect=true&resize=scale"></head></html>' > /usr/share/novnc/index.html
 

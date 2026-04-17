@@ -399,8 +399,13 @@ class Browser:
 
             # Resize window to fill Xvfb screen using xdotool
             await asyncio.sleep(1)  # Wait for window to appear
+            if os.environ.get("USE_OPENBOX") == "true":
+                # Resizing all windows while a window manager is running breaks things
+                name_filter = "Camoufox"
+            else:
+                name_filter = ""
             result = subprocess.run(
-                ["xdotool", "search", "--onlyvisible", "--name", ""],
+                ["xdotool", "search", "--onlyvisible", "--name", name_filter],
                 capture_output=True,
                 text=True,
             )
