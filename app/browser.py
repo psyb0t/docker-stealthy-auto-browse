@@ -409,6 +409,18 @@ class Browser:
                     continue
                 subprocess.run(["xdotool", "windowmove", wid, "0", "0"])
                 subprocess.run(["xdotool", "windowsize", wid, str(width), str(height)])
+
+            # Grant Firefox content widget initial keyboard focus.
+            # Under Openbox, a freshly mapped Firefox window gives X focus to
+            # the chrome (URL bar) by default, so OS-level keys from PyAutoGUI
+            # don't reach the page until something focuses content. A single
+            # click into the content area transfers Firefox's internal focus
+            # to the content widget, and that focus persists across goto,
+            # new_tab, switch_tab. Click well below the chrome toolbar
+            # (~80px) on a coordinate that has no clickable element on a
+            # fresh about:blank or first page.
+            subprocess.run(["xdotool", "mousemove", "5", "200"])
+            subprocess.run(["xdotool", "click", "1"])
         except Exception as e:
             await self.stop()
             raise BrowserError(f"Failed to launch browser: {e}")

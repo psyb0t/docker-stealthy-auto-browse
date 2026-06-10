@@ -43,6 +43,7 @@ MAIN_TESTS=(
     test_scroll
     test_system_type
     test_send_key
+    test_send_key_pagedown
     test_fullscreen
     test_selector_input
     test_click

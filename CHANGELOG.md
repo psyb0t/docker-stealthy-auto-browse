@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.1] — 2026-06-10
+
+### Fixed
+
+- **`send_key` regression introduced in v0.22.5 / v1.0.0**: PageDown (and every other key sent via `send_key`) silently did nothing because the Openbox WM added in v0.22.5 changed how Firefox got initial X keyboard focus — a freshly mapped Camoufox window gave focus to the chrome (URL bar) instead of the content widget, so PyAutoGUI keystrokes never reached the page. Fix: at browser launch, after the xdotool window resize, issue a one-time `xdotool mousemove 5 200 && xdotool click 1` to transfer Firefox's internal focus to the content widget. The focus persists across `goto`, `new_tab`, and `switch_tab`, so `send_key` works for the lifetime of the container as before. Reported by @shadowjig.
+
+### Added
+
+- `test_send_key_pagedown` regression test in `tests/test_input.sh` — sends `pagedown` via `send_key` and verifies both that the document-level `keydown` listener captured `PageDown` and that `window.scrollY` advanced.
+
 ## [1.0.0] — 2026-04-20
 
 ### BREAKING

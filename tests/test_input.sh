@@ -84,6 +84,38 @@ test_send_key() {
     assert_eq "$val" "a" "send_key: keydown listener captured 'a'"
 }
 
+test_send_key_pagedown() {
+    # Regression: v1.0.0 introduced Openbox WM — PageDown stopped scrolling because
+    # the Camoufox window lacked X focus when keys were dispatched via PyAutoGUI.
+    # This test sends pagedown via send_key and verifies BOTH:
+    #   1. the keydown listener captured "PageDown" (focus reached the page)
+    #   2. window.scrollY actually advanced (browser handled the key)
+    post '{"action": "calibrate"}' >/dev/null
+    sleep 0.3
+    # Ensure top of page
+    post '{"action": "eval", "expression": "window.scrollTo(0,0)"}' >/dev/null
+    sleep 0.2
+
+    local resp before key_seen after
+    resp=$(post '{"action": "eval", "expression": "window.scrollY"}')
+    before=$(echo "$resp" | json_get "['data']['result']")
+
+    post '{"action": "send_key", "key": "pagedown"}' >/dev/null
+    sleep 0.5
+
+    resp=$(post '{"action": "eval", "expression": "document.getElementById(\"last-key\").textContent"}')
+    key_seen=$(echo "$resp" | json_get "['data']['result']")
+    assert_eq "$key_seen" "PageDown" "send_key[pagedown]: keydown listener captured 'PageDown'" || return 1
+
+    resp=$(post '{"action": "eval", "expression": "window.scrollY"}')
+    after=$(echo "$resp" | json_get "['data']['result']")
+    if [ "$after" -le "$before" ]; then
+        echo "  FAIL: send_key[pagedown]: scrollY did not advance (before=$before, after=$after)"
+        return 1
+    fi
+    echo "  OK: send_key[pagedown]: scrollY $before -> $after"
+}
+
 # --- Table-driven fullscreen tests ---
 # Each case: "label|action|expected_fullscreen"
 FULLSCREEN_CASES=(
@@ -184,6 +216,7 @@ ALL_TESTS+=(
     test_scroll
     test_system_type
     test_send_key
+    test_send_key_pagedown
     test_fullscreen
     test_selector_input
     test_click
