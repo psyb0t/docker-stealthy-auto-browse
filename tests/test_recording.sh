@@ -158,6 +158,37 @@ test_recording_viewport_uses_calibration() {
         "viewport recording: height = xvfb_h - calibrated_y (= $expected_h)"
 }
 
+test_recording_hide_cursor() {
+    # show_cursor=false must propagate to ffmpeg (-draw_mouse 0). We can't
+    # easily verify "no cursor pixels" without pixel sampling, so we verify:
+    #   1. start_recording accepts show_cursor=false
+    #   2. the start response echoes show_cursor=False (proves the recorder
+    #      saw the flag and stored it on the descriptor)
+    #   3. the resulting file is a valid MP4 (proves ffmpeg accepted the
+    #      flag combination — wrong -draw_mouse value would error)
+    docker exec "$CONTAINER_NAME" bash -c 'rm -f /recordings/*.mp4' 2>/dev/null
+
+    local resp shown
+    resp=$(post '{"action": "start_recording", "mode": "window", "fps": 5, "show_cursor": false}')
+    shown=$(echo "$resp" | json_get "['data']['show_cursor']")
+    assert_eq "$shown" "False" "start_recording echoes show_cursor=False" || return 1
+    sleep 0.8
+
+    post '{"action": "stop_recording", "slug": "no-cursor"}' >/dev/null
+
+    if ! _is_mp4 "no-cursor"; then
+        echo "  FAIL: hide_cursor: file is not a valid MP4"
+        return 1
+    fi
+    echo "  OK: hide_cursor: ffmpeg accepted show_cursor=false, file is valid MP4"
+
+    # And the inverse: default (show_cursor omitted) should report True
+    resp=$(post '{"action": "start_recording", "mode": "window", "fps": 5}')
+    shown=$(echo "$resp" | json_get "['data']['show_cursor']")
+    post '{"action": "stop_recording", "slug": "with-cursor"}' >/dev/null
+    assert_eq "$shown" "True" "start_recording default show_cursor=True"
+}
+
 test_recording_slug_collision() {
     docker exec "$CONTAINER_NAME" bash -c 'rm -f /recordings/*.mp4' 2>/dev/null
 
@@ -182,5 +213,7 @@ ALL_TESTS+=(
     test_recording_stop_without_start
     test_recording_double_start
     test_recording_bad_slug
+    test_recording_viewport_uses_calibration
+    test_recording_hide_cursor
     test_recording_slug_collision
 )

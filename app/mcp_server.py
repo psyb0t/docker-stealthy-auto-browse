@@ -285,6 +285,8 @@ async def run_script(
               "viewport" (crops chrome using calibrated window_offset),
               "desktop" (entire Xvfb screen).
             - fps (int): 1-60, default 15.
+            - show_cursor (bool): True (default) draws the OS-level mouse cursor
+              in the recording. False omits it for pure page-pixel captures.
         stop_recording: Stop active recording and rename tmp file to <slug>.mp4.
             - slug (str, required): [a-zA-Z0-9][a-zA-Z0-9_-]{0,62}. Collisions
               auto-rename to <slug>-2, <slug>-3, etc.

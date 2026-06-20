@@ -1,9 +1,10 @@
 """Screen recording via ffmpeg x11grab.
 
-Captures Xvfb (DISPLAY=:99) to mp4. Mouse cursor included via -draw_mouse 1
-(XFixes). One active recording at a time. Output to /recordings (mount).
-Slug provided at stop time so the user names the file after the run, not
-before. Tmp file is renamed atomically into place on stop.
+Captures Xvfb (DISPLAY=:99) to mp4. Mouse cursor inclusion controlled by
+the show_cursor flag on start (-draw_mouse 1 or 0; defaults to on). One
+active recording at a time. Output to /recordings (mount). Slug provided
+at stop time so the user names the file after the run, not before. Tmp
+file is renamed atomically into place on stop.
 """
 
 from __future__ import annotations
@@ -153,12 +154,17 @@ class Recorder:
         fps: int = DEFAULT_FPS,
         offset_x: int = 0,
         offset_y: int = 0,
+        show_cursor: bool = True,
     ) -> dict[str, Any]:
         """Begin recording. Returns descriptor with recording_id + tmp_path.
 
         offset_x / offset_y crop the capture region from the top-left of
         the Xvfb screen. Caller (main.py) supplies these per mode — viewport
         passes the calibrated window_offset; window/desktop pass (0, 0).
+
+        show_cursor controls ffmpeg's -draw_mouse flag. Default True keeps
+        the OS-level cursor visible (useful for demos / debugging). Set
+        False to record pure page pixels without the cursor sprite.
         """
         if self.active:
             raise RecorderError(
@@ -204,7 +210,7 @@ class Recorder:
             "-loglevel", "warning",
             "-f", "x11grab",
             "-framerate", str(fps),
-            "-draw_mouse", "1",
+            "-draw_mouse", "1" if show_cursor else "0",
             "-video_size", f"{capture_w}x{capture_h}",
             "-i", f":99.0+{offset_x},{offset_y}",
             "-c:v", "libx264",
@@ -247,6 +253,7 @@ class Recorder:
             "recording_id": recording_id,
             "mode": mode,
             "fps": fps,
+            "show_cursor": show_cursor,
             "tmp_path": tmp_path,
             "capture_size": {"width": capture_w, "height": capture_h},
         }

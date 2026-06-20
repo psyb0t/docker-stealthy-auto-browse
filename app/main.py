@@ -327,6 +327,7 @@ async def dispatch_action(cmd: dict) -> dict:
     if action == "start_recording":
         mode = cmd.get("mode", "window")
         fps = int(cmd.get("fps", 15))
+        show_cursor = bool(cmd.get("show_cursor", True))
         # viewport mode crops to the page content area — use the calibrated
         # window_offset rather than a hardcoded chrome height. window/desktop
         # capture from (0, 0) so they include the full browser frame.
@@ -351,6 +352,7 @@ async def dispatch_action(cmd: dict) -> dict:
                 fps=fps,
                 offset_x=offset_x,
                 offset_y=offset_y,
+                show_cursor=show_cursor,
             )
         except RecorderError as e:
             return make_response(False, error=str(e))

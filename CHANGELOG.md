@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.2.0] — 2026-06-20
+
+### Added
+
+- **`show_cursor` parameter on `start_recording`** (default `true`). Controls ffmpeg's `-draw_mouse` flag. Set `false` to record without the OS-level mouse cursor sprite — useful for visual-regression captures or any case where cursor pixels add noise. Default `true` preserves v1.1.x behavior. The flag round-trips: `start_recording` echoes `show_cursor` in its descriptor so callers can confirm what ffmpeg actually got.
+- `test_recording_hide_cursor` in `tests/test_recording.sh` — exercises `show_cursor: false` end-to-end (start → stop → MP4 validity) and asserts the descriptor echoes the requested value; also asserts the default-omitted case reports `True`.
+- `test_recording_viewport_uses_calibration` registered in `tests/test_recording.sh`'s `ALL_TESTS+=` block (was already in `test.sh` but missing from the file's own list — extra-container runs would have skipped it).
+
+### Changed
+
+- `docs/api.md` `start_recording` row gained the `show_cursor` parameter.
+- `app/mcp_server.py` `run_script` docstring's RECORDING section documents `show_cursor` so MCP clients see it in the tool schema.
+
 ## [1.1.1] — 2026-06-20
 
 ### Fixed
