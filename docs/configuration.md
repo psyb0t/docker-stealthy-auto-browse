@@ -44,6 +44,14 @@ docker run -d -e XVFB_RESOLUTION=1280x720 -p 8080:8080 psyb0t/stealthy-auto-brow
 docker run -d -e USE_VIEWPORT=true -e XVFB_RESOLUTION=375x812 -p 8080:8080 psyb0t/stealthy-auto-browse
 ```
 
+**Recording (mount /recordings to collect mp4 files):**
+
+```bash
+mkdir -p ./recordings
+docker run -d -p 8080:8080 -v ./recordings:/recordings psyb0t/stealthy-auto-browse
+# Then drive `start_recording` / `stop_recording` via the API; files land in ./recordings/<slug>.mp4
+```
+
 ## Persistent Profiles
 
 Mount a directory to `/userdata` to keep cookies, localStorage, browser sessions, and the generated fingerprint across container restarts. Without this, every restart is a fresh browser with a new identity.

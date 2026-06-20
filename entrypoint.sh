@@ -6,7 +6,7 @@ TARGET_GID="${PGID:-$TARGET_UID}"
 
 # Fix ownership of writable dirs (runs as root)
 _fix_perms() {
-    for dir in /userdata /loaders; do
+    for dir in /userdata /loaders /recordings; do
         [ -d "$dir" ] || continue
 
         # Skip if already correct

@@ -278,6 +278,18 @@ async def run_script(
         enter_fullscreen: Enter browser fullscreen mode.
         exit_fullscreen: Exit browser fullscreen mode.
 
+    RECORDING (ffmpeg x11grab — captures Xvfb to /recordings/<slug>.mp4 with mouse cursor):
+        start_recording: Begin a recording. Requires /recordings volume mount.
+            One active recording per container; second start while active errors.
+            - mode (str): "window" (default, full Camoufox window incl. chrome),
+              "viewport" (crops chrome using calibrated window_offset),
+              "desktop" (entire Xvfb screen).
+            - fps (int): 1-60, default 15.
+        stop_recording: Stop active recording and rename tmp file to <slug>.mp4.
+            - slug (str, required): [a-zA-Z0-9][a-zA-Z0-9_-]{0,62}. Collisions
+              auto-rename to <slug>-2, <slug>-3, etc.
+        recording_status: Check whether a recording is active and its elapsed time.
+
     UTILITY:
         ping: Health check. Returns current URL.
     """
@@ -509,6 +521,7 @@ if not _cluster_mode:
         network logging (enable_network_log, get_network_log, etc.),
         console logging (enable_console_log, get_console_log, etc.),
         display (calibrate, get_resolution, enter_fullscreen, exit_fullscreen),
+        recording (start_recording, stop_recording, recording_status),
         scrolling (scroll_to_bottom, scroll_to_bottom_humanized),
         navigation (refresh), wait (wait_for_url, wait_for_network_idle),
         utility (ping, sleep).

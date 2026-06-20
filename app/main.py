@@ -31,6 +31,7 @@ import yaml
 from browser import Browser, BrowserConfig
 from fastapi import FastAPI, Request
 from PIL import Image
+from recorder import Recorder, RecorderError, cleanup_orphan_tmp_files
 from script_runner import load_script, run_script
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from system import System
@@ -73,6 +74,9 @@ def log_response(success: bool, msg: str = "") -> None:
 
 # System-level input (pyautogui)
 system = System()
+
+# Screen recorder (ffmpeg x11grab)
+recorder = Recorder()
 
 # Global browser instance
 browser: Browser | None = None
@@ -248,14 +252,39 @@ async def get_window_offset_js(page) -> dict:
     Uses Firefox's mozInnerScreenX/Y which report the real screen position
     of the viewport. These are NOT spoofed by Camoufox (unlike outerHeight/
     innerHeight which are fingerprint-spoofed and give wrong offsets).
+
+    On failure (page closed, JS context destroyed, mozInnerScreen missing
+    on a future Firefox), logs a warning and returns (0, 0). The caller
+    has no way to distinguish "valid (0,0) on a fullscreen window" from
+    "calibrate failed" — the log line is the only signal.
     """
     try:
-        return await page.evaluate("""() => ({
+        result = await page.evaluate("""() => ({
                 x: Math.round(window.mozInnerScreenX),
                 y: Math.round(window.mozInnerScreenY)
             })""")
-    except Exception:
+    except Exception as e:
+        log.warning(
+            "calibrate failed (mozInnerScreen unreachable): %s — "
+            "returning (0, 0); coordinate translation will be wrong "
+            "until calibrate succeeds",
+            e,
+        )
         return {"x": 0, "y": 0}
+
+    # Defensive sanity check — non-numeric / None means Firefox returned
+    # something unexpected (Camoufox change, future Firefox version). Treat
+    # the same as an exception: log loudly, fall back to (0, 0).
+    x = result.get("x") if isinstance(result, dict) else None
+    y = result.get("y") if isinstance(result, dict) else None
+    if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
+        log.warning(
+            "calibrate returned non-numeric offset %r — falling back to "
+            "(0, 0); coordinate translation will be wrong",
+            result,
+        )
+        return {"x": 0, "y": 0}
+    return {"x": int(x), "y": int(y)}
 
 
 def make_response(
@@ -294,6 +323,51 @@ async def dispatch_action(cmd: dict) -> dict:
         duration = cmd.get("duration", 1)
         await asyncio.sleep(float(duration))
         return make_response(True, {"slept": duration})
+
+    if action == "start_recording":
+        mode = cmd.get("mode", "window")
+        fps = int(cmd.get("fps", 15))
+        # viewport mode crops to the page content area — use the calibrated
+        # window_offset rather than a hardcoded chrome height. window/desktop
+        # capture from (0, 0) so they include the full browser frame.
+        if mode == "viewport":
+            offset_x = int(system.window_offset.get("x", 0))
+            offset_y = int(system.window_offset.get("y", 0))
+            if offset_x == 0 and offset_y == 0:
+                # Re-calibrate on demand if it's never been done OR returned
+                # zero (likely a failed calibrate that got swallowed).
+                active = get_active_page()
+                if active is not None:
+                    fresh = await get_window_offset_js(active)
+                    system.window_offset = fresh
+                    offset_x = int(fresh.get("x", 0))
+                    offset_y = int(fresh.get("y", 0))
+        else:
+            offset_x = 0
+            offset_y = 0
+        try:
+            info = recorder.start(
+                mode=mode,
+                fps=fps,
+                offset_x=offset_x,
+                offset_y=offset_y,
+            )
+        except RecorderError as e:
+            return make_response(False, error=str(e))
+        return make_response(True, info)
+
+    if action == "stop_recording":
+        slug = cmd.get("slug", "")
+        if not slug:
+            return make_response(False, error="slug required")
+        try:
+            info = recorder.stop(slug=slug)
+        except RecorderError as e:
+            return make_response(False, error=str(e))
+        return make_response(True, info)
+
+    if action == "recording_status":
+        return make_response(True, recorder.status())
 
     if action == "run_script":
         steps = cmd.get("steps")
@@ -1068,6 +1142,9 @@ async def main() -> None:
 
     config = BrowserConfig()
 
+    # Sweep stale ffmpeg tmp files left by a previous crashed run.
+    cleanup_orphan_tmp_files()
+
     if SCRIPT_PATH:
         await _run_script_mode(SCRIPT_PATH, config)
         return
@@ -1112,7 +1189,11 @@ async def main() -> None:
         if AUTH_TOKEN:
             log.info("API key auth enabled")
         log.info(f"API listening on {HTTP_LISTEN_HOST}:{HTTP_LISTEN_PORT}")
-        await server.serve()
+        try:
+            await server.serve()
+        finally:
+            # Don't leave ffmpeg orphaned + tmp file lingering on shutdown.
+            recorder.abort()
 
     log.info("Done")
 

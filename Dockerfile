@@ -45,12 +45,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xdotool scrot python3-tk python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Screen recording (ffmpeg x11grab + libx264)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install Python packages (system-level, needs root)
 RUN pip install --no-cache-dir "camoufox[geoip]" pyautogui fastapi uvicorn fastmcp Pillow pyyaml "redis[hiredis]"
 
 # Create non-root user and directories
 RUN groupadd -g 1000 browser && useradd -u 1000 -g 1000 -m browser
-RUN mkdir -p /app /userdata /loaders && chown -R browser:browser /app /userdata /loaders
+RUN mkdir -p /app /userdata /loaders /recordings && chown -R browser:browser /app /userdata /loaders /recordings
 
 # Allow browser user to write GeoIP db into camoufox package dir
 RUN chown -R browser:browser /usr/local/lib/python3.12/site-packages/camoufox/

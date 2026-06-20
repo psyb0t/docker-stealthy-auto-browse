@@ -241,6 +241,52 @@ Capture `console.log`, `console.error`, `console.warn`, and other console output
 | `close`           | —                                                           | Shuts down the browser. The container stops after this.                                                                                                                                                                                      |
 | `save_screenshot` | `output_id`, `path`, `type`, `width`, `height`, `whLargest` | Captures a screenshot. `type`: `"browser"` (default) or `"desktop"`. Optional `path` to also write PNG to disk. In script mode, `output_id` collects the base64 PNG into the outputs dict. Supports resize via `width`/`height`/`whLargest`. |
 
+### Screen Recording
+
+ffmpeg `x11grab` against the Xvfb display. Captures actual rendered pixels including the OS-level mouse cursor (PyAutoGUI moves are visible). One active recording per container; second `start_recording` while active returns an error. Requires `/recordings` mounted as a host volume — if not mounted (or not writable), `start_recording` fails fast.
+
+| Action              | Parameters     | What It Does                                                                                                                                                                                                                                                                              |
+| ------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start_recording`   | `mode`, `fps`  | Begin recording to `/recordings/.tmp-<id>.mp4`. `mode`: `"window"` (default, full Camoufox window incl. chrome), `"viewport"` (crops the ~81px chrome strip), `"desktop"` (entire Xvfb screen). `fps`: 1–60, default 15. Returns `recording_id`, `tmp_path`, and `capture_size`.           |
+| `stop_recording`    | `slug`         | Stop the active recording, finalize, and rename tmp file to `/recordings/<slug>.mp4`. `slug` must match `[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}` (no path traversal). If `<slug>.mp4` already exists, the file is saved as `<slug>-2.mp4`, `<slug>-3.mp4`, etc. Returns `path`, `duration_s`, `size_bytes`. |
+| `recording_status`  | —              | `{"active": true, "recording_id", "mode", "started_at", "elapsed_s", "tmp_path"}` when recording, `{"active": false}` otherwise.                                                                                                                                                          |
+
+Mount and run:
+
+```bash
+mkdir -p ./recordings
+docker run -d -p 8080:8080 \
+  -v ./recordings:/recordings \
+  psyb0t/stealthy-auto-browse
+```
+
+Script-mode pattern — multiple start/stop pairs in one run, all files land in `./recordings/`:
+
+```yaml
+steps:
+  - action: start_recording
+    mode: window
+  - action: goto
+    url: https://example.com
+    wait_until: networkidle
+  - action: stop_recording
+    slug: example-page
+  - action: start_recording
+    mode: viewport
+    fps: 30
+  - action: goto
+    url: https://another.example
+  - action: stop_recording
+    slug: another-page
+```
+
+Notes:
+
+- Encoder defaults: H.264 (`libx264`), `-preset ultrafast`, `-crf 28`, `yuv420p`. Picked for low CPU + reasonable file size on browser footage. To re-encode for distribution, run a second pass externally.
+- `viewport` mode uses the calibrated `window_offset` (`mozInnerScreenX/Y` from Firefox) as the crop top-left. If `window_offset` is still `(0, 0)` at start time (calibrate never ran or it returned zero), `start_recording` lazily re-runs calibrate before launching ffmpeg. Call `calibrate` after `enter_fullscreen`/`exit_fullscreen` or any chrome-state change so the next recording cuts at the right line.
+- In cluster mode (`NUM_REPLICAS > 1`), recording actions are only usable from inside a `run_script` call — outside, the cluster restriction rejects them. Start and stop must live in the same `run_script` so they hit the same browser instance.
+- Crashes and forced shutdown abort any active recording and remove its tmp file. At next startup, the app sweeps `/recordings/.tmp-*.mp4` files older than 1h.
+
 ## Screenshots
 
 Both screenshot endpoints support resize parameters. The default resolution is 1920x1080 — that's a big image. You almost always want to resize.

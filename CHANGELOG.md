@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.1.0] — 2026-06-20
+
+### Added
+
+- **Screen recording subsystem** (`app/recorder.py`). ffmpeg `x11grab` against Xvfb (DISPLAY=:99) writes to `/recordings/<slug>.mp4`. Mouse cursor included (`-draw_mouse 1`, XFixes). Three modes:
+  - `window` (default) — full Camoufox window incl. chrome
+  - `viewport` — crops chrome using the calibrated `window_offset` (mozInnerScreenX/Y), so this mode tracks browser layout instead of a hardcoded chrome height
+  - `desktop` — entire Xvfb screen
+- New API actions: `start_recording {mode, fps}`, `stop_recording {slug}`, `recording_status`. One active recording at a time per container. `slug` is provided at stop time so the caller names the file after the run, not before. Slug allowlist `[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}` (no path traversal). Filename collision auto-renames to `<slug>-2.mp4`, `<slug>-3.mp4`, etc.
+- `/recordings` mount required and validated at `start_recording` time — fails fast if missing or not writable. `Dockerfile` creates the dir; `entrypoint.sh` chowns it alongside `/userdata` and `/loaders`.
+- Crash safety: a SIGINT-then-wait shutdown finalizes the MP4 cleanly. Orphan tmp files (`/recordings/.tmp-*.mp4`) older than 1h are swept at app startup.
+- 6 regression tests in `tests/test_recording.sh`: basic record + ftyp magic + size check, stop-without-start error, double-start error, bad-slug rejection (path traversal), viewport mode uses calibrated offset (verified via `capture_size`), slug-collision rename to `-2`.
+- MCP tool docstrings updated: `run_script` now documents the RECORDING action group; `browser_action`'s "useful for" list mentions recording.
+- New entry `.demo-recordings/` added to `.gitignore`.
+
+### Fixed
+
+- **`get_window_offset_js` silent swallow** (`app/main.py:249`). Previously `except Exception: return {"x": 0, "y": 0}` — failure was indistinguishable from a valid `(0, 0)` result on a fullscreen window, so a broken calibrate silently produced wrong coordinates for every subsequent `system_click`. Now logs a warning on exception AND validates the JS result shape (must be a dict with numeric x/y), logs a warning and falls back to `(0, 0)` if Firefox returns anything unexpected (e.g. a future Camoufox version that spoofs `mozInnerScreen*`). Per `rules/05-error-handling.md` "never silently swallow".
+
 ## [1.0.1] — 2026-06-10
 
 ### Fixed

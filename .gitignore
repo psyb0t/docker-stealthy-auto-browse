@@ -16,3 +16,4 @@ git-update.sh
 lasttest.log
 tests/results/
 plan.md
+.demo-recordings/

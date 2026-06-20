@@ -75,6 +75,13 @@ MAIN_TESTS=(
     test_upload_file
     # test_waits.sh
     test_waits
+    # test_recording.sh
+    test_recording_basic
+    test_recording_stop_without_start
+    test_recording_double_start
+    test_recording_bad_slug
+    test_recording_viewport_uses_calibration
+    test_recording_slug_collision
 )
 
 # --- CLI ---
