@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.1.1] — 2026-06-20
+
+### Fixed
+
+- **Doc sync gaps from v1.1.0.** `README.md` had no mention of screen recording — added TOC entry, ffmpeg row in the "What's Inside" table, and a "Screen Recording" section with quick-start + curl example. `docs/script-mode.md` gained an "Example: Record a Flow" showing `start_recording` / `stop_recording` as YAML steps with the `/recordings` mount. `docs/cluster-mode.md` got a paragraph in the script-only-mode section spelling out that `start_recording` and `stop_recording` must live in the same `run_script` call so both hit the same sticky-routed instance. `docs/api.md` viewport-mode wording corrected — it previously said "crops the ~81px chrome strip" (the v1.0.x hardcoded behavior) but now uses the calibrated `mozInnerScreenX/Y` offset.
+
 ## [1.1.0] — 2026-06-20
 
 ### Added

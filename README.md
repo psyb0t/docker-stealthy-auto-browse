@@ -12,6 +12,7 @@ Passes Cloudflare, CreepJS, BrowserScan, Pixelscan, and every other bot detector
 - [MCP Server](#mcp-server)
 - [Script Mode](#script-mode)
 - [Page Loaders](#page-loaders)
+- [Screen Recording](#screen-recording)
 - [Cluster Mode](#cluster-mode)
 - [Authentication](#authentication)
 - [Configuration](#configuration)
@@ -29,6 +30,7 @@ Passes Cloudflare, CreepJS, BrowserScan, Pixelscan, and every other bot detector
 | **Openbox**    | Lightweight window manager — adds title bars and resize handles to popup windows (OAuth dialogs, etc.) that would otherwise be too small to interact with. Zero stealth impact.             |
 | **HTTP API**   | A JSON API on port 8080 that lets you control everything — navigate pages, click elements, type text, take screenshots, manage tabs, handle cookies, and more.                              |
 | **MCP Server** | [Model Context Protocol](https://modelcontextprotocol.io/) server at `/mcp` on the same port. AI agents (Claude, etc.) can drive the browser directly over MCP using Streamable HTTP.       |
+| **ffmpeg**     | `x11grab` against Xvfb for screen recording. Captures actual rendered pixels including the OS-level mouse cursor — see [Screen Recording](#screen-recording).                               |
 
 Pre-installed extensions: **uBlock Origin** (ads/trackers), **LocalCDN** (prevents CDN tracking), **ClearURLs** (strips tracking params), **Consent-O-Matic** (auto-handles cookie popups).
 
@@ -114,6 +116,30 @@ Full docs: [docs/script-mode.md](docs/script-mode.md)
 Define URL patterns + action sequences in YAML files. Mount them at `/loaders`. Whenever `goto` matches a pattern, the loader runs automatically — removes popups, waits for content, cleans up the page. Greasemonkey for the HTTP API.
 
 Full docs: [docs/page-loaders.md](docs/page-loaders.md)
+
+## Screen Recording
+
+Record the browser as MP4 with mouse cursor visible. ffmpeg `x11grab` against Xvfb writes to a mounted `/recordings` volume. Three modes: `window` (full Camoufox window), `viewport` (chrome cropped using calibrated `mozInnerScreenX/Y`), `desktop` (entire Xvfb screen). Slug provided at stop time so you name the file after the run completes. Path-traversal-safe, collision-safe, crash-safe.
+
+```bash
+mkdir -p ./recordings
+docker run -d -p 8080:8080 -v ./recordings:/recordings psyb0t/stealthy-auto-browse
+```
+
+```bash
+curl -X POST http://localhost:8080 \
+  -H "Content-Type: application/json" \
+  -d '{"action": "start_recording", "mode": "viewport", "fps": 20}'
+
+# … do stuff …
+
+curl -X POST http://localhost:8080 \
+  -H "Content-Type: application/json" \
+  -d '{"action": "stop_recording", "slug": "my-flow"}'
+# → ./recordings/my-flow.mp4
+```
+
+Also works inside `run_script` (cluster-mode safe: start and stop must live in the same `run_script` so both hit the same instance). Full action table + script-mode example + notes in [docs/api.md#screen-recording](docs/api.md#screen-recording).
 
 ## Cluster Mode
 

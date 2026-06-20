@@ -93,3 +93,33 @@ cat screenshot.yaml | docker run --rm -i -e URL=https://example.com \
 ```
 
 See `scripts/example_script.yaml` in the repo for a full example.
+
+## Example: Record a Flow
+
+Mount `/recordings` and pair `start_recording` with `stop_recording`. Multiple pairs in a single script land multiple MP4 files; collect them from the host after the container exits.
+
+```yaml
+name: Record Search
+steps:
+  - action: start_recording
+    mode: viewport
+    fps: 20
+  - action: goto
+    url: ${env.URL}
+    wait_until: networkidle
+  - action: sleep
+    duration: 2
+  - action: stop_recording
+    slug: search-flow
+```
+
+```bash
+mkdir -p ./recordings
+cat record.yaml | docker run --rm -i \
+  -v ./recordings:/recordings \
+  -e URL=https://example.com \
+  psyb0t/stealthy-auto-browse --script
+# → ./recordings/search-flow.mp4
+```
+
+Full action reference: [api.md#screen-recording](api.md#screen-recording).

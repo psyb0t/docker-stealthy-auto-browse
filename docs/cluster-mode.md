@@ -39,6 +39,8 @@ curl -X POST http://localhost:8080 \
 
 The MCP server exposes only the `run_script` tool in cluster mode, with a comprehensive description documenting every available action and its parameters so LLMs know what steps to include in their scripts.
 
+**Recording in cluster mode:** `start_recording` and `stop_recording` must live in the **same** `run_script` call so both steps hit the same browser instance (one request = one routing decision). Splitting them across two `run_script` calls breaks because the stop would likely land on a different instance with no active recording. Mount `/recordings` on every browser container in `docker-compose.cluster.yml` (one shared host directory is fine — slugs are namespaced by your caller, not by instance).
+
 ## Quick Start
 
 ```bash
