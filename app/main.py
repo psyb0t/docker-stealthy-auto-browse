@@ -49,23 +49,49 @@ CONTENT_TYPE_IMAGE_PNG = "image/png"
 # =============================================================================
 
 
-from logger import get_logger
+import re
+import uuid as _uuid
+
+from logger import (
+    ensure_trace_id,
+    get_logger,
+    new_trace_id,
+    request_id_var,
+    trace_id_var,
+)
 
 log = get_logger(__name__)
 
+# X-Request-Id shape allowlist — accept anything ≤ 64 chars, alphanumeric +
+# `-_.`, no newlines. Untrusted user input becomes a log field so we don't
+# accept arbitrary garbage that could break log parsers downstream.
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
+def _safe_request_id(incoming: str) -> str:
+    """Validate + sanitize incoming X-Request-Id; mint a new one if invalid."""
+    if incoming and _REQUEST_ID_RE.match(incoming):
+        return incoming
+    return _uuid.uuid4().hex
+
 
 def log_request(action: str, params: dict | None = None) -> None:
+    """Log incoming action with structured fields. Redactor masks tokens."""
     if params:
-        log.info(">> %s %s", action, params)
+        log.info("request", extra={"action": action, "params": params})
     else:
-        log.info(">> %s", action)
+        log.info("request", extra={"action": action})
 
 
 def log_response(success: bool, msg: str = "") -> None:
+    """Log outcome of an action."""
+    fields: dict[str, Any] = {"outcome": "ok" if success else "fail"}
+    if msg:
+        fields["detail"] = msg
     if success:
-        log.info("<< OK %s", msg) if msg else log.info("<< OK")
+        log.info("response", extra=fields)
     else:
-        log.warning("<< FAIL %s", msg) if msg else log.warning("<< FAIL")
+        log.warning("response", extra=fields)
 
 
 # =============================================================================
@@ -139,7 +165,10 @@ async def _on_dialog(dialog: Any) -> None:
         "default_value": dialog.default_value,
         "buttons": _DIALOG_BUTTONS.get(dialog.type, ["ok"]),
     }
-    log.info(f"Dialog [{dialog.type}]: {dialog.message}")
+    log.info(
+        "dialog received",
+        extra={"dialog_type": dialog.type, "dialog_message": dialog.message},
+    )
 
     action = _next_dialog_action
     _next_dialog_action = None
@@ -172,7 +201,7 @@ async def _on_download(download: Any) -> None:
             "filename": download.suggested_filename,
             "path": None,
         }
-    log.info(f"Download: {download.suggested_filename}")
+    log.info("download", extra={"filename": download.suggested_filename})
 
 
 def _on_request(request: Any) -> None:
@@ -232,15 +261,25 @@ def _setup_page_handlers(page: Any) -> None:
         _console_handler_pages.add(page_id)
 
 
-def get_active_page() -> Any:
-    """Get the currently active page."""
+async def get_active_page() -> Any:
+    """Get the currently active page, relaunching browser if it died."""
     global _active_page
-    if not browser or not browser._context:
+    if not browser:
+        return None
+    # Heal a dead/crashed Camoufox before reading the context. Without this,
+    # the cached _active_page survives across browser deaths and every
+    # subsequent action fails with "Connection closed while reading from
+    # the driver" until the container is manually restarted.
+    if not await browser.ensure_healthy():
+        return None
+    if not browser._context:
         return None
     pages = browser._context.pages
     if not pages:
         _active_page = None
         return None
+    # The cached _active_page may belong to the previous (dead) context.
+    # Drop it if it's not in the current page list.
     if _active_page is None or _active_page not in pages:
         _active_page = pages[-1]
     return _active_page
@@ -337,7 +376,7 @@ async def dispatch_action(cmd: dict) -> dict:
             if offset_x == 0 and offset_y == 0:
                 # Re-calibrate on demand if it's never been done OR returned
                 # zero (likely a failed calibrate that got swallowed).
-                active = get_active_page()
+                active = await get_active_page()
                 if active is not None:
                     fresh = await get_window_offset_js(active)
                     system.window_offset = fresh
@@ -409,7 +448,7 @@ async def dispatch_action(cmd: dict) -> dict:
     if action == "list_tabs":
         pages = browser._context.pages if browser and browser._context else []
         tabs = []
-        active = get_active_page()
+        active = await get_active_page()
         for i, p in enumerate(pages):
             tabs.append({"index": i, "url": p.url, "active": p is active})
         return make_response(True, {"tabs": tabs, "count": len(tabs)})
@@ -453,7 +492,7 @@ async def dispatch_action(cmd: dict) -> dict:
                 return make_response(False, error=f"Invalid tab index: {index}")
             target = pages[index]
         else:
-            target = get_active_page() or pages[-1]
+            target = await get_active_page() or pages[-1]
         await target.close()
         pages = browser._context.pages if browser and browser._context else []
         _active_page = pages[-1] if pages else None
@@ -490,7 +529,7 @@ async def dispatch_action(cmd: dict) -> dict:
 
     if action == "enable_network_log":
         _network_logging = True
-        page = get_active_page()
+        page = await get_active_page()
         if page:
             _setup_page_handlers(page)
         return make_response(True, {"enabled": True})
@@ -520,7 +559,7 @@ async def dispatch_action(cmd: dict) -> dict:
 
     if action == "enable_console_log":
         _console_logging = True
-        page = get_active_page()
+        page = await get_active_page()
         if page:
             _setup_page_handlers(page)
         return make_response(True, {"enabled": True})
@@ -567,7 +606,7 @@ async def dispatch_action(cmd: dict) -> dict:
                 data = f.read()
             os.unlink(tmp_path)
         else:
-            page = get_active_page()
+            page = await get_active_page()
             if not page:
                 return make_response(False, error="No active page")
             data = await page.screenshot(type="png")
@@ -616,7 +655,7 @@ async def dispatch_action(cmd: dict) -> dict:
         return resp
 
     # All other actions need a page
-    page = get_active_page()
+    page = await get_active_page()
     if not page:
         return make_response(False, error="No active page")
 
@@ -943,13 +982,45 @@ async def auth_middleware(request: Request, call_next: Any) -> Any:
     return await call_next(request)
 
 
+# Registered AFTER auth_middleware on purpose: Starlette executes middlewares
+# in REVERSE registration order, so the last @app.middleware decorated
+# function ends up OUTERMOST. We want trace_middleware to wrap auth so even
+# 401 responses carry a trace_id in logs + an X-Request-Id back to the
+# caller.
+@app.middleware("http")
+async def trace_middleware(request: Request, call_next: Any) -> Any:
+    """Seed trace_id + request_id ContextVars on every HTTP request.
+
+    Per ~/.claude/rules/06-logging.md: every line carries a trace_id, every
+    HTTP request line also carries a request_id, and X-Request-Id is echoed
+    back on the response so the caller (n8n / MCP client / operator curl)
+    can correlate their side with our logs.
+    """
+    trace_id = new_trace_id()
+    incoming_rid = request.headers.get("X-Request-Id", "") or request.headers.get(
+        "x-request-id", ""
+    )
+    request_id = _safe_request_id(incoming_rid)
+
+    trace_token = trace_id_var.set(trace_id)
+    rid_token = request_id_var.set(request_id)
+    try:
+        response = await call_next(request)
+    finally:
+        trace_id_var.reset(trace_token)
+        request_id_var.reset(rid_token)
+    response.headers["X-Request-Id"] = request_id
+    response.headers["X-Trace-Id"] = trace_id
+    return response
+
+
 @app.post("/")
 async def handle_command(request: Request) -> JSONResponse:
     """POST / - Execute a command."""
     try:
         cmd = await request.json()
     except Exception as e:
-        log.error(f" Invalid JSON: {e}")
+        log.error("invalid request JSON", extra={"error": str(e)})
         return JSONResponse(make_response(False, error=f"Invalid JSON: {e}"))
 
     action = cmd.get("action", "")
@@ -1015,7 +1086,7 @@ def _resize_png(data: bytes, request: Request) -> bytes:
 @app.get("/screenshot/browser")
 async def handle_screenshot_browser(request: Request) -> Response:
     """GET /screenshot/browser - Return browser viewport PNG screenshot."""
-    page = get_active_page()
+    page = await get_active_page()
     if not page:
         return PlainTextResponse("No active page", status_code=503)
 
@@ -1058,7 +1129,7 @@ async def handle_state() -> JSONResponse:
     if not browser:
         return JSONResponse({"status": "not_ready"})
 
-    page = get_active_page()
+    page = await get_active_page()
     return JSONResponse(
         {
             "status": "ready" if page else "no_page",
@@ -1128,7 +1199,7 @@ async def _run_script_mode(script_path: str, config: BrowserConfig) -> None:
         log.info("PyAutoGUI ready")
 
         await asyncio.sleep(1)
-        page = get_active_page()
+        page = await get_active_page()
         if page:
             _setup_page_handlers(page)
             system.window_offset = await get_window_offset_js(page)
@@ -1167,7 +1238,7 @@ async def main() -> None:
         log.info("PyAutoGUI ready")
 
         await asyncio.sleep(1)
-        page = get_active_page()
+        page = await get_active_page()
         if page:
             _setup_page_handlers(page)
             system.window_offset = await get_window_offset_js(page)

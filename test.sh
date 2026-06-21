@@ -83,6 +83,8 @@ MAIN_TESTS=(
     test_recording_viewport_uses_calibration
     test_recording_hide_cursor
     test_recording_slug_collision
+    # test_recovery.sh
+    test_recovery_camoufox_crash
 )
 
 # --- CLI ---

@@ -2,6 +2,33 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.0] — 2026-06-21
+
+### Fixed
+
+- **Auto-recovery from Camoufox crashes.** Reported by @shadowjig: after 3 executions of an n8n workflow hitting Facebook, every subsequent `goto` returned `Page.goto: Connection closed while reading from the driver` until the container was manually restarted. Root cause: `app/browser.py:_get_page` cached `self._page` forever — when Camoufox died mid-session (OOM was the usual culprit), the cached Page reference pointed at a dead Playwright Page object and the python app had no recovery path. Fix: `Browser.is_healthy()` round-trips to the driver (`context.cookies()`) on every page acquisition; if the probe fails, `Browser.ensure_healthy()` tears down + relaunches `launch_persistent_context` (persistent profile survives intact). Both `_get_page()` and the top-level `main.get_active_page()` now route through `ensure_healthy()`. Cold-restart cost: ~4–5s for the request that triggered recovery; subsequent requests run at full speed. New regression test (`tests/test_recovery.sh::test_recovery_camoufox_crash`) simulates the crash via `pkill -9 -f camoufox-bin` and asserts the next request succeeds.
+
+### Added
+
+- **Crash postmortem logging.** When the health probe trips and `ensure_healthy` decides to relaunch, the new `_log_browser_postmortem()` writes structured diagnostics at WARNING so the operator doesn't have to guess what killed Camoufox: `pgrep` inventory of remaining `camoufox-bin` processes, last 200 lines of `dmesg` grepped for OOM / camoufox / firefox kills, `/proc/meminfo` snapshot (MemTotal / MemAvailable / SwapFree), `/proc/loadavg`. For the typical Facebook + persistent-profile OOM case, the dmesg block surfaces `Killed process N (camoufox-bin) total-vm:…` so the answer is in the log rather than the operator's head.
+- **Playwright lifecycle handlers** registered at launch — `context.on("close")` and `page.on("crash")` — so the death event lands in the log as soon as Playwright sees it, not when the next request fails.
+- **Structured JSON logging overhaul.** `app/logger.py` rewritten:
+  - ISO 8601 UTC timestamps with microsecond precision (`"time": "2026-06-21T22:41:13.499770Z"`)
+  - Nested `source.{function, file, line}` instead of the previous flat `module:func:line` string
+  - `trace_id` on every log line (auto-generated per HTTP request via ContextVar)
+  - `request_id` on HTTP request lines, seeded from the incoming `X-Request-Id` header (shape-validated against `^[A-Za-z0-9._-]{1,64}$`) or generated as a fresh UUID4-hex if missing/invalid
+  - Logger-level redactor masks `password|token|secret|api_key|authorization|cookie|set-cookie|auth_token|access_token|refresh_token|client_secret|private_key|session` keys to `[REDACTED]` at format time, so structured logging of headers / cookies / request bodies / DSN structs is safe by default
+  - Default sink switched from `stdout` to `stderr` (Docker captures stderr to `docker logs`; stdout is reserved for the `--script` mode JSON result)
+  - Optional rotating file via `LOG_FILE` env var (10MB × 5 backups)
+  - `LOG_LEVEL` env var honored (DEBUG / INFO / WARN / ERROR)
+  - Exception stack trace included as a structured `exception` field when `exc_info` is set
+- **HTTP trace middleware** in `main.py` wraps the auth middleware so even 401s carry a `trace_id` in logs. Response headers gain `X-Request-Id` (echoed) and `X-Trace-Id` (always set) so callers (n8n, MCP clients, operator curl) can correlate their side with the server logs.
+
+### Changed
+
+- `main.get_active_page()` is now `async` and calls `await browser.ensure_healthy()` before reading the page list. All call sites in `main.py` updated to `await` it.
+- A handful of f-string log calls converted to structured form (`extra={...}`) so the redactor can do its job: `dialog received`, `download`, `invalid request JSON`, `log_request`/`log_response`. The rest of the codebase still has f-string log calls — flagged as a follow-up pass; not a behavior change today.
+
 ## [1.2.0] — 2026-06-20
 
 ### Added

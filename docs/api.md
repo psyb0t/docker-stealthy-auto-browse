@@ -21,6 +21,19 @@ Authorization: Bearer <token>
 
 Or pass it as a query param: `?auth_token=<token>` (useful for MCP clients that can't set headers).
 
+## Request Correlation Headers
+
+Every request gets a `trace_id` (logged on every line of the server's JSON log for that request) and a `request_id`. Both come back in the response so you can correlate your side with server logs.
+
+- **`X-Request-Id`** — pass an incoming value (shape `[A-Za-z0-9._-]{1,64}`) and the server logs that exact ID and echoes it back. If missing or invalid, the server mints a fresh UUID4-hex and uses that. Useful for end-to-end tracing from your client (n8n, MCP, curl) through to the browser action.
+- **`X-Trace-Id`** — always set by the server on the response (UUID4 hex). Find any log line for this request by grepping the JSON log for the trace ID.
+
+## Auto-Recovery from Browser Crashes
+
+If Camoufox/Firefox dies mid-session (OOM, segfault, external SIGKILL), the next request triggers an automatic relaunch: the dead context is torn down and `launch_persistent_context` runs again. Persistent profile (`/userdata` mount) survives, so cookies / fingerprint / sessions all stay. The recovery request itself takes ~4–5s extra (Camoufox cold start); subsequent requests run at full speed.
+
+Crash diagnostics land in the JSON log at `WARNING` whenever recovery fires: `dmesg` grep for OOM / Camoufox / Firefox kills, `/proc/meminfo` snapshot, `/proc/loadavg`, and the surviving process inventory. If your container hits this often, `dmesg` will usually point at the docker OOM-killer — bump the container memory limit.
+
 ## Cluster Mode Restriction
 
 When running in cluster mode (`NUM_REPLICAS > 1`), only `run_script`, `ping`, and `sleep` actions are allowed. All other actions return an error directing you to use `run_script`. This prevents stale content bugs from calls hitting different browser instances. See [cluster-mode.md](cluster-mode.md#script-only-mode-v100) for details.

@@ -12,6 +12,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse as _urlparse
 
+from logger import get_logger
+
+log = get_logger(__name__)
+
 try:
     from redis_sync import RedisSync
 except ImportError:
@@ -100,6 +104,75 @@ def _generate_camoufox_config(screen_width: int, screen_height: int) -> dict[str
     return from_browserforge(fp, ff_version)
 
 
+def _log_browser_postmortem() -> None:
+    """Capture crash diagnostics at the moment the health probe fails.
+
+    Best-effort. Each probe is wrapped so a failure to gather one signal
+    doesn't suppress the others. Output goes to log.warning so the operator
+    sees it even when running with default log level. Most common cause is
+    OOM (heavy site like Facebook + persistent profile accumulation); less
+    common are renderer segfaults and external SIGKILL (docker oom-killer,
+    `docker stop`, `kill -9`).
+    """
+    # 1. Process inventory — are Camoufox / Firefox processes still alive?
+    try:
+        proc = subprocess.run(
+            ["pgrep", "-af", "camoufox-bin"],
+            capture_output=True, text=True, timeout=2,
+        )
+        alive = proc.stdout.strip() or "<none>"
+        log.warning("postmortem: camoufox-bin processes: %s", alive)
+    except Exception as e:
+        log.warning("postmortem: pgrep failed: %s", e)
+
+    # 2. dmesg — does the kernel report an OOM kill of Camoufox? Requires
+    # the container to be able to read kernel logs (most envs allow it
+    # read-only). If `dmesg` is missing or unprivileged, skip silently —
+    # this is a hint, not a guarantee.
+    try:
+        proc = subprocess.run(
+            ["dmesg", "--ctime"],
+            capture_output=True, text=True, timeout=2,
+        )
+        oom_lines = [
+            line for line in proc.stdout.splitlines()[-200:]
+            if "killed process" in line.lower()
+            or "out of memory" in line.lower()
+            or "camoufox" in line.lower()
+            or "firefox" in line.lower()
+        ]
+        if oom_lines:
+            log.warning(
+                "postmortem: dmesg recent OOM / camoufox lines:\n  %s",
+                "\n  ".join(oom_lines[-5:]),
+            )
+        else:
+            log.warning("postmortem: no recent OOM / camoufox lines in dmesg")
+    except FileNotFoundError:
+        log.warning("postmortem: dmesg not available in container")
+    except Exception as e:
+        log.warning("postmortem: dmesg failed: %s", e)
+
+    # 3. Memory + load snapshot — how tight was it at crash time?
+    try:
+        with open("/proc/meminfo") as f:
+            meminfo = f.read()
+        wanted_keys = ("MemTotal:", "MemAvailable:", "MemFree:", "SwapFree:")
+        summary = [
+            line for line in meminfo.splitlines()
+            if any(line.startswith(k) for k in wanted_keys)
+        ]
+        log.warning("postmortem: memory: %s", " | ".join(summary))
+    except Exception as e:
+        log.warning("postmortem: meminfo read failed: %s", e)
+
+    try:
+        with open("/proc/loadavg") as f:
+            log.warning("postmortem: loadavg: %s", f.read().strip())
+    except Exception as e:
+        log.warning("postmortem: loadavg read failed: %s", e)
+
+
 class BrowserError(Exception):
     """Browser error."""
 
@@ -140,13 +213,98 @@ class Browser:
 
     @property
     def is_running(self) -> bool:
-        """Check if browser is running."""
+        """Check if browser is running (process started; not a health probe)."""
         return self._browser is not None
 
     @property
     def page(self) -> Any:
         """Current page object for direct access."""
         return self._page
+
+    async def is_healthy(self) -> bool:
+        """Probe whether the browser context + page are still usable.
+
+        Camoufox/Firefox can die mid-session (OOM, segfault, killed) while
+        the Python app stays alive. Playwright leaves the dead Page object
+        in self._page and every subsequent call fails with
+        "Connection closed while reading from the driver" or
+        "Target page, context or browser has been closed".
+
+        `self._context.pages` is just a cached Python list — it returns
+        without round-tripping to Firefox, so it can't tell us the process
+        died. We do an actual RPC (`context.cookies()`) to force Playwright
+        to talk to the driver. If the driver is gone, this raises.
+
+        Returns False if anything in the chain is dead so the caller can
+        relaunch.
+        """
+        if self._context is None or self._browser is None:
+            return False
+        try:
+            # Round-trip to the driver. Cheap, side-effect-free, fails fast
+            # if Firefox is dead with "Connection closed" / "Target ... closed".
+            await self._context.cookies()
+        except Exception as e:
+            log.warning("browser: health probe failed: %s", e)
+            return False
+        if self._page is not None:
+            try:
+                if self._page.is_closed():
+                    # Page is dead but context may still be fine — caller
+                    # should pick another page from the pool.
+                    self._page = None
+            except Exception:
+                return False
+        return True
+
+    async def ensure_healthy(self) -> bool:
+        """If the browser died, tear down + relaunch.
+
+        Returns True if the browser is healthy (or was successfully
+        relaunched), False if relaunch failed. Logs every recovery attempt
+        so failed runs aren't silent.
+        """
+        if await self.is_healthy():
+            return True
+        log.warning(
+            "browser: unhealthy state detected — tearing down and relaunching",
+        )
+        # Capture as much post-mortem context as we can BEFORE tearing down.
+        # Crashes are usually OOM (Facebook etc. + accumulated persistent
+        # profile state), but they can also be Firefox segfaults / asserts.
+        _log_browser_postmortem()
+        try:
+            await self.stop()
+        except Exception as e:
+            log.warning("browser: stop during recovery failed: %s", e)
+        try:
+            await self.start()
+        except Exception as e:
+            log.error("browser: relaunch failed: %s", e)
+            return False
+        log.info("browser: relaunched successfully")
+        return True
+
+    def _on_page_crash(self, page: Any) -> None:
+        """Playwright fires this when a page's renderer process crashes.
+
+        Logged at WARNING so it shows up in operational logs even if the
+        recovery path successfully relaunches afterwards. Tells the
+        operator WHICH page died (URL) which the health probe alone can't.
+        """
+        url = ""
+        try:
+            url = page.url
+        except Exception:
+            pass
+        log.warning("browser: page crashed url=%s", url)
+
+    def _on_context_close(self) -> None:
+        """Playwright fires this when the browser context is gone — Camoufox
+        process exited (clean or crashed). Logged so the death event is
+        visible in ops logs rather than only surfacing as the next request's
+        'Connection closed' error."""
+        log.warning("browser: context closed — Camoufox process exited")
 
     async def start(self) -> None:
         """Start browser."""
@@ -397,6 +555,24 @@ class Browser:
             )
             self._browser = self._context
 
+            # Crash diagnostics — Playwright fires these events when the
+            # browser / page processes die. Without them the only signal is
+            # the next request returning "Connection closed while reading
+            # from the driver", which leaves the operator guessing whether
+            # it was OOM / segfault / external SIGKILL / etc.
+            try:
+                self._context.on("close", self._on_context_close)
+                self._context.on(
+                    "page",
+                    lambda p: p.on("crash", lambda: self._on_page_crash(p)),
+                )
+                for existing_page in self._context.pages:
+                    existing_page.on(
+                        "crash", lambda p=existing_page: self._on_page_crash(p)
+                    )
+            except Exception as e:
+                log.warning("browser: failed to wire crash diagnostics: %s", e)
+
             # Resize window to fill Xvfb screen using xdotool
             await asyncio.sleep(1)  # Wait for window to appear
             result = subprocess.run(
@@ -426,9 +602,20 @@ class Browser:
             raise BrowserError(f"Failed to launch browser: {e}")
 
     async def _get_page(self) -> Any:
-        """Get or create page."""
+        """Get or create page. Auto-relaunches browser if it died."""
+        # Health check first — if Camoufox crashed, restart before doing
+        # anything else so the caller gets a real working page rather than
+        # a Playwright handle pointing at a dead process.
+        if not await self.ensure_healthy():
+            raise BrowserError("browser is dead and could not be relaunched")
+
         if self._page:
-            return self._page
+            try:
+                if not self._page.is_closed():
+                    return self._page
+            except Exception:
+                pass
+            self._page = None
 
         # Reuse existing page from context if available
         pages = self._context.pages
