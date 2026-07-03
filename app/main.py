@@ -53,7 +53,6 @@ import re
 import uuid as _uuid
 
 from logger import (
-    ensure_trace_id,
     get_logger,
     new_trace_id,
     request_id_var,
@@ -261,6 +260,24 @@ def _setup_page_handlers(page: Any) -> None:
         _console_handler_pages.add(page_id)
 
 
+async def _clear_selection(page: Any) -> None:
+    """Clear any text selection left by focus_tab_window's focus drag.
+
+    focus_tab_window transfers keyboard focus with a tiny left-button drag,
+    which can select a few characters on a text page. Wipe it so nothing
+    stays highlighted after a tab switch. Best-effort — a dead/closed page
+    just means there's nothing to clear.
+    """
+    if page is None:
+        return
+    try:
+        await page.evaluate(
+            "window.getSelection && window.getSelection().removeAllRanges()"
+        )
+    except Exception as e:
+        log.warning("clear_selection failed", extra={"error": str(e)})
+
+
 async def get_active_page() -> Any:
     """Get the currently active page, relaunching browser if it died."""
     global _active_page
@@ -459,6 +476,11 @@ async def dispatch_action(cmd: dict) -> dict:
         new_page = await browser._context.new_page()
         _setup_page_handlers(new_page)
         _active_page = new_page
+        # Foreground the new tab's window so it's what Xvfb renders
+        # (screenshots, recordings, VNC). See Browser.focus_tab_window —
+        # Firefox opens each page as its own OS window and bring_to_front()
+        # doesn't raise it. The new page is always the last one.
+        browser.focus_tab_window(len(browser._context.pages) - 1)
         tab_url: str | None = cmd.get("url")
         if tab_url:
             await new_page.goto(
@@ -480,6 +502,13 @@ async def dispatch_action(cmd: dict) -> dict:
         if index < 0 or index >= len(pages):
             return make_response(False, error=f"Invalid tab index: {index}")
         _active_page = pages[index]
+        # Raise the tab's OS window so it's the one Xvfb renders. Without
+        # this, switch_tab only redirects where Playwright verbs land — the
+        # display (and thus screenshots, recordings, VNC) keeps showing
+        # whatever window was last raised, so work on the switched-to tab
+        # happens off-screen. See Browser.focus_tab_window.
+        browser.focus_tab_window(index)
+        await _clear_selection(_active_page)
         return make_response(True, {"index": index, "url": _active_page.url})
 
     if action == "close_tab":
@@ -496,6 +525,11 @@ async def dispatch_action(cmd: dict) -> dict:
         await target.close()
         pages = browser._context.pages if browser and browser._context else []
         _active_page = pages[-1] if pages else None
+        # Raise whatever tab we fell back to so the display follows the active
+        # page instead of showing the closed tab's now-defunct window.
+        if _active_page is not None:
+            browser.focus_tab_window(len(pages) - 1)
+            await _clear_selection(_active_page)
         return make_response(True, {"closed": True, "remaining": len(pages)})
 
     # --- Cookie management (with optional Redis sync) ---
@@ -991,10 +1025,9 @@ async def auth_middleware(request: Request, call_next: Any) -> Any:
 async def trace_middleware(request: Request, call_next: Any) -> Any:
     """Seed trace_id + request_id ContextVars on every HTTP request.
 
-    Per ~/.claude/rules/06-logging.md: every line carries a trace_id, every
-    HTTP request line also carries a request_id, and X-Request-Id is echoed
-    back on the response so the caller (n8n / MCP client / operator curl)
-    can correlate their side with our logs.
+    Every log line carries a trace_id; HTTP request lines also carry a
+    request_id, and X-Request-Id is echoed back on the response so the caller
+    (n8n / MCP client / operator curl) can correlate their side with our logs.
     """
     trace_id = new_trace_id()
     incoming_rid = request.headers.get("X-Request-Id", "") or request.headers.get(

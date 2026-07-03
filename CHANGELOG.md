@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.1] — 2026-07-03
+
+### Fixed
+
+- **`switch_tab` / `new_tab` / `close_tab` now foreground the target tab and focus its content.** Playwright's Firefox backend opens each tab as a separate OS window and `page.bring_to_front()` is a no-op there, so previously these actions only moved an internal pointer for where subsequent commands landed — the display (screenshots, recordings, VNC) kept showing whatever tab was last on top, and OS-level keyboard input (`send_key` / `system_type`) never reached the switched tab. New `Browser.focus_tab_window()` (in `app/browser.py`) raises the correct window with `xdotool windowactivate` (matching page-creation order to X window-ID order) and transfers keyboard focus into the page content. Wired into all three tab actions in `app/main.py`; `get_active_page()` is now async and heals a dead browser before use.
+- **Content focus uses a menu-free mouse gesture.** The focus transfer is a left-button press → 6px move → release rather than a click: the moved release fires no `click` event (so no link/button under the cursor is activated) and the left button renders no context menu (previously a right-click was used, which flashed the native menu on every tab switch — ugly in recordings). Any stray drag-selection is cleared via `getSelection().removeAllRanges()` in `app/main.py`.
+
+### Added
+
+- Regression tests `test_switch_tab_foreground` (asserts the desktop pixels follow the switched tab via screenshot sampling) and `test_switch_tab_keyboard` (asserts `send_key` reaches switched-tab content) in `tests/test_tabs.sh`.
+
 ## [1.3.0] — 2026-06-21
 
 ### Fixed

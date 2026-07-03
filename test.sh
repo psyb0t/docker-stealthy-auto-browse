@@ -70,6 +70,8 @@ MAIN_TESTS=(
     test_list_tabs
     test_new_tab
     test_switch_tab
+    test_switch_tab_foreground
+    test_switch_tab_keyboard
     test_close_tab
     # test_uploads.sh
     test_upload_file

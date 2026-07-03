@@ -170,6 +170,8 @@ Use these instead of `sleep` — they wait for **actual page state**, not arbitr
 | `switch_tab` | `index`             | Switches the active tab by index (0-based). All subsequent actions operate on the active tab.           |
 | `close_tab`  | `index` (optional)  | Closes a tab. If no index, closes the active tab. After closing, the last remaining tab becomes active. |
 
+Firefox opens each tab as its own OS window, so `new_tab` / `switch_tab` / `close_tab` also **foreground** the target tab's window — the display, screenshots, recordings, and VNC follow the active tab — and transfer OS-level keyboard focus into its content so `send_key` / `system_type` reach the switched tab. Foregrounding uses a brief off-screen mouse gesture that renders no context menu (clean in recordings).
+
 ### Dialog Handling
 
 Browsers have modal dialogs (alert, confirm, prompt). By default, dialogs are **auto-accepted** (clicks OK). Use `handle_dialog` to dismiss or provide prompt text.

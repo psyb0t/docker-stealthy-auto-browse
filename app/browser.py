@@ -626,6 +626,91 @@ class Browser:
         self._page = await self._context.new_page()
         return self._page
 
+    def focus_tab_window(self, index: int) -> None:
+        """Raise + focus the X window for the page at `index`.
+
+        Two problems this solves, both stemming from Playwright's Firefox
+        backend opening each new_page() as a SEPARATE OS window (not a tab in
+        a shared window), and page.bring_to_front() being a no-op on Firefox:
+
+        1. VISUAL — switching the active page otherwise leaves the display
+           (screenshots / recordings / VNC) showing whatever window was last
+           raised. `xdotool windowactivate` raises the correct window.
+        2. KEYBOARD — after raising a window, its Firefox content widget does
+           NOT hold X keyboard focus (same Openbox chrome-focus quirk the
+           launch routine works around). Without a focus gesture, OS-level
+           input (send_key / system_type / system_click) lands nowhere on
+           the switched-to tab. The focus does NOT survive navigation or
+           switching away, so it must be re-established on the live page
+           every switch — a one-time gesture at tab creation is not enough.
+
+        Camoufox windows get incrementing X window IDs in creation order,
+        matching context.pages order. Sort visible Camoufox window IDs
+        ascending and index-match to the page index.
+
+        The focus gesture is a LEFT-button press at screen (5, 200), a small
+        6px move, then release — NOT a plain click. Because the mouseup lands
+        on a different pixel than the mousedown, Firefox fires no `click`
+        event, so nothing under the cursor is activated (no link nav, no
+        button press). Left button means no context menu renders (so no ugly
+        flash in recordings — the reason right-click was abandoned). The
+        mousedown still transfers keyboard focus to the content widget. The
+        tiny drag may leave a few characters selected on a text page; the
+        caller clears it via getSelection().removeAllRanges() right after.
+
+        Rejected alternatives: a plain left-click activates whatever is at
+        (5, 200); a right-click renders the native context menu (a pref to
+        hide it — dom.event.contextmenu.enabled / userChrome.css — does not
+        work under Camoufox); a scroll gesture doesn't transfer X keyboard
+        focus at all; a keyboard-only gesture (Tab / F6) has no focus anchor
+        to move from on a freshly-raised window.
+
+        Best-effort: logs a warning and returns on any failure rather than
+        breaking the tab operation.
+        """
+        try:
+            result = subprocess.run(
+                ["xdotool", "search", "--onlyvisible", "--class", "Camoufox"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError) as e:
+            log.warning(
+                "focus_tab_window: xdotool search failed", extra={"error": str(e)}
+            )
+            return
+
+        wids = sorted(
+            int(w) for w in result.stdout.split() if w.strip().isdigit()
+        )
+        if index < 0 or index >= len(wids):
+            log.warning(
+                "focus_tab_window: index out of range for window list",
+                extra={"index": index, "window_count": len(wids)},
+            )
+            return
+
+        try:
+            subprocess.run(
+                ["xdotool", "windowactivate", "--sync", str(wids[index])],
+                capture_output=True,
+                timeout=5,
+            )
+            # Left press + 6px move + release: the mousedown transfers
+            # keyboard focus to content; the moved mouseup fires no click
+            # (no activation) and no context menu renders. The caller clears
+            # any stray drag-selection afterward.
+            subprocess.run(["xdotool", "mousemove", "5", "200"], timeout=5)
+            subprocess.run(["xdotool", "mousedown", "1"], timeout=5)
+            subprocess.run(["xdotool", "mousemove", "11", "206"], timeout=5)
+            subprocess.run(["xdotool", "mouseup", "1"], timeout=5)
+        except (OSError, subprocess.SubprocessError) as e:
+            log.warning(
+                "focus_tab_window: activate/focus failed",
+                extra={"index": index, "error": str(e)},
+            )
+
     async def _update_state(self) -> None:
         """Update state from current page."""
         if not self._page:
