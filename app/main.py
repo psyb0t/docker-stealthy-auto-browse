@@ -260,22 +260,56 @@ def _setup_page_handlers(page: Any) -> None:
         _console_handler_pages.add(page_id)
 
 
-async def _clear_selection(page: Any) -> None:
-    """Clear any text selection left by focus_tab_window's focus drag.
+# Full-viewport transparent overlay at max z-index. focus_tab_window clicks
+# the page at screen (5, 200) to transfer keyboard focus to the content; that
+# point lands on top-left content where logos / nav links live, so a bare
+# click would activate them and navigate the tab. Injecting this overlay
+# first makes the click land on an inert div instead; removing it afterward
+# leaves the page untouched.
+_FOCUS_CLICK_OVERLAY_INJECT = (
+    "(function(){"
+    "if(document.getElementById('__sab_focus_overlay'))return 'exists';"
+    "var d=document.createElement('div');"
+    "d.id='__sab_focus_overlay';"
+    "d.style.cssText='position:fixed;top:0;left:0;width:100vw;height:100vh;"
+    "z-index:2147483647;background:transparent;margin:0;padding:0';"
+    "(document.body||document.documentElement).appendChild(d);"
+    "return 'in';})()"
+)
+_FOCUS_CLICK_OVERLAY_REMOVE = (
+    "(function(){var d=document.getElementById('__sab_focus_overlay');"
+    "if(d)d.remove();return 'out';})()"
+)
 
-    focus_tab_window transfers keyboard focus with a tiny left-button drag,
-    which can select a few characters on a text page. Wipe it so nothing
-    stays highlighted after a tab switch. Best-effort — a dead/closed page
-    just means there's nothing to clear.
+
+async def _focus_active_tab(index: int, page: Any) -> None:
+    """Raise + focus the tab window, guarding the focus click with an overlay.
+
+    Injects a transparent max-z-index overlay on `page` so focus_tab_window's
+    left-click can't activate any link/button under the cursor, raises +
+    focuses the window, then removes the overlay. Best-effort throughout — a
+    failed inject/remove degrades to a plain focus click, never breaks the
+    tab operation.
     """
-    if page is None:
+    if not browser:
         return
+    injected = False
+    if page is not None:
+        try:
+            await page.evaluate(_FOCUS_CLICK_OVERLAY_INJECT)
+            injected = True
+        except Exception as e:
+            log.warning("focus overlay inject failed", extra={"error": str(e)})
     try:
-        await page.evaluate(
-            "window.getSelection && window.getSelection().removeAllRanges()"
-        )
-    except Exception as e:
-        log.warning("clear_selection failed", extra={"error": str(e)})
+        browser.focus_tab_window(index)
+    finally:
+        if injected:
+            try:
+                await page.evaluate(_FOCUS_CLICK_OVERLAY_REMOVE)
+            except Exception as e:
+                log.warning(
+                    "focus overlay remove failed", extra={"error": str(e)}
+                )
 
 
 async def get_active_page() -> Any:
@@ -479,8 +513,9 @@ async def dispatch_action(cmd: dict) -> dict:
         # Foreground the new tab's window so it's what Xvfb renders
         # (screenshots, recordings, VNC). See Browser.focus_tab_window —
         # Firefox opens each page as its own OS window and bring_to_front()
-        # doesn't raise it. The new page is always the last one.
-        browser.focus_tab_window(len(browser._context.pages) - 1)
+        # doesn't raise it. The new page is always the last one; it's still
+        # blank here (navigation happens below) so the focus click is safe.
+        await _focus_active_tab(len(browser._context.pages) - 1, new_page)
         tab_url: str | None = cmd.get("url")
         if tab_url:
             await new_page.goto(
@@ -507,8 +542,7 @@ async def dispatch_action(cmd: dict) -> dict:
         # display (and thus screenshots, recordings, VNC) keeps showing
         # whatever window was last raised, so work on the switched-to tab
         # happens off-screen. See Browser.focus_tab_window.
-        browser.focus_tab_window(index)
-        await _clear_selection(_active_page)
+        await _focus_active_tab(index, _active_page)
         return make_response(True, {"index": index, "url": _active_page.url})
 
     if action == "close_tab":
@@ -528,8 +562,7 @@ async def dispatch_action(cmd: dict) -> dict:
         # Raise whatever tab we fell back to so the display follows the active
         # page instead of showing the closed tab's now-defunct window.
         if _active_page is not None:
-            browser.focus_tab_window(len(pages) - 1)
-            await _clear_selection(_active_page)
+            await _focus_active_tab(len(pages) - 1, _active_page)
         return make_response(True, {"closed": True, "remaining": len(pages)})
 
     # --- Cookie management (with optional Redis sync) ---

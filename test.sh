@@ -72,6 +72,7 @@ MAIN_TESTS=(
     test_switch_tab
     test_switch_tab_foreground
     test_switch_tab_keyboard
+    test_switch_tab_no_link_activation
     test_close_tab
     # test_uploads.sh
     test_upload_file

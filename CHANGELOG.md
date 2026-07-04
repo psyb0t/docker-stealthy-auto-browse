@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.4] — 2026-07-04
+
+### Fixed
+
+- **Switching tabs no longer navigates the page.** The tab focus gesture in `Browser.focus_tab_window()` (`app/browser.py`) clicks the content at screen (5, 200) to transfer OS keyboard focus into the page. After the browser chrome offset, that point lands on the top-left of page content — exactly where site logos and nav links live — so on some pages the click activated a link and navigated the tab (e.g. a top-left `<a href="/">` logo reset a single-page app back to its home view). The previous mitigation (a small left "drag" — moved mouseup) did not help: Firefox dispatches the DOM `click` to the nearest common ancestor of mousedown/mouseup regardless of a few pixels of movement. Fix: before the focus click, the tab handlers in `app/main.py` inject a full-viewport transparent `position:fixed` overlay at maximum `z-index` (`2147483647`) so the click lands on that inert div instead of any link/button, then remove it immediately — keyboard focus still transfers, nothing on the page is activated. The gesture is now a plain `xdotool click 1` and the old drag + `getSelection().removeAllRanges()` selection-cleanup path is gone.
+- **New-tab windows are resized to fill the screen so screen recording follows the active tab pixel-for-pixel.** Playwright's Firefox backend opens each tab as its own OS window; windows created after startup came up slightly smaller than the display (e.g. 1918×1055 on a 1920×1080 screen), so raising a new tab left a thin strip of the previous window visible at the bottom edge — which the fixed-region `ffmpeg` x11grab recorder captured. `focus_tab_window()` now moves the raised window to 0,0 and sizes it to `xdotool getdisplaygeometry` before focusing, matching the launch window's full-screen geometry.
+
+### Added
+
+- Regression test `test_switch_tab_no_link_activation` in `tests/test_tabs.sh` (and registered in `test.sh`): switches to a tab whose page is a full-viewport link with an `onclick` marker and asserts the focus click does not fire it (the overlay absorbs the click) while keyboard input still reaches the content (`send_key pagedown` scrolls the page).
+
 ## [1.3.3] — 2026-07-04
 
 ### Fixed

@@ -136,6 +136,44 @@ test_switch_tab_keyboard() {
     echo "OK: switch_tab_keyboard (send_key reached switched tab content, scrollY=$scrolled)"
 }
 
+# Regression: the focus click on switch_tab must NOT activate a link/button
+# under the gesture point. A full-viewport <a> with an onclick marker covers
+# screen (5,200); the transparent overlay injected before the focus click must
+# absorb the click so the link never fires. Also confirms keyboard focus still
+# reaches content.
+test_switch_tab_no_link_activation() {
+    local resp fired scrolled
+    local linkpage="data:text/html,<body style='margin:0'><a onclick='window.__fired=1' style='display:block;width:100vw;height:300vh;background:khaki'>FULL VIEWPORT LINK</a></body>"
+
+    _reset_to_single_tab
+    post "{\"action\": \"goto\", \"url\": \"$linkpage\", \"wait_until\": \"domcontentloaded\"}" >/dev/null
+    post '{"action": "new_tab", "url": "about:blank"}' >/dev/null
+    sleep 0.5
+
+    # switch to the link tab -> the focus click fires; the overlay must absorb it
+    post '{"action": "switch_tab", "index": 0}' >/dev/null
+    sleep 0.7
+    resp=$(post '{"action": "eval", "expression": "window.__fired||0"}')
+    fired=$(echo "$resp" | json_get "['data']['result']")
+    if [ "$fired" != "0" ]; then
+        echo "FAIL: switch_tab_no_link_activation: focus click activated the link (fired=$fired)"
+        return 1
+    fi
+    echo "OK: switch_tab_no_link_activation: overlay absorbed the click, link not activated"
+
+    # keyboard focus still reaches content
+    post '{"action": "eval", "expression": "window.scrollTo(0,0)"}' >/dev/null
+    post '{"action": "send_key", "key": "pagedown"}' >/dev/null
+    sleep 0.5
+    resp=$(post '{"action": "eval", "expression": "window.scrollY"}')
+    scrolled=$(echo "$resp" | json_get "['data']['result']")
+    if [ "$scrolled" -le 0 ]; then
+        echo "FAIL: switch_tab_no_link_activation: keyboard focus did not reach content (scrollY=$scrolled)"
+        return 1
+    fi
+    echo "OK: switch_tab_no_link_activation: keyboard reaches content (scrollY=$scrolled)"
+}
+
 test_close_tab() {
     local resp remaining
 
@@ -159,5 +197,6 @@ ALL_TESTS+=(
     test_switch_tab
     test_switch_tab_foreground
     test_switch_tab_keyboard
+    test_switch_tab_no_link_activation
     test_close_tab
 )

@@ -648,22 +648,26 @@ class Browser:
         matching context.pages order. Sort visible Camoufox window IDs
         ascending and index-match to the page index.
 
-        The focus gesture is a LEFT-button press at screen (5, 200), a small
-        6px move, then release — NOT a plain click. Because the mouseup lands
-        on a different pixel than the mousedown, Firefox fires no `click`
-        event, so nothing under the cursor is activated (no link nav, no
-        button press). Left button means no context menu renders (so no ugly
-        flash in recordings — the reason right-click was abandoned). The
-        mousedown still transfers keyboard focus to the content widget. The
-        tiny drag may leave a few characters selected on a text page; the
-        caller clears it via getSelection().removeAllRanges() right after.
+        The focus gesture is a plain LEFT-click at screen (5, 200). A click
+        into the content viewport transfers X keyboard focus to the content
+        widget. The problem is that (5, 200) — after the chrome offset — lands
+        on top-left page content, which is exactly where site logos / nav
+        links live; a plain click there would fire the DOM `click` (Firefox
+        dispatches click to the nearest common ancestor of mousedown/mouseup
+        regardless of a small pixel move, so a "drag" doesn't help) and
+        navigate the tab. To make the click harmless the CALLER first injects
+        a full-viewport transparent max-z-index overlay so the click lands on
+        the overlay (an inert div) instead of any link/button, then removes it
+        immediately — focus transfers, nothing is activated. See
+        _FOCUS_CLICK_OVERLAY_* and the tab handlers in main.py.
 
-        Rejected alternatives: a plain left-click activates whatever is at
-        (5, 200); a right-click renders the native context menu (a pref to
-        hide it — dom.event.contextmenu.enabled / userChrome.css — does not
-        work under Camoufox); a scroll gesture doesn't transfer X keyboard
-        focus at all; a keyboard-only gesture (Tab / F6) has no focus anchor
-        to move from on a freshly-raised window.
+        Rejected alternatives: a bare left-click activates whatever is at
+        (5, 200); a left "drag" (moved mouseup) still fires the click on the
+        common-ancestor element; a right-click renders the native context menu
+        (no pref / userChrome.css suppresses it under Camoufox) and a
+        right-drag both renders the menu and fails to focus; a scroll gesture
+        doesn't transfer X keyboard focus at all; keyboard-only (Tab / F6) has
+        no focus anchor on a freshly-raised window.
 
         Best-effort: logs a warning and returns on any failure rather than
         breaking the tab operation.
@@ -691,20 +695,39 @@ class Browser:
             )
             return
 
+        wid = str(wids[index])
         try:
             subprocess.run(
-                ["xdotool", "windowactivate", "--sync", str(wids[index])],
+                ["xdotool", "windowactivate", "--sync", wid],
                 capture_output=True,
                 timeout=5,
             )
-            # Left press + 6px move + release: the mousedown transfers
-            # keyboard focus to content; the moved mouseup fires no click
-            # (no activation) and no context menu renders. The caller clears
-            # any stray drag-selection afterward.
+            # Move + size the raised window to fill the screen. Only the
+            # initial (launch) window gets positioned to 0,0 and sized to the
+            # full display at startup; windows opened later by new_tab come up
+            # slightly smaller (e.g. 1918x1055 vs a 1920x1080 screen), so a
+            # raised new-tab would leave a strip of the previous window visible
+            # at the bottom edge — which screen recording (fixed x11grab
+            # region) would capture. Filling the window makes the recording
+            # follow the active tab pixel-for-pixel.
+            geo = subprocess.run(
+                ["xdotool", "getdisplaygeometry"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            dims = geo.stdout.split()
+            if len(dims) == 2:
+                subprocess.run(["xdotool", "windowmove", wid, "0", "0"], timeout=5)
+                subprocess.run(
+                    ["xdotool", "windowsize", wid, dims[0], dims[1]], timeout=5
+                )
+            # Plain left-click to transfer keyboard focus to the content
+            # widget. The caller has injected a full-viewport transparent
+            # overlay so this click lands on an inert div, not any link/button
+            # underneath — focus transfers without activating page content.
             subprocess.run(["xdotool", "mousemove", "5", "200"], timeout=5)
-            subprocess.run(["xdotool", "mousedown", "1"], timeout=5)
-            subprocess.run(["xdotool", "mousemove", "11", "206"], timeout=5)
-            subprocess.run(["xdotool", "mouseup", "1"], timeout=5)
+            subprocess.run(["xdotool", "click", "1"], timeout=5)
         except (OSError, subprocess.SubprocessError) as e:
             log.warning(
                 "focus_tab_window: activate/focus failed",
