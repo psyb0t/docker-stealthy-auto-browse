@@ -82,28 +82,25 @@ if [ "$SCRIPT_MODE" = "true" ]; then
     exec 3>&1 1>&2
 fi
 
-# Start Xvfb (Full HD max, can resize down via API)
+# Start Xvfb at the requested resolution.
+#
+# The framebuffer MUST be allocated at XVFB_RESOLUTION up front. Xvfb's root
+# framebuffer is fixed at the size given to `-screen 0 WxHxD` and cannot grow
+# later — `xrandr` can only switch to modes that FIT inside that allocation.
+# The old approach (start at 1920x1080, then xrandr to a larger mode) silently
+# failed for anything taller/wider than 1080p: the reported mode changed but
+# the real framebuffer stayed 1920x1080, so ffmpeg x11grab (viewport recording)
+# tried to capture outside the screen and died with
+# "Capture area ... outside the screen size 1920x1080". Allocating the
+# framebuffer at the requested size makes recording work at any resolution.
 if [ -z "$DISPLAY" ] || [ "$DISPLAY" = ":99" ]; then
     DEPTH="${XVFB_DEPTH:-24}"
-    Xvfb :99 -screen 0 1920x1080x${DEPTH} -ac +extension GLX +render -noreset &
+    RES="${XVFB_RESOLUTION:-1920x1080}"
+    Xvfb :99 -screen 0 "${RES}x${DEPTH}" -ac +extension GLX +render -noreset &
     PIDS+=($!)
     export DISPLAY=:99
     sleep 0.5
 
-    # Resize to XVFB_RESOLUTION if set to something other than 1920x1080
-    TARGET_RES="${XVFB_RESOLUTION:-1920x1080}"
-    if [[ "$TARGET_RES" != "1920x1080" ]]; then
-        TARGET_W="${TARGET_RES%%x*}"
-        TARGET_H="${TARGET_RES#*x}"
-        MODELINE=$(cvt "$TARGET_W" "$TARGET_H" 60 2>/dev/null | grep Modeline)
-        if [ -n "$MODELINE" ]; then
-            MODE_NAME=$(echo "$MODELINE" | sed 's/.*"\([^"]*\)".*/\1/')
-            MODE_PARAMS=$(echo "$MODELINE" | sed 's/.*"[^"]*"  *//')
-            xrandr --newmode "$MODE_NAME" $MODE_PARAMS 2>/dev/null || true
-            xrandr --addmode screen "$MODE_NAME" 2>/dev/null || true
-            xrandr -s "$MODE_NAME" 2>/dev/null || true
-        fi
-    fi
     # Start window manager (title bars + resize handles for popup windows)
     openbox &
     PIDS+=($!)

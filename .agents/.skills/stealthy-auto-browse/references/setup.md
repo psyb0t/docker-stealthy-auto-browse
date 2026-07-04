@@ -70,7 +70,7 @@ Notes on the hardening flags:
 
 | Variable | Default | What It Does |
 |----------|---------|-------------|
-| `XVFB_RESOLUTION` | `1920x1080` | Virtual display resolution. Max 1920x1080 (framebuffer limit). |
+| `XVFB_RESOLUTION` | `1920x1080` | Virtual display resolution. Any size works (e.g. `1920x1920`, `2560x1440`); the framebuffer is allocated to match, so screen recording captures this exact size. Larger = more memory. |
 | `XVFB_DEPTH` | `24` | Color depth (16/24/32). |
 | `TZ` | `UTC` | Match your IP location for realistic test fingerprints. |
 | `PROXY_URL` | — | HTTP proxy for all browser traffic. Format: `http://user:pass@host:port`. Use only proxies you own or are authorized to use. |

@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.3] — 2026-07-04
+
+### Fixed
+
+- **Screen recording now works at any `XVFB_RESOLUTION`, not just 1920×1080.** `entrypoint.sh` started Xvfb with a fixed `-screen 0 1920x1080` framebuffer and then used `xrandr` to switch to the requested resolution. But `xrandr` can only select modes that fit inside the initial framebuffer allocation — it cannot grow it — so at a larger/taller size (e.g. `1920x1920`) the reported mode changed while the real root framebuffer stayed 1920×1080. Viewport recording then computed its capture area from `XVFB_RESOLUTION` and `ffmpeg` x11grab tried to capture outside the actual screen, failing with `Capture area … outside the screen size 1920x1080` and producing no file. Fix: allocate the framebuffer at the requested size up front (`Xvfb :99 -screen 0 "${XVFB_RESOLUTION}x${XVFB_DEPTH}"`) and drop the xrandr resize step. Recording now succeeds at square/tall resolutions.
+
+### Changed
+
+- `XVFB_RESOLUTION` no longer has a 1920×1080 cap — the framebuffer is allocated to match, so any width/height works (larger = more memory, slower software rendering, but no hard limit). Docs updated accordingly.
+
 ## [1.3.2] — 2026-07-04
 
 ### Fixed
