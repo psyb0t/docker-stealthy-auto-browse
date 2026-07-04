@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.2] — 2026-07-04
+
+### Fixed
+
+- **Pinned Playwright to 1.53.0 to stop driver crash-loops on many sites (reddit.com, anything throwing uncaught page errors).** `camoufox` 0.4.11 declares an unpinned `playwright` dependency, so a fresh image build pulled the newest Playwright (1.61.0). Playwright ≥ 1.60 is incompatible with Camoufox's custom Firefox 135 build: its driver throws on certain protocol events (an uncaught page error with no source location deref's `pageError.location.url`; WebSocket-open events hit similar asserts), which kills the driver's Node process — the Python side then sees "Connection closed while reading from the driver" and relaunches into a crash-loop. Reproduces reliably on reddit.com and any page with CSP/cross-origin script errors. Pinning `playwright==1.53.0` in the `Dockerfile` (a pre-1.60 release matching the Camoufox 0.4.11 / Firefox 135 protocol) fixes the entire class of crashes at the source. Refs: daijro/camoufox#617, microsoft/playwright#39767. Bump the pin in lockstep with any future `camoufox` upgrade.
+
 ## [1.3.1] — 2026-07-03
 
 ### Fixed

@@ -50,8 +50,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python packages (system-level, needs root)
-RUN pip install --no-cache-dir "camoufox[geoip]" pyautogui fastapi uvicorn fastmcp Pillow pyyaml "redis[hiredis]"
+# Install Python packages (system-level, needs root).
+#
+# Playwright is pinned to 1.53.0 ON PURPOSE. camoufox 0.4.11 declares an
+# UNPINNED `playwright` dependency, so a fresh `pip install` pulls whatever is
+# newest — and Playwright >= 1.60 crashes camoufox's custom Firefox 135 build
+# on protocol events (uncaught page errors with no location, WebSocket asserts,
+# etc.) because the driver's juggler expectations no longer match. See
+# daijro/camoufox#617 and microsoft/playwright#39767. Pinning to the last
+# pre-1.60 release the camoufox 0.4.11 / Firefox 135 juggler was built against
+# fixes the whole class of crashes at the source (vs. patching each failing
+# assert). Bump this in lockstep with any camoufox version bump.
+RUN pip install --no-cache-dir \
+    "camoufox[geoip]" \
+    "playwright==1.53.0" \
+    pyautogui fastapi uvicorn fastmcp Pillow pyyaml "redis[hiredis]"
 
 # Create non-root user and directories
 RUN groupadd -g 1000 browser && useradd -u 1000 -g 1000 -m browser
