@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.7] — 2026-07-24
+
+### Changed
+
+- **Pinned the base image `python:3.12-slim-bookworm` by digest** (`@sha256:d50fb7…`). Tags are mutable; a digest is content-addressed, so the build can't silently shift under a re-tagged base — same supply-chain hygiene as the pinned `camoufox==0.4.11` / `playwright==1.53.0`. Re-resolve on a conscious base bump with `docker buildx imagetools inspect python:3.12-slim-bookworm --format '{{.Manifest.Digest}}'`.
+
 ## [1.3.6] — 2026-07-24
 
 ### Fixed

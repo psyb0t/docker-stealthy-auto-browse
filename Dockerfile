@@ -1,4 +1,6 @@
-FROM python:3.12-slim-bookworm
+# Base image pinned by digest — tags are mutable, digests aren't. Re-resolve
+# with: docker buildx imagetools inspect python:3.12-slim-bookworm --format '{{.Manifest.Digest}}'
+FROM python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
