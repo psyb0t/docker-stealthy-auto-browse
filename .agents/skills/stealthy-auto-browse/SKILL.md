@@ -251,7 +251,9 @@ Use these instead of `sleep`.
 
 ### Dialogs
 
-Call `handle_dialog` BEFORE the action that triggers the dialog. Dialogs are auto-accepted by default.
+> **⚠️ Dialogs are auto-accepted by default.** If a scripted step raises an unexpected `confirm()` / `beforeunload` / permission prompt, it WILL be accepted automatically — which can confirm a destructive or irreversible action. When a run might hit a dialog you don't want accepted, call `handle_dialog` with `accept: false` BEFORE the triggering action, and review your scripts for steps that could raise one.
+
+Call `handle_dialog` BEFORE the action that triggers the dialog.
 
 ```json
 {"action": "handle_dialog", "accept": true}
@@ -470,6 +472,8 @@ EOF
 
 Mount YAML files to `/loaders`. When `goto` hits a matching URL, the loader's steps execute instead of normal navigation. Works in both API and script mode.
 
+> **⚠️ Loaders run automatically the moment a matching URL is visited** — with no fresh confirmation at that point — and their steps can modify page state (`eval`, clicks, form fills). Only mount loaders you wrote or audited, and **review every loader YAML before mounting it.** Don't mount loader files from an untrusted source.
+
 ```bash
 docker run -d -p 127.0.0.1:8080:8080 -v ./my-loaders:/loaders \
   psyb0t/stealthy-auto-browse@sha256:7ce5d42ddb3b7fdbfb4af2d4bf6072f5a862d5dd2b64c7feb496e493f587223c
@@ -504,27 +508,6 @@ steps:
 ```
 
 Match fields are optional but at least one is required. All specified fields must match.
-
-## Example Scripts
-
-### Web Search (`scripts/websearch.py`)
-
-Multi-engine parallel web search using the browser API. Searches Brave, Google, and Bing, extracts structured results (title, URL, snippet) and AI overviews when available.
-
-Use only against search providers whose ToS permit programmatic access for your use case, or against your own internal search/index. Respect rate limits.
-
-```bash
-pip install requests beautifulsoup4
-
-STEALTHY_AUTO_BROWSE_URL=http://127.0.0.1:8080 \
-  python scripts/websearch.py "your search query"
-
-WEBSEARCH_ENGINES=brave,google python scripts/websearch.py "query"
-```
-
-Output is JSON: `[{"engine": "brave", "query": "...", "ai_overview": "...", "search_results": [{"title": "...", "url": "...", "snippet": "..."}]}]`
-
-Env vars: `STEALTHY_AUTO_BROWSE_URL`, `WEBSEARCH_ENGINES` (default: `brave,google,bing`), `AUTH_TOKEN`, `USER_AGENT`.
 
 ## Account & Session Hygiene
 

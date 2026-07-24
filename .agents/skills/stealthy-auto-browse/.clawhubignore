@@ -1,0 +1,6 @@
+# Files kept in the repo but EXCLUDED from what gets published to ClawHub.
+# scripts/websearch.py is a general Google/Bing/Brave scraping example — it
+# broadens the published skill's scope beyond the authorized-QA / defensive
+# purpose the skill is scanned against, so it's not shipped as part of the
+# ClawHub artifact. It stays in the repo for local use.
+scripts/

@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.8] — 2026-07-24
+
+### Changed
+
+- **Trimmed the published ClawHub skill to clear the security review.** ClawHub's scanner rated the skill "suspicious", the decisive concern being the bundled `scripts/websearch.py` Google/Bing/Brave scraper — flagged as expanding the skill "beyond owned or authorized QA targets" past its defensive-testing purpose. Fix: excluded `scripts/` from the published skill via a new `.agents/skills/stealthy-auto-browse/.clawhubignore` (the script stays in the repo for local use, just isn't shipped as part of the ClawHub artifact), removed its section from `SKILL.md`, and made the auto-dialog-accept and URL-triggered-loader warnings prominent (both were flagged as under-emphasized user-control risks). The stealth-browser core was already accepted by the reviewer as expected for authorized/defensive testing, so no functionality changed.
+
 ## [1.3.7] — 2026-07-24
 
 ### Changed
