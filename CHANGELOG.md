@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.6] — 2026-07-24
+
+### Fixed
+
+- **Docker build no longer breaks on camoufox drift.** `camoufox[geoip]` was unpinned, so a fresh build pulled whatever was newest — camoufox 0.5.x reshaped the browser's on-disk `distribution/` layout (no default `policies.json`), and `install_extensions.py` crashed mid-build with `FileNotFoundError: .../distribution/policies.json`. Two-part fix: (1) pinned `camoufox[geoip]==0.4.11` in the `Dockerfile` — the Firefox 135 build that the already-pinned `playwright==1.53.0` is matched to (bump both in lockstep); (2) `install_extensions.py` now creates `policies.json` (starting from `{"policies": {}}`) when the browser build didn't ship a default one, instead of assuming it exists.
+
 ## [1.3.5] — 2026-07-24
 
 ### Added

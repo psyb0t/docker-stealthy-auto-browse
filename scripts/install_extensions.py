@@ -50,10 +50,17 @@ def main() -> None:
 
     os.makedirs(extensions_dir, exist_ok=True)
 
-    # Load existing policies
-    with open(policies_file) as f:
-        policies = json.load(f)
+    # Load an existing distribution/policies.json, or start fresh if this
+    # camoufox build didn't ship a default one — its presence + layout varies
+    # between browser builds (0.5.x dropped the default file, which used to
+    # crash this script with FileNotFoundError). Don't assume it exists.
+    if os.path.exists(policies_file):
+        with open(policies_file) as f:
+            policies = json.load(f)
+    else:
+        policies = {"policies": {}}
 
+    policies.setdefault("policies", {})
     if "ExtensionSettings" not in policies["policies"]:
         policies["policies"]["ExtensionSettings"] = {}
 
