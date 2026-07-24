@@ -176,9 +176,9 @@ curl -H "Authorization: Bearer mysecretkey" http://localhost:8080 ...
 
 ## Examples
 
-See [`.agents/.skills/stealthy-auto-browse/scripts/`](.agents/.skills/stealthy-auto-browse/scripts/) for ready-to-use scripts:
+See [`.agents/skills/stealthy-auto-browse/scripts/`](.agents/skills/stealthy-auto-browse/scripts/) for ready-to-use scripts:
 
-- **[`websearch.py`](.agents/.skills/stealthy-auto-browse/scripts/websearch.py)** — Multi-engine parallel web search (Brave, Google, Bing) with structured results and AI overview extraction. Outputs JSON with title, URL, and snippet for each result.
+- **[`websearch.py`](.agents/skills/stealthy-auto-browse/scripts/websearch.py)** — Multi-engine parallel web search (Brave, Google, Bing) with structured results and AI overview extraction. Outputs JSON with title, URL, and snippet for each result.
 
 ## Configuration
 

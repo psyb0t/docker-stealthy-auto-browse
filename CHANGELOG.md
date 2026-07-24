@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.5] — 2026-07-24
+
+### Added
+
+- **CI publishes the skill to ClawHub on tag pushes.** `pipeline.yml` gained a `publish-skills-to-clawhub` job that calls the reusable `clawhub-skills-publish-workflow.yml` to publish every skill under `.agents/skills/` (currently `stealthy-auto-browse`) to ClawHub. It runs on tag pushes only and `needs:` the Docker image workflow, so it fires only after the image build/push + GitHub Release succeed. Requires the `CLAWHUB_TOKEN` repo secret.
+- **Screen recording is now documented in the skill.** `SKILL.md` gained a "Screen Recording" section (`start_recording` / `stop_recording` / `recording_status`, modes, cluster-mode `run_script` requirement) and `references/setup.md` documents the `/recordings` mount. The recording feature itself shipped earlier; this fills the documentation gap.
+
+### Changed
+
+- **Renamed the skill directory `.agents/.skills/` → `.agents/skills/`** (drops the leading dot on the `skills` dir). `.dockerignore` now excludes `.agents` (instead of the old `.skills`) so the skill tree stays out of the image.
+- **`pipeline.yml`: the Grype image scan no longer fails the run** (`scan_fail_build: false`) — camoufox/Go carry known-unfixable upstream criticals, so findings are reported to the repo **Security → Code scanning** tab (via the reusable workflow's SARIF upload; the job grants `security-events: write`) instead of blocking. This is also what lets the ClawHub publish job depend on the build succeeding.
+
 ## [1.3.4] — 2026-07-04
 
 ### Fixed

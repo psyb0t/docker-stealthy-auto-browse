@@ -4,7 +4,7 @@
 .dockerignore
 .research_files
 .browser_profile
-.skills
+.agents
 .openclaw
 .git-update.sh
 brave-profile

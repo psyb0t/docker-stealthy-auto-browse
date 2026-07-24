@@ -65,6 +65,7 @@ Notes on the hardening flags:
 - `HTTP_LISTEN_HOST=0.0.0.0` makes the API reachable inside the container on all interfaces, but the `-p 127.0.0.1:8080:8080` mapping confines it to host loopback. This is the correct combination.
 - `SYS_ADMIN` is needed by the embedded Firefox sandbox; everything else is dropped.
 - Adjust `--read-only` if you need `/userdata` mounted (you'll have to mount that path writable).
+- Same applies to `/recordings` if you use screen recording — mount it writable, which means dropping or adjusting `--read-only` for that path too.
 
 ## Environment Variables
 
@@ -123,6 +124,14 @@ docker run -d -p 127.0.0.1:9090:9090 -p 127.0.0.1:6900:6900 \
 # With page loaders
 docker run -d -p 127.0.0.1:8080:8080 \
   -v ./my-loaders:/loaders \
+  --env-file .env.browser \
+  psyb0t/stealthy-auto-browse@$DIGEST
+
+# With screen recording — /recordings must be mounted writable or
+# start_recording fails fast
+mkdir -p ./recordings
+docker run -d -p 127.0.0.1:8080:8080 \
+  -v ./recordings:/recordings \
   --env-file .env.browser \
   psyb0t/stealthy-auto-browse@$DIGEST
 ```

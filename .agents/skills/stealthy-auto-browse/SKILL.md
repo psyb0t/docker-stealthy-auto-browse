@@ -197,6 +197,36 @@ Via action (for script mode — returns base64 with `output_id`):
 {"action": "save_screenshot", "path": "/output/page.png"}
 ```
 
+### Screen Recording
+
+Captures actual rendered pixels (ffmpeg `x11grab` against the Xvfb display) including the OS-level mouse cursor — PyAutoGUI moves are visible. One active recording per container; a second `start_recording` while one is active returns an error. **Requires `/recordings` mounted as a host volume** — see [references/setup.md](references/setup.md). If not mounted (or not writable), `start_recording` fails fast.
+
+```json
+{"action": "start_recording"}
+{"action": "start_recording", "mode": "viewport", "fps": 30}
+{"action": "start_recording", "mode": "desktop", "show_cursor": false}
+{"action": "recording_status"}
+{"action": "stop_recording", "slug": "my-flow"}
+```
+
+`mode`: `"window"` (default, full Camoufox window incl. chrome), `"viewport"` (crops chrome using the calibrated `window_offset` — lazy-recalibrates if unset), `"desktop"` (entire Xvfb screen). `fps`: 1–60, default 15. `show_cursor`: bool, default `true` — set `false` to record without the OS-level cursor sprite.
+
+`start_recording` returns `recording_id`, `tmp_path`, `show_cursor`, `capture_size`. `stop_recording` finalizes and renames the tmp file to `/recordings/<slug>.mp4` — `slug` must match `[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}` (no path traversal); a colliding slug is saved as `<slug>-2.mp4`, etc. Returns `path`, `duration_s`, `size_bytes`. `recording_status` returns `{"active": true, "recording_id", "mode", "started_at", "elapsed_s", "tmp_path"}` when recording, `{"active": false}` otherwise.
+
+Encoder: H.264 (`libx264`), `-preset ultrafast`, `-crf 28`, `yuv420p` — tuned for low CPU over file size on browser footage.
+
+**Cluster mode:** recording actions are only usable from inside `run_script` — outside, the script-only restriction rejects them. `start_recording` and `stop_recording` must live in the SAME `run_script` call so both hit the same browser instance:
+
+```json
+{"action": "run_script", "steps": [
+    {"action": "start_recording", "mode": "viewport", "fps": 20},
+    {"action": "goto", "url": "https://example.com", "wait_until": "networkidle"},
+    {"action": "stop_recording", "slug": "example-page"}
+]}
+```
+
+`calibrate` after `enter_fullscreen`/`exit_fullscreen` or any chrome-state change so a following `viewport` recording crops at the right line.
+
 ### Wait Conditions
 
 Use these instead of `sleep`.
