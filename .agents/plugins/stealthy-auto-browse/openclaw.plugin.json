@@ -1,0 +1,39 @@
+{
+  "name": "@psyb0t/stealthy-auto-browse",
+  "id": "@psyb0t/stealthy-auto-browse",
+  "version": "0.0.0",
+  "type": "code-plugin",
+  "summary": "Wire an OpenClaw agent to a self-hosted stealthy-auto-browse stealth browser over MCP — navigation, OS-level input, screenshots, and page inspection as tools.",
+  "description": "A thin stdio<->HTTP bridge that connects an MCP client (OpenClaw, Claude, Cursor, Codex, ...) to a running stealthy-auto-browse instance's MCP endpoint (/mcp), exposing its browser-automation tools: navigation, Playwright DOM input (click/fill), OS-level input via PyAutoGUI (system_click/system_type/send_key/mouse_move/scroll), screenshots, page inspection (get_text/get_html/get_interactive_elements/eval_js), wait conditions, multi-step scripts (run_script), and a generic browser_action fallback for cookies/tabs/storage/dialogs/recording. stealthy-auto-browse is self-hosted — you run the container yourself and point this bridge at it. See https://github.com/psyb0t/docker-stealthy-auto-browse.",
+  "extensions": ["./bin/cli.js"],
+  "compat": {
+    "pluginApi": ">=2026.3.24-beta.2"
+  },
+  "build": {
+    "openclawVersion": "2026.3.24-beta.2"
+  },
+  "environment": {
+    "STEALTHY_AUTO_BROWSE_URL": {
+      "required": true,
+      "description": "Base URL of your running stealthy-auto-browse server, e.g. http://localhost:8080 (the bridge appends /mcp)."
+    },
+    "AUTH_TOKEN": {
+      "required": false,
+      "description": "Bearer token, only if the stealthy-auto-browse server was started with AUTH_TOKEN set."
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "required": ["url"],
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "Base URL of your running stealthy-auto-browse server, e.g. http://localhost:8080 (the bridge appends /mcp)."
+      },
+      "token": {
+        "type": "string",
+        "description": "Bearer token, only if the stealthy-auto-browse server was started with AUTH_TOKEN set."
+      }
+    }
+  }
+}

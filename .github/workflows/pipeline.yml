@@ -25,13 +25,10 @@ jobs:
   # Publish the skills under .agents/skills/ to ClawHub. Tag pushes ONLY, and
   # only after the Docker image build/push + GitHub release have succeeded
   # (needs the docker-image workflow, which does both).
-  publish-skills-to-clawhub:
+  publish-to-clawhub:
     needs: [call-docker-image-workflow]
     if: startsWith(github.ref, 'refs/tags/')
-    uses: psyb0t/reusable-github-workflows/.github/workflows/clawhub-skills-publish-workflow.yml@master
-
-    with:
-      skills_dir: .agents/skills
+    uses: psyb0t/reusable-github-workflows/.github/workflows/clawhub-publish.yml@master
 
     secrets:
       clawhub_token: ${{ secrets.CLAWHUB_TOKEN }}

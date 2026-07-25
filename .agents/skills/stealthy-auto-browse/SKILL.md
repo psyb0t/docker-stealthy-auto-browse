@@ -370,7 +370,7 @@ The browser exposes all actions as MCP tools via Streamable HTTP at `/mcp/` on t
 http://127.0.0.1:8080/mcp/
 ```
 
-Connect any MCP-compatible client to that URL. All actions from the HTTP API are available as tools — `goto`, `screenshot`, `system_click`, `system_type`, `eval_js`, `get_text`, `get_cookies`, `run_script` (multi-step), `browser_action` (generic fallback for everything else), and more.
+Connect any MCP-compatible client to that URL. All actions from the HTTP API are available as tools — dedicated tools include `goto`, `screenshot`, `system_click`, `system_type`, `eval_js`, `get_text`, `click`, `fill`, `run_script` (multi-step), and `browser_action` (generic fallback for everything else — cookies, tabs, storage, dialogs, downloads, logging, recording, and more).
 
 If `AUTH_TOKEN` is set, connect to `http://127.0.0.1:8080/mcp/?auth_token=<key>`. Avoid sending tokens via query string when the endpoint is reachable beyond localhost — query strings end up in proxy logs.
 

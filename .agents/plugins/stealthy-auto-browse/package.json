@@ -1,0 +1,54 @@
+{
+  "name": "@psyb0t/stealthy-auto-browse",
+  "version": "0.0.0",
+  "mcpName": "io.github.psyb0t/stealthy-auto-browse",
+  "description": "Connect an OpenClaw/MCP agent to a self-hosted stealthy-auto-browse stealth browser API over MCP.",
+  "type": "module",
+  "bin": {
+    "stealthy-auto-browse-mcp": "bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "author": "psyb0t",
+  "homepage": "https://github.com/psyb0t/docker-stealthy-auto-browse",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/psyb0t/docker-stealthy-auto-browse.git"
+  },
+  "bugs": {
+    "url": "https://github.com/psyb0t/docker-stealthy-auto-browse/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "stealthy-auto-browse",
+    "browser-automation",
+    "camoufox",
+    "playwright",
+    "openclaw",
+    "ai-agent"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "mcp-remote": "0.1.38"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "openclaw": {
+    "extensions": ["./bin/cli.js"],
+    "compat": {
+      "pluginApi": ">=2026.3.24-beta.2"
+    },
+    "build": {
+      "openclawVersion": "2026.3.24-beta.2"
+    }
+  }
+}

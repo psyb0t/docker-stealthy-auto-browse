@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.0] — 2026-07-25
+
+### Added
+
+- **`@psyb0t/stealthy-auto-browse` code plugin** (`.agents/plugins/stealthy-auto-browse/`) — a stdio↔HTTP MCP bridge (`mcp-remote`) to the container's `/mcp` endpoint, so an OpenClaw/MCP agent can drive the stealth browser as a tool. MIT-licensed. CI now publishes the plugin alongside the skill via the reusable `clawhub-publish.yml`.
+
+### Changed
+
+- Skill: minor accuracy fixes to `SKILL.md` / `references/setup.md`.
+
 ## [1.3.8] — 2026-07-24
 
 ### Changed

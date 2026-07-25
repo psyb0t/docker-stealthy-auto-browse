@@ -82,6 +82,11 @@ Notes on the hardening flags:
 | `AUTH_TOKEN` | — | **Set this for any non-trivial deployment.** Without it, anyone who can reach the port can control the browser. With it, requests need `Authorization: Bearer <key>` (preferred) or `?auth_token=<key>` (query string, leaks into logs — avoid). |
 | `VNC_LISTEN_HOST` | `0.0.0.0` | VNC bind address inside the container. As above, prefer a `127.0.0.1:5900:5900` host port mapping. |
 | `VNC_LISTEN_PORT` | `5900` | noVNC web viewer port. **The viewer has no authentication of its own** — only publish to localhost. |
+| `PUID` | `1000` | Run the container as this UID. Ownership of `/userdata`, `/loaders`, `/recordings` is fixed up to match at startup. |
+| `PGID` | value of `PUID` | Run the container as this GID. |
+| `LANG` | `en_US.UTF-8` | Browser locale/language. |
+| `LOG_LEVEL` | `INFO` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR` for the JSON logger. |
+| `LOG_FILE` | — | If set, also write JSON logs to this file (10MB x 5 rotation) in addition to stderr. |
 
 ## Common Configurations
 
