@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.2] — 2026-07-26
+
+### Added
+
+- **Third-party license notices.** `THIRD_PARTY.md` + `LICENSES/` documenting the image-baked Camoufox browser (MPL-2.0) and the bundled browser extensions — uBlock Origin (GPL-3.0), LocalCDN (MPL-2.0), ClearURLs (LGPL-3.0), Consent-O-Matic (MIT). The project's own code stays WTFPL. Documentation only, no behavior change.
+
 ## [1.4.1] — 2026-07-26
 
 ### Changed
