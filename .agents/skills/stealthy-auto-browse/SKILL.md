@@ -13,6 +13,14 @@ Browser automation in Docker built for QA against anti-bot stacks, compatibility
 
 For installation, configuration, and container setup, see [references/setup.md](references/setup.md).
 
+## Security & safety
+
+- **Authorized targets only.** This tool is built for QA/testing against sites and systems you own or have written authorization to test — not for scraping or automating third-party sites without permission. See "Authorized Use Only" below before pointing it at anything.
+- **Data capture is powerful — scope it.** `get_text`, `get_html`, `get_interactive_elements`, `eval`, and the screenshot/`save_screenshot` actions can extract full page content, DOM structure, and rendered pixels in one call. Only capture what the authorized test actually needs; don't sweep pages outside scope just because the API makes it easy.
+- **Dialogs auto-accept by default — this can approve destructive actions.** `confirm()`, `beforeunload`, and permission prompts are accepted automatically unless you called `handle_dialog` with `accept: false` first. An agent must disable or scope auto-accept (call `handle_dialog` with `accept: false` before any step that might raise a dialog) whenever it is acting on a stateful site (one with real data, real accounts, or irreversible actions behind a confirm prompt), and must never drive this tool against a site where an accidental confirm would be harmful. See "Dialogs" below.
+- **No auth when `AUTH_TOKEN` is unset.** With it empty the HTTP API and MCP surface are UNAUTHENTICATED — anyone who can reach the port gets full browser control (navigation, input, cookies, screenshots, script execution). NEVER expose such an instance beyond localhost; set `AUTH_TOKEN` and bind to `127.0.0.1` or put it behind an authenticating proxy. See [references/setup.md](references/setup.md).
+- **Loaders execute automatically on matching URLs.** Only mount loader YAML you wrote or audited — see "Page Loaders" below.
+
 ## Authorized Use Only
 
 This tool is intentionally hard to fingerprint as automation. That makes it dangerous if misused. Only use it for:
@@ -163,6 +171,8 @@ Response: `{"url": "...", "title": "..."}`
 
 ### Page Inspection
 
+> Combined with screenshots (below) and script/run_script mode, these actions let one call extract full page text, DOM structure, and rendered pixels — powerful data capture. Use only against authorized targets and only pull what the test actually needs; this is not a general-purpose scraping tool for sites you don't have permission to collect from.
+
 ```json
 {"action": "get_interactive_elements"}
 {"action": "get_interactive_elements", "visible_only": true}
@@ -252,6 +262,8 @@ Use these instead of `sleep`.
 ### Dialogs
 
 > **⚠️ Dialogs are auto-accepted by default.** If a scripted step raises an unexpected `confirm()` / `beforeunload` / permission prompt, it WILL be accepted automatically — which can confirm a destructive or irreversible action. When a run might hit a dialog you don't want accepted, call `handle_dialog` with `accept: false` BEFORE the triggering action, and review your scripts for steps that could raise one.
+>
+> **Agent guardrail:** when driving a stateful site (real accounts, real data, or any confirm/permission prompt that could trigger an irreversible action), disable or scope auto-accept first — call `handle_dialog` with `accept: false` before the step that might raise the dialog, and only re-enable acceptance for a specific, expected prompt you intend to approve. Never run this tool against a site where an accidental confirm would be harmful.
 
 Call `handle_dialog` BEFORE the action that triggers the dialog.
 

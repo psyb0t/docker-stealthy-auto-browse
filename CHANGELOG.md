@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.1] — 2026-07-26
+
+### Changed
+
+- **Hardened the skill docs with explicit destructive-operation guardrails and auth/exfil warnings.** `SKILL.md` gained a "Security & safety" section (right after the intro) summarizing authorized-target scope, the power of the data-capture actions (`get_text`, `get_html`, `get_interactive_elements`, `eval`, screenshots), the dialog auto-accept default, and the `AUTH_TOKEN`-unset no-auth risk. The "Page Inspection" and "Dialogs" sections each gained an inline callout at the point where the behavior is documented — dialogs now spell out that an agent should disable/scope auto-accept before driving stateful sites. Documentation only; no action, endpoint, or default behavior changed.
+
 ## [1.4.0] — 2026-07-25
 
 ### Added
