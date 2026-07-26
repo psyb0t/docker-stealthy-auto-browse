@@ -32,3 +32,11 @@ jobs:
 
     secrets:
       clawhub_token: ${{ secrets.CLAWHUB_TOKEN }}
+
+  publish-to-mcp-registry:
+    needs: [call-docker-image-workflow]
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      id-token: write
+      contents: read
+    uses: psyb0t/reusable-github-workflows/.github/workflows/mcp-registry-publish.yml@master
