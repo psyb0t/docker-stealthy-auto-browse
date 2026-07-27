@@ -1,5 +1,9 @@
 # docker-stealthy-auto-browse
 
+[![version](https://raw.githubusercontent.com/psyb0t/docker-stealthy-auto-browse/badges/version.svg)](https://github.com/psyb0t/docker-stealthy-auto-browse/releases)
+[![license](https://raw.githubusercontent.com/psyb0t/docker-stealthy-auto-browse/badges/license.svg)](LICENSE)
+[![Docker Pulls](https://img.shields.io/docker/pulls/psyb0t/stealthy-auto-browse?style=flat-square)](https://hub.docker.com/r/psyb0t/stealthy-auto-browse)
+
 Stealth browser automation that actually works. Runs Camoufox (custom Firefox) in Docker with zero Chrome DevTools Protocol exposure, real OS-level mouse and keyboard input via PyAutoGUI, and a JSON HTTP API + MCP server to control it all remotely. Watch it live via noVNC. Run a single instance or spin up a cluster behind HAProxy with Redis cookie sync, request queuing, and sticky sessions. Drive it with curl, pipe YAML scripts through stdin, send multi-step scripts via the API, use page loaders to auto-handle popups and paywalls, or connect AI agents directly via MCP. Optional Bearer token auth via `AUTH_TOKEN`.
 
 Passes Cloudflare, CreepJS, BrowserScan, Pixelscan, and every other bot detector we've thrown at it. While Chromium-based tools are getting caught by the first line of defense, this thing walks through the front door unnoticed.
