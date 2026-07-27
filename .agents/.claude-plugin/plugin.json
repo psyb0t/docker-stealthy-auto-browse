@@ -1,0 +1,22 @@
+{
+  "name": "stealthy-auto-browse",
+  "description": "Headless-detection-resistant browser automation in Docker — Camoufox stealth browser, OS-level input via PyAutoGUI, HTTP API and MCP server, for authorized QA and defensive security testing.",
+  "author": { "name": "psyb0t", "url": "https://github.com/psyb0t" },
+  "homepage": "https://github.com/psyb0t/docker-stealthy-auto-browse",
+  "license": "WTFPL",
+  "keywords": ["browser-automation", "stealth", "camoufox", "playwright", "mcp", "anti-bot-testing", "docker"],
+  "userConfig": {
+    "url": {
+      "type": "string",
+      "title": "stealthy-auto-browse URL",
+      "description": "Base URL of your running stealthy-auto-browse server (STEALTHY_AUTO_BROWSE_URL), e.g. http://localhost:8080.",
+      "required": true
+    },
+    "auth_token": {
+      "type": "string",
+      "title": "Auth token",
+      "description": "Bearer token, only needed if the server was started with AUTH_TOKEN set.",
+      "sensitive": true
+    }
+  }
+}

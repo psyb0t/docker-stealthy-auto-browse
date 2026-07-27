@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.6] — 2026-07-27
+
+### Added
+
+- **Agent-integration manifests.** `.agents/.codex-plugin/plugin.json` and `.agents/.claude-plugin/plugin.json` make the existing skill and MCP-bridge plugin installable natively via `claude plugin install stealthy-auto-browse@psyb0t` and `codex plugin marketplace add psyb0t/agents`. A new README "Agent integrations" section documents install commands for Claude Code, Codex, and OpenClaw (including the `openclaw plugins install clawhub:@psyb0t/stealthy-auto-browse` MCP bridge). Metadata only — no code or behavior change.
+
 ## [1.4.5] — 2026-07-27
 
 ### Added

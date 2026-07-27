@@ -15,6 +15,7 @@ Passes Cloudflare, CreepJS, BrowserScan, Pixelscan, and every other bot detector
 - [Quick Start](#quick-start)
 - [Two Input Modes](#two-input-modes)
 - [MCP Server](#mcp-server)
+- [Agent integrations](#agent-integrations)
 - [Script Mode](#script-mode)
 - [Page Loaders](#page-loaders)
 - [Screen Recording](#screen-recording)
@@ -103,6 +104,43 @@ AI agents can control the browser over the [Model Context Protocol](https://mode
 Connect any MCP-compatible client (Claude Desktop, Claude Code, custom agents) to `http://localhost:8080/mcp/` and start browsing.
 
 Works in both standalone and [cluster mode](#cluster-mode).
+
+## Agent integrations
+
+The [skill](.agents/skills/stealthy-auto-browse) works in any agent that reads `.agents/skills/`, and installs natively in the clients below.
+
+### Claude Code
+
+```bash
+claude plugin marketplace add psyb0t/agents
+claude plugin install stealthy-auto-browse@psyb0t
+```
+
+Claude Code prompts for the stealthy-auto-browse URL and, if auth is enabled, the token — the token is stored in your OS keychain.
+
+### Codex
+
+```bash
+codex plugin marketplace add psyb0t/agents
+```
+
+Codex also picks the skill up automatically in any repo containing `.agents/skills/`, and invokes it as `$stealthy-auto-browse`.
+
+### OpenClaw
+
+The skill is published to ClawHub on every release:
+
+```bash
+openclaw skills install @psyb0t/stealthy-auto-browse
+```
+
+For MCP clients that speak local stdio, the [`@psyb0t/stealthy-auto-browse`](.agents/plugins/stealthy-auto-browse) plugin bridges to the service's `/mcp` endpoint:
+
+```bash
+openclaw plugins install clawhub:@psyb0t/stealthy-auto-browse
+```
+
+Then set `STEALTHY_AUTO_BROWSE_URL` (and `AUTH_TOKEN` if the server requires auth).
 
 ## Script Mode
 
