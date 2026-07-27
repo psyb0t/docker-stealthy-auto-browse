@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.5] — 2026-07-27
+
+### Added
+
+- Added a GitHub Actions CI status badge to the README.
+
 ## [1.4.4] — 2026-07-27
 
 ### Added

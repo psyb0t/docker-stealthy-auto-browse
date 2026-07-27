@@ -1,5 +1,6 @@
 # docker-stealthy-auto-browse
 
+[![CI](https://github.com/psyb0t/docker-stealthy-auto-browse/actions/workflows/pipeline.yml/badge.svg?branch=main)](https://github.com/psyb0t/docker-stealthy-auto-browse/actions/workflows/pipeline.yml)
 [![version](https://raw.githubusercontent.com/psyb0t/docker-stealthy-auto-browse/badges/version.svg)](https://github.com/psyb0t/docker-stealthy-auto-browse/releases)
 [![license](https://raw.githubusercontent.com/psyb0t/docker-stealthy-auto-browse/badges/license.svg)](LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/psyb0t/stealthy-auto-browse?style=flat-square)](https://hub.docker.com/r/psyb0t/stealthy-auto-browse)
