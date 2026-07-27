@@ -122,9 +122,10 @@ Claude Code prompts for the stealthy-auto-browse URL and, if auth is enabled, th
 
 ```bash
 codex plugin marketplace add psyb0t/agents
+codex plugin add stealthy-auto-browse@psyb0t
 ```
 
-Codex also picks the skill up automatically in any repo containing `.agents/skills/`, and invokes it as `$stealthy-auto-browse`.
+Installed via the marketplace, the skill invokes as `$stealthy-auto-browse:stealthy-auto-browse`. Codex also picks the skill up automatically with no install in any repo containing `.agents/skills/`, where it invokes as plain `$stealthy-auto-browse`.
 
 ### OpenClaw
 

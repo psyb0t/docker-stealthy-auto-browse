@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.7] — 2026-07-27
+
+### Fixed
+
+- **Codex install command was missing from the README.** The "Agent integrations" Codex subsection told readers to run `codex plugin marketplace add psyb0t/agents` and then stopped, never showing the actual install step. It now also shows `codex plugin add stealthy-auto-browse@psyb0t`. The surrounding prose was corrected to distinguish the two invocation forms: installed via the marketplace the skill invokes as `$stealthy-auto-browse:stealthy-auto-browse`, while Codex's automatic pickup of any repo's own `.agents/skills/` (no install needed) invokes as plain `$stealthy-auto-browse`.
+
 ## [1.4.6] — 2026-07-27
 
 ### Added
