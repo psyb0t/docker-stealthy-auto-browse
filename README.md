@@ -14,6 +14,7 @@ Passes Cloudflare, CreepJS, BrowserScan, Pixelscan, and every other bot detector
 - [What's Inside](#whats-inside)
 - [Quick Start](#quick-start)
 - [Two Input Modes](#two-input-modes)
+- [Virtual Camera & Microphone](#virtual-camera--microphone)
 - [MCP Server](#mcp-server)
 - [Agent integrations](#agent-integrations)
 - [Script Mode](#script-mode)
@@ -96,6 +97,20 @@ See [docs/api.md](docs/api.md) for all actions and the full API reference.
 There are two ways to interact with pages. **System input** uses PyAutoGUI to generate real OS-level mouse and keyboard events — the browser cannot tell these apart from a real human. **Playwright input** uses CSS selectors and DOM event injection — easier, but theoretically detectable by behavioral analysis. Use system input on any site with bot protection.
 
 Full breakdown and usage guide: [docs/stealth.md](docs/stealth.md)
+
+## Virtual Camera & Microphone
+
+Mount test media read-only at `/media` and set `VIRTUAL_CAMERA_FILE` and/or `VIRTUAL_MICROPHONE_FILE`. Pages that call `navigator.mediaDevices.getUserMedia()` receive tracks captured from those files, so camera and microphone checks can run without host hardware.
+
+```bash
+docker run -d -p 8080:8080 \
+  -v ./media:/media:ro \
+  -e VIRTUAL_CAMERA_FILE=camera.webm \
+  -e VIRTUAL_MICROPHONE_FILE=microphone.wav \
+  psyb0t/stealthy-auto-browse
+```
+
+Sources must remain inside `/media`; restart the browser after changing them. A request for a kind without a configured virtual source fails with `NotFoundError` rather than falling back to hardware. Virtual tracks use the source file's native format, so pages must not require incompatible exact media constraints. This virtualizes `getUserMedia()` only, not `enumerateDevices()`. See [docs/configuration.md](docs/configuration.md) for details.
 
 ## MCP Server
 
@@ -187,7 +202,7 @@ Also works inside `run_script` (cluster-mode safe: start and stop must live in t
 
 ## Cluster Mode
 
-Run multiple browser instances behind HAProxy with a request queue, sticky sessions, and Redis cookie sync (default 10, configurable via `NUM_REPLICAS`). Download the compose file and HAProxy config, then start:
+Run multiple browser instances behind HAProxy with a request queue, sticky sessions, and Redis cookie sync (default 5, configurable via `NUM_REPLICAS`). Download the compose file and HAProxy config, then start:
 
 ```bash
 curl -LO https://raw.githubusercontent.com/psyb0t/docker-stealthy-auto-browse/main/docker-compose.cluster.yml
@@ -195,6 +210,8 @@ docker compose -f docker-compose.cluster.yml up -d
 ```
 
 Cookies set on any instance propagate to all others instantly via Redis PubSub. Log in once, the whole fleet is authenticated.
+
+Each browser defaults to a 5GB memory limit. Set `BROWSER_MEMORY_LIMIT` and `BROWSER_MEMORY_RESERVATION` when your fleet or display resolution needs a different budget; see [cluster mode](docs/cluster-mode.md#environment-variables).
 
 **Script-only enforcement (v1.0.0+):** When `NUM_REPLICAS > 1`, both the HTTP API and MCP server restrict to `run_script` only (plus `ping` and `sleep`). Individual actions are rejected to prevent stale content bugs from cross-instance routing. All actions remain available as steps inside `run_script`.
 
@@ -205,14 +222,14 @@ Full docs: [docs/cluster-mode.md](docs/cluster-mode.md)
 Set `AUTH_TOKEN` to require a Bearer token on all requests (except `/health`):
 
 ```bash
-docker run -d -p 8080:8080 -e AUTH_TOKEN=mysecretkey psyb0t/stealthy-auto-browse
+docker run -d -p 8080:8080 -e AUTH_TOKEN=your-token-here psyb0t/stealthy-auto-browse
 ```
 
 Pass the token in the `Authorization` header:
 
 ```bash
 # Header
-curl -H "Authorization: Bearer mysecretkey" http://localhost:8080 ...
+curl -H "Authorization: Bearer your-token-here" http://localhost:8080 ...
 ```
 
 ## Examples

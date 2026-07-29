@@ -1,13 +1,13 @@
 # Stealthy Auto Browse - Load Balanced Cluster
 #
-# Browser instances (default 10, set NUM_REPLICAS to change) behind HAProxy which:
+# Browser instances (default 5, set NUM_REPLICAS to change) behind HAProxy which:
 #   - Queues requests when all instances are busy (timeout: QUEUE_TIMEOUT)
 #   - Limits concurrency to NUM_REPLICAS simultaneous requests
 #   - Sticky sessions via INSTANCEID cookie
 #   - Browsers sync cookies via Redis
 #
 # Usage:
-#   docker compose up -d                               # start with 10 browsers
+#   docker compose up -d                               # start with 5 browsers
 #   NUM_REPLICAS=20 docker compose up -d               # start with 20 browsers
 #   docker compose logs -f queue-proxy                 # watch queue
 #
@@ -28,18 +28,18 @@ services:
 
   browser:
     image: psyb0t/stealthy-auto-browse:latest
-    scale: ${NUM_REPLICAS:-10}
+    scale: ${NUM_REPLICAS:-5}
     environment:
       - TZ=${TZ:-America/New_York}
       - REDIS_URL=redis://redis:6379
-      - NUM_REPLICAS=${NUM_REPLICAS:-10}
+      - NUM_REPLICAS=${NUM_REPLICAS:-5}
       # - PROXY_URL=http://user:pass@host:port
     deploy:
       resources:
         limits:
-          memory: 512m
+          memory: ${BROWSER_MEMORY_LIMIT:-5g}
         reservations:
-          memory: 256m
+          memory: ${BROWSER_MEMORY_RESERVATION:-512m}
     memswap_limit: 8g
     depends_on:
       - redis
@@ -90,7 +90,7 @@ configs:
           capture cookie INSTANCEID len 64
           http-request return status 200 content-type "application/json" string '{"status":"ok"}' if { path /__queue/health }
           acl is_private src 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8
-          http-request return status 200 content-type "application/json" string '{"status":"ok","num_replicas":${NUM_REPLICAS:-10}}' if { path /__queue/status } is_private
+          http-request return status 200 content-type "application/json" string '{"status":"ok","num_replicas":${NUM_REPLICAS:-5}}' if { path /__queue/status } is_private
           http-request return status 403 content-type "application/json" string '{"error":"forbidden"}' if { path /__queue/status } !is_private
           use_backend mcp if { path_beg /mcp }
           default_backend browsers
@@ -101,7 +101,7 @@ configs:
           stick-table type string len 64 size 200 expire 1h
           stick match req.hdr(Mcp-Session-Id)
           stick store-response res.hdr(Mcp-Session-Id)
-          server-template browser ${NUM_REPLICAS:-10} browser:8080 resolvers docker check
+          server-template browser ${NUM_REPLICAS:-5} browser:8080 resolvers docker check
 
       backend browsers
           balance leastconn
@@ -110,7 +110,7 @@ configs:
           stick match req.cook(INSTANCEID)
           stick store-response srv_name
           http-response add-header Set-Cookie "INSTANCEID=%[srv_name]; path=/"
-          server-template browser ${NUM_REPLICAS:-10} browser:8080 resolvers docker check maxconn 1
+          server-template browser ${NUM_REPLICAS:-5} browser:8080 resolvers docker check maxconn 1
 
       listen stats
           bind *:8081

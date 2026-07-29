@@ -7,13 +7,11 @@ test_mcp() {(
     set -euo pipefail
     local PASS=0 FAIL=0
 
-    _pass() { echo "  OK: $1"; PASS=$((PASS + 1)); }
-    _fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
-
     echo "--- test_mcp ---"
 
     # Run all MCP tests via a single Python script
     local result
+    # shellcheck disable=SC2153 # BASE is initialized by tests/common.sh during setup.
     result=$(python3 - "$BASE" "$TEST_PAGE" << 'PYEOF'
 import json, sys, urllib.request
 
@@ -227,18 +225,16 @@ test_mcp_cluster_mode() {(
     set -euo pipefail
     local PASS=0 FAIL=0
 
-    _pass() { echo "  OK: $1"; PASS=$((PASS + 1)); }
-    _fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
-
     echo "--- test_mcp_cluster_mode ---"
     echo "  Starting container with NUM_REPLICAS=3..."
 
     local name="sab-test-mcp-cluster-$$-$RANDOM"
+    trap 'stop_extra_container "$name"' EXIT
     local ip
     ip=$(start_extra_container "$name" -e "NUM_REPLICAS=3")
     local CBASE="http://${ip}:8080"
 
-    wait_for_api "$CBASE" || { echo "  FAIL: container never became healthy"; return 1; }
+    wait_for_api "$CBASE" 180 || { echo "  FAIL: container never became healthy"; return 1; }
 
     # Run all tests via Python
     local result

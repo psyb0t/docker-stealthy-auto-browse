@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import mimetypes
 import os
 import subprocess
 from dataclasses import dataclass
@@ -29,6 +30,105 @@ DEFAULT_USER_DATA_DIR = "/userdata"
 
 # Persisted browser properties file (stores Camoufox config, not raw fingerprint)
 BROWSER_PROPS_FILE = Path(DEFAULT_USER_DATA_DIR) / "stealthy-auto-browse-props.json"
+
+VIRTUAL_MEDIA_DIR = Path(os.environ.get("VIRTUAL_MEDIA_DIR", "/media"))
+VIRTUAL_MEDIA_ORIGIN = "https://virtual-media.stealthy.invalid"
+VIRTUAL_CAMERA_URL = f"{VIRTUAL_MEDIA_ORIGIN}/camera"
+VIRTUAL_MICROPHONE_URL = f"{VIRTUAL_MEDIA_ORIGIN}/microphone"
+
+_VIRTUAL_MEDIA_INIT_SCRIPT = """
+({ cameraUrl, microphoneUrl }) => {
+    const mediaDevices = navigator.mediaDevices;
+    if (!mediaDevices || !mediaDevices.getUserMedia) {
+        return;
+    }
+
+    const nativeGetUserMedia = mediaDevices.getUserMedia.bind(mediaDevices);
+    const keepAlive = [];
+
+    const wantsSource = value => value !== false && value !== undefined;
+    const captureTrack = async (url, kind) => {
+        const element = document.createElement(kind === "video" ? "video" : "audio");
+        element.crossOrigin = "anonymous";
+        element.src = url;
+        element.autoplay = true;
+        element.loop = true;
+        element.muted = true;
+        element.playsInline = true;
+        element.style.cssText = "display:none!important";
+        document.documentElement.appendChild(element);
+
+        const capture = element.captureStream || element.mozCaptureStream;
+        if (!capture) {
+            throw new Error("Firefox does not support media-element stream capture");
+        }
+        const stream = capture.call(element);
+        await element.play();
+
+        const trackGetter = kind === "video" ? "getVideoTracks" : "getAudioTracks";
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+            const track = stream[trackGetter]()[0];
+            if (track) {
+                keepAlive.push(element, stream);
+                return track;
+            }
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        throw new Error(`Virtual ${kind} source produced no track`);
+    };
+
+    Object.defineProperty(mediaDevices, "getUserMedia", {
+        configurable: true,
+        value: async constraints => {
+            const requested = constraints || {};
+            const useCamera = wantsSource(requested.video);
+            const useMicrophone = wantsSource(requested.audio);
+
+            if (!useCamera && !useMicrophone) {
+                return nativeGetUserMedia(requested);
+            }
+
+            if (useCamera && !cameraUrl) {
+                throw new DOMException("No virtual camera source is configured", "NotFoundError");
+            }
+            if (useMicrophone && !microphoneUrl) {
+                throw new DOMException("No virtual microphone source is configured", "NotFoundError");
+            }
+
+            const trackRequests = [];
+            if (useCamera) {
+                trackRequests.push(captureTrack(cameraUrl, "video"));
+            }
+            if (useMicrophone) {
+                trackRequests.push(captureTrack(microphoneUrl, "audio"));
+            }
+
+            return new MediaStream(await Promise.all(trackRequests));
+        },
+    });
+}
+"""
+
+
+def _virtual_media_file(variable_name: str) -> Path | None:
+    """Resolve one configured virtual-media file within VIRTUAL_MEDIA_DIR."""
+    raw_path = os.environ.get(variable_name, "").strip()
+    if not raw_path:
+        return None
+
+    try:
+        media_dir = VIRTUAL_MEDIA_DIR.resolve(strict=True)
+        requested_path = Path(raw_path)
+        candidate = requested_path if requested_path.is_absolute() else media_dir / requested_path
+        resolved = candidate.resolve(strict=True)
+    except OSError as error:
+        raise BrowserError(f"{variable_name} could not be resolved: {error}") from error
+
+    if not resolved.is_relative_to(media_dir):
+        raise BrowserError(f"{variable_name} must be inside {media_dir}")
+    if not resolved.is_file():
+        raise BrowserError(f"{variable_name} must name a regular file")
+    return resolved
 
 
 def _get_default_viewport() -> tuple[int, int]:
@@ -192,6 +292,16 @@ class BrowserConfig:
     """Browser configuration."""
 
     timeout: float = 30.0
+    virtual_camera_file: Path | None = None
+    virtual_microphone_file: Path | None = None
+
+    @classmethod
+    def from_environment(cls) -> "BrowserConfig":
+        """Load browser configuration from validated environment variables."""
+        return cls(
+            virtual_camera_file=_virtual_media_file("VIRTUAL_CAMERA_FILE"),
+            virtual_microphone_file=_virtual_media_file("VIRTUAL_MICROPHONE_FILE"),
+        )
 
 
 class Browser:
@@ -220,6 +330,13 @@ class Browser:
     def page(self) -> Any:
         """Current page object for direct access."""
         return self._page
+
+    def virtual_media_state(self) -> dict[str, bool]:
+        """Return which file-backed getUserMedia sources are configured."""
+        return {
+            "camera": self.config.virtual_camera_file is not None,
+            "microphone": self.config.virtual_microphone_file is not None,
+        }
 
     async def is_healthy(self) -> bool:
         """Probe whether the browser context + page are still usable.
@@ -549,11 +666,18 @@ class Browser:
 
             # Accept file downloads
             opts["accept_downloads"] = True
+            if self.config.virtual_camera_file or self.config.virtual_microphone_file:
+                opts["firefox_user_prefs"] = {
+                    "media.captureStream.enabled": True,
+                    "media.devices.insecure.enabled": True,
+                    "media.getusermedia.insecure.enabled": True,
+                }
 
             self._context = await self._playwright.firefox.launch_persistent_context(
                 **opts
             )
             self._browser = self._context
+            await self._configure_virtual_media()
 
             # Crash diagnostics — Playwright fires these events when the
             # browser / page processes die. Without them the only signal is
@@ -600,6 +724,43 @@ class Browser:
         except Exception as e:
             await self.stop()
             raise BrowserError(f"Failed to launch browser: {e}")
+
+    async def _configure_virtual_media(self) -> None:
+        """Install file-backed getUserMedia streams before page navigation."""
+        if not self._context:
+            return
+        if not self.config.virtual_camera_file and not self.config.virtual_microphone_file:
+            return
+
+        resources: dict[str, Path] = {}
+        if self.config.virtual_camera_file:
+            resources[VIRTUAL_CAMERA_URL] = self.config.virtual_camera_file
+        if self.config.virtual_microphone_file:
+            resources[VIRTUAL_MICROPHONE_URL] = self.config.virtual_microphone_file
+
+        async def fulfill_virtual_media(route: Any) -> None:
+            source = resources.get(route.request.url)
+            if source is None:
+                await route.abort()
+                return
+            content_type = mimetypes.guess_type(source.name)[0]
+            await route.fulfill(
+                path=str(source),
+                content_type=content_type or "application/octet-stream",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        await self._context.route(f"{VIRTUAL_MEDIA_ORIGIN}/**", fulfill_virtual_media)
+        init_config = {
+            "cameraUrl": VIRTUAL_CAMERA_URL if self.config.virtual_camera_file else None,
+            "microphoneUrl": (
+                VIRTUAL_MICROPHONE_URL if self.config.virtual_microphone_file else None
+            ),
+        }
+        await self._context.add_init_script(
+            script=f"({_VIRTUAL_MEDIA_INIT_SCRIPT})({json.dumps(init_config)});",
+        )
+        log.info("virtual media configured", extra=self.virtual_media_state())
 
     async def _get_page(self) -> Any:
         """Get or create page. Auto-relaunches browser if it died."""

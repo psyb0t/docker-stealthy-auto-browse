@@ -145,6 +145,7 @@ AUTH_TOKEN = os.environ.get("AUTH_TOKEN", "").strip() or None
 _NUM_REPLICAS = int(os.environ.get("NUM_REPLICAS", "1"))
 _CLUSTER_MODE = _NUM_REPLICAS > 1
 _CLUSTER_ALLOWED_ACTIONS = {"run_script", "ping", "sleep"}
+_NAVIGATION_INTERRUPTED_ERROR = "interrupted by another navigation"
 
 
 # Parse CLI args: --script <path> (path provided by entrypoint from stdin)
@@ -337,6 +338,19 @@ async def get_active_page() -> Any:
     return _active_page
 
 
+async def _navigate(page: Any, url: str, **goto_kwargs: Any) -> None:
+    """Navigate, retrying once if Firefox is still settling after recovery."""
+    try:
+        await page.goto(url, **goto_kwargs)
+    except Exception as error:
+        if _NAVIGATION_INTERRUPTED_ERROR not in str(error).lower():
+            raise
+
+        log.warning("navigation interrupted while page was settling; retrying")
+        await page.wait_for_load_state("domcontentloaded")
+        await page.goto(url, **goto_kwargs)
+
+
 async def get_window_offset_js(page) -> dict:
     """Get browser content area offset from screen origin.
 
@@ -519,8 +533,10 @@ async def dispatch_action(cmd: dict) -> dict:
         await _focus_active_tab(len(browser._context.pages) - 1, new_page)
         tab_url: str | None = cmd.get("url")
         if tab_url:
-            await new_page.goto(
-                tab_url, wait_until=cmd.get("wait_until", "domcontentloaded")
+            await _navigate(
+                new_page,
+                tab_url,
+                wait_until=cmd.get("wait_until", "domcontentloaded"),
             )
         return make_response(
             True,
@@ -745,13 +761,17 @@ async def dispatch_action(cmd: dict) -> dict:
         }
         if cmd.get("referer"):
             goto_kwargs["referer"] = cmd["referer"]
-        await page.goto(url, **goto_kwargs)
+        await _navigate(page, url, **goto_kwargs)
         return make_response(True, {"url": page.url, "title": await page.title()})
 
     if action == "refresh":
         # page.reload() times out in Camoufox persistent context, so
         # re-navigate to the current URL instead (same practical effect).
-        await page.goto(page.url, wait_until=cmd.get("wait_until", "domcontentloaded"))
+        await _navigate(
+            page,
+            page.url,
+            wait_until=cmd.get("wait_until", "domcontentloaded"),
+        )
         return make_response(True, {"url": page.url, "title": await page.title()})
 
     if action == "click":
@@ -890,6 +910,92 @@ async def dispatch_action(cmd: dict) -> dict:
     if action == "get_html":
         html = await page.content()
         return make_response(True, {"html": html, "length": len(html)})
+
+    if action == "get_page_info":
+        info = await page.evaluate("""() => ({
+            url: location.href,
+            title: document.title,
+            readyState: document.readyState,
+            viewport: { width: innerWidth, height: innerHeight },
+            document: {
+                width: document.documentElement.scrollWidth,
+                height: document.documentElement.scrollHeight,
+            },
+            scroll: { x: scrollX, y: scrollY },
+        })""")
+        return make_response(True, info)
+
+    if action == "get_element":
+        selector = cmd.get("selector", "")
+        if not selector:
+            return make_response(False, error="selector required")
+        locator = page.locator(selector).first
+        if await locator.count() == 0:
+            return make_response(False, error="element not found")
+        element = await locator.evaluate("""node => {
+            const rect = node.getBoundingClientRect();
+            return {
+                tag: node.tagName.toLowerCase(),
+                text: (node.innerText || "").slice(0, 10000),
+                attributes: Object.fromEntries([...node.attributes].map(a => [a.name, a.value])),
+                boundingBox: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                visible: Boolean(rect.width && rect.height),
+            };
+        }""")
+        return make_response(True, element)
+
+    if action == "get_elements":
+        selector = cmd.get("selector", "")
+        if not selector:
+            return make_response(False, error="selector required")
+        try:
+            limit = int(cmd.get("limit", 20))
+        except (TypeError, ValueError):
+            return make_response(False, error="limit must be an integer")
+        if limit < 1 or limit > 100:
+            return make_response(False, error="limit must be between 1 and 100")
+        elements = await page.locator(selector).evaluate_all(
+            """(nodes, maxItems) => nodes.slice(0, maxItems).map(node => {
+                const rect = node.getBoundingClientRect();
+                return {
+                    tag: node.tagName.toLowerCase(),
+                    text: (node.innerText || "").slice(0, 1000),
+                    attributes: Object.fromEntries([...node.attributes].map(a => [a.name, a.value])),
+                    boundingBox: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                    visible: Boolean(rect.width && rect.height),
+                };
+            })""",
+            limit,
+        )
+        return make_response(True, {"count": len(elements), "elements": elements})
+
+    if action == "get_computed_style":
+        selector = cmd.get("selector", "")
+        properties = cmd.get("properties", ["display", "visibility", "color", "background-color"])
+        if not selector:
+            return make_response(False, error="selector required")
+        if not isinstance(properties, list) or not all(
+            isinstance(property_name, str) and re.fullmatch(r"[a-zA-Z-]{1,64}", property_name)
+            for property_name in properties
+        ):
+            return make_response(False, error="properties must be CSS property names")
+        if len(properties) > 50:
+            return make_response(False, error="properties may contain at most 50 entries")
+        locator = page.locator(selector).first
+        if await locator.count() == 0:
+            return make_response(False, error="element not found")
+        styles = await locator.evaluate(
+            """(node, names) => {
+                const computed = getComputedStyle(node);
+                return Object.fromEntries(names.map(name => [name, computed.getPropertyValue(name)]));
+            }""",
+            properties,
+        )
+        return make_response(True, {"selector": selector, "styles": styles})
+
+    if action == "get_virtual_media_state":
+        assert browser is not None
+        return make_response(True, browser.virtual_media_state())
 
     # --- Wait conditions ---
 
@@ -1284,7 +1390,7 @@ async def _run_script_mode(script_path: str, config: BrowserConfig) -> None:
 async def main() -> None:
     global browser, loaders_dir
 
-    config = BrowserConfig()
+    config = BrowserConfig.from_environment()
 
     # Sweep stale ffmpeg tmp files left by a previous crashed run.
     cleanup_orphan_tmp_files()

@@ -46,6 +46,18 @@ PAGE_CONTENT_CASES=(
     'get_html|{"action": "get_html"}|data.html|test-form'
     'get_html_input|{"action": "get_html"}|data.html|name-input'
     'eval_title|{"action": "eval", "expression": "document.title"}|data.result|Test Page'
+    'get_page_info|{"action": "get_page_info"}|data.title|Test Page'
+    'get_element|{"action": "get_element", "selector": "#name-input"}|data.tag|input'
+    'get_elements|{"action": "get_elements", "selector": "input"}|data.elements.0.tag|input'
+    'get_elements_default_limit|{"action": "get_elements", "selector": ".dom-list-item"}|data.count|20'
+    'get_computed_style|{"action": "get_computed_style", "selector": "#name-input", "properties": ["display"]}|data.styles.display|inline-block'
+)
+
+PAGE_CONTENT_ERROR_CASES=(
+    'get_element_missing_selector|{"action": "get_element"}|selector required'
+    'get_elements_non_integer_limit|{"action": "get_elements", "selector": "input", "limit": "not-a-number"}|limit must be an integer'
+    'get_elements_out_of_range_limit|{"action": "get_elements", "selector": "input", "limit": 101}|limit must be between 1 and 100'
+    'get_computed_style_invalid_property|{"action": "get_computed_style", "selector": "input", "properties": ["color;display:none"]}|properties must be CSS property names'
 )
 
 test_page_content() {
@@ -59,12 +71,21 @@ test_page_content() {
 import sys, json
 d = json.load(sys.stdin)
 for k in '${field}'.split('.'):
-    d = d[k]
+    d = d[int(k)] if k.isdigit() else d[k]
 print(d)
 ")
         echo "$val" | grep -q "$expected" || { echo "FAIL: $label: '$expected' not in response"; return 1; }
     done
-    echo "OK: page_content (${#PAGE_CONTENT_CASES[@]} cases passed)"
+
+    for entry in "${PAGE_CONTENT_ERROR_CASES[@]}"; do
+        IFS='|' read -r label action_json expected <<< "$entry"
+        local resp error
+        resp=$(post "$action_json")
+        error=$(echo "$resp" | python3 -c "import json, sys; print(json.load(sys.stdin).get('error', ''))")
+        assert_eq "$error" "$expected" "$label" || return 1
+    done
+
+    echo "OK: page_content ($(( ${#PAGE_CONTENT_CASES[@]} + ${#PAGE_CONTENT_ERROR_CASES[@]} )) cases passed)"
 }
 
 test_get_interactive_elements() {

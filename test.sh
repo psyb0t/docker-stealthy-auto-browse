@@ -4,10 +4,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Source shared helpers and variables
+# shellcheck disable=SC1091 # Resolved from this script's directory at runtime.
 source "$SCRIPT_DIR/tests/common.sh"
 
 # Source all test files (each appends to ALL_TESTS)
 for f in "$SCRIPT_DIR"/tests/test_*.sh; do
+    # shellcheck disable=SC1090 # The glob selects every repository-owned test module.
     source "$f"
 done
 
@@ -123,7 +125,7 @@ _ts() {
 }
 
 # Heavy tests that must run alone (not parallel with others)
-HEAVY_TESTS=(test_cluster)
+HEAVY_TESTS=(test_mcp_cluster_mode test_cluster)
 
 # Classify requested tests into main vs extra vs heavy
 MAIN_TO_RUN=()
@@ -202,7 +204,7 @@ if [ ${#EXTRA_TO_RUN[@]} -gt 0 ]; then
             for _t in "${!BG_PIDS[@]}"; do
                 if ! kill -0 "${BG_PIDS[$_t]}" 2>/dev/null; then
                     wait "${BG_PIDS[$_t]}" && _rc=0 || _rc=$?
-                    if [ $_rc -eq 0 ]; then
+                    if [ "$_rc" -eq 0 ]; then
                         PASSED=$((PASSED + 1))
                         echo "[$(_ts)] $_t ... OK"
                     else
@@ -232,7 +234,7 @@ if [ ${#EXTRA_TO_RUN[@]} -gt 0 ]; then
     # Wait for remaining
     for _t in "${!BG_PIDS[@]}"; do
         wait "${BG_PIDS[$_t]}" && _rc=0 || _rc=$?
-        if [ $_rc -eq 0 ]; then
+        if [ "$_rc" -eq 0 ]; then
             PASSED=$((PASSED + 1))
             echo "[$(_ts)] $_t ... OK"
         else

@@ -178,6 +178,10 @@ Response: `{"url": "...", "title": "..."}`
 {"action": "get_interactive_elements", "visible_only": true}
 {"action": "get_text"}
 {"action": "get_html"}
+{"action": "get_page_info"}
+{"action": "get_element", "selector": "main article"}
+{"action": "get_elements", "selector": "main article a", "limit": 25}
+{"action": "get_computed_style", "selector": "main article", "properties": ["display", "font-size"]}
 {"action": "eval", "expression": "document.title"}
 {"action": "eval", "expression": "document.querySelectorAll('a').length"}
 ```
@@ -185,6 +189,12 @@ Response: `{"url": "...", "title": "..."}`
 `get_interactive_elements` returns all buttons, links, inputs with `x`, `y`, `w`, `h`, `text`, `selector`, `visible`. Pass `x`, `y` directly to `system_click`.
 
 `get_text` returns visible page text (truncated to 10,000 chars). Call this first after navigating.
+
+For structured extraction, use `get_element` for one matching node or `get_elements` for a bounded list. `get_page_info` returns document/viewport state, and `get_computed_style` exposes selected CSS values without a custom JavaScript expression.
+
+### Virtual Camera and Microphone
+
+For authorized camera/microphone compatibility tests, mount test media at `/media` and configure `VIRTUAL_CAMERA_FILE` and/or `VIRTUAL_MICROPHONE_FILE` before the browser starts. A page's `navigator.mediaDevices.getUserMedia()` call then receives tracks captured from those files. A request for an unconfigured kind fails with `NotFoundError` rather than falling back to hardware. This virtualizes streams only; it does not add native devices to `enumerateDevices()`. Source files must remain within `VIRTUAL_MEDIA_DIR` (default `/media`) and the browser must restart after changes. See [references/setup.md](references/setup.md).
 
 ### Screenshots
 

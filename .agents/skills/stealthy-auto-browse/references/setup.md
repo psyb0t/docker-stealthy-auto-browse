@@ -80,6 +80,9 @@ Notes on the hardening flags:
 | `HTTP_LISTEN_HOST` | `0.0.0.0` | HTTP API bind address inside the container. Combine with a `127.0.0.1:8080:8080` port mapping to confine to localhost on the host. |
 | `HTTP_LISTEN_PORT` | `8080` | HTTP API port. |
 | `AUTH_TOKEN` | — | **Set this for any non-trivial deployment.** Without it, anyone who can reach the port can control the browser. With it, requests need an `Authorization: Bearer <key>` header. |
+| `VIRTUAL_MEDIA_DIR` | `/media` | Directory containing virtual camera/microphone media. Mount it read-only; configured source paths must resolve within it. |
+| `VIRTUAL_CAMERA_FILE` | — | Video file returned as the video track from page `getUserMedia()`. Relative to `VIRTUAL_MEDIA_DIR` or an absolute path inside it. A request for video without this source fails with `NotFoundError`. |
+| `VIRTUAL_MICROPHONE_FILE` | — | Audio file returned as the audio track from page `getUserMedia()`. Relative to `VIRTUAL_MEDIA_DIR` or an absolute path inside it. A request for audio without this source fails with `NotFoundError`. |
 | `VNC_LISTEN_HOST` | `0.0.0.0` | VNC bind address inside the container. As above, prefer a `127.0.0.1:5900:5900` host port mapping. |
 | `VNC_LISTEN_PORT` | `5900` | noVNC web viewer port. **The viewer has no authentication of its own** — only publish to localhost. |
 | `PUID` | `1000` | Run the container as this UID. Ownership of `/userdata`, `/loaders`, `/recordings` is fixed up to match at startup. |
@@ -137,6 +140,15 @@ docker run -d -p 127.0.0.1:8080:8080 \
 mkdir -p ./recordings
 docker run -d -p 127.0.0.1:8080:8080 \
   -v ./recordings:/recordings \
+  --env-file .env.browser \
+  psyb0t/stealthy-auto-browse@$DIGEST
+
+# File-backed virtual camera and microphone for an authorized WebRTC test
+mkdir -p ./media
+docker run -d -p 127.0.0.1:8080:8080 \
+  -v ./media:/media:ro \
+  -e VIRTUAL_CAMERA_FILE=camera.webm \
+  -e VIRTUAL_MICROPHONE_FILE=microphone.wav \
   --env-file .env.browser \
   psyb0t/stealthy-auto-browse@$DIGEST
 ```

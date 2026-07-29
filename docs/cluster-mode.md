@@ -4,7 +4,7 @@ Run a fleet of browser instances behind HAProxy with automatic queuing, sticky s
 
 ## What You Get
 
-- **Multiple browser containers** (default 10, configurable via `NUM_REPLICAS`) behind a single entry point on port 8080
+- **Multiple browser containers** (default 5, configurable via `NUM_REPLICAS`) behind a single entry point on port 8080
 - **HAProxy queue-proxy** that holds incoming requests when all instances are busy, instead of returning errors
 - **Sticky sessions** via `INSTANCEID` cookie — once a client is routed to a browser instance, it stays there
 - **Redis cookie sync** — cookies set on one instance propagate to all others via PubSub. New instances joining the cluster load existing cookies from Redis on startup
@@ -48,7 +48,7 @@ curl -LO https://raw.githubusercontent.com/psyb0t/docker-stealthy-auto-browse/ma
 docker compose -f docker-compose.cluster.yml up -d
 ```
 
-This starts Redis, browser containers (10 by default), and the HAProxy queue-proxy. The entry point is `http://localhost:8080` — same API as the single-container mode. The MCP endpoint at `/mcp/` also works through the proxy with the same sticky session routing.
+This starts Redis, five browser containers by default, and the HAProxy queue-proxy. The entry point is `http://localhost:8080` — same API as the single-container mode. The MCP endpoint at `/mcp/` also works through the proxy with the same sticky session routing.
 
 ### Scale Up
 
@@ -69,8 +69,10 @@ docker compose -f docker-compose.cluster.yml logs -f queue-proxy
 | ---------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `REDIS_URL`      | —                | Redis connection string. Set automatically in cluster mode (`redis://redis:6379`). Set this on standalone containers to join them to a Redis sync cluster. |
 | `QUEUE_TIMEOUT`  | `300`            | Seconds a request will wait in the queue before HAProxy returns a 503. Increase for long-running tasks.                                                   |
-| `NUM_REPLICAS`   | `10`             | Number of browser instances. Controls both the container replica count and HAProxy server list — single source of truth.                                  |
+| `NUM_REPLICAS`   | `5`              | Number of browser instances. Controls both the container replica count and HAProxy server list — single source of truth.                                  |
 | `TZ`             | `America/New_York` | Timezone for all browser instances. Set to match your IP's geographic location.                                                                         |
+| `BROWSER_MEMORY_LIMIT` | `5g` | Per-browser hard memory limit used by `docker-compose.cluster.yml`. Lower it only after validating your workload; 512MB can OOM-kill a browser at the default display size. |
+| `BROWSER_MEMORY_RESERVATION` | `512m` | Per-browser memory reservation used by `docker-compose.cluster.yml`. |
 
 ## HAProxy Queue-Proxy
 
@@ -147,7 +149,7 @@ services:
 
   browser:
     image: psyb0t/stealthy-auto-browse:latest
-    scale: ${NUM_REPLICAS:-10}
+    scale: ${NUM_REPLICAS:-5}
     environment:
       - TZ=${TZ:-America/New_York}
       - REDIS_URL=redis://redis:6379
@@ -169,6 +171,6 @@ configs:
       ...
 ```
 
-Each browser container is limited to 512MB RAM with 8GB swap available. This prevents a single instance from consuming all host memory while allowing swap for peak usage.
+Each browser container defaults to a 5GB RAM limit and 512MB reservation, with 8GB swap available. Override `BROWSER_MEMORY_LIMIT` and `BROWSER_MEMORY_RESERVATION` when sizing the fleet for your host and display resolution. A 512MB hard limit can OOM-kill Camoufox at the default 1920×1080 display.
 
 All services share a `browse` Docker network. Browser containers are not exposed directly — all traffic goes through the queue-proxy.

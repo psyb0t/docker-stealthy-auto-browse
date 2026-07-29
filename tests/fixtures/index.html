@@ -45,6 +45,14 @@
     <button id="upload-btn" type="submit">Upload</button>
   </form>
   <div id="upload-result"></div>
+  <div id="dom-list"></div>
+
+  <!-- Virtual-media feedback for camera/microphone integration tests -->
+  <section id="media-test">
+    <button id="media-start" type="button">Start camera and microphone</button>
+    <video id="media-preview" autoplay muted playsinline></video>
+    <pre id="media-result">not-started</pre>
+  </section>
 
   <!-- Tall spacer for scroll tests -->
   <div id="spacer" style="height: 5000px; background: linear-gradient(white, gray);"></div>
@@ -64,6 +72,65 @@
 
     document.addEventListener("keydown", function(e) {
       document.getElementById("last-key").textContent = e.key;
+    });
+
+    var domList = document.getElementById("dom-list");
+    for (var domIndex = 0; domIndex < 25; domIndex += 1) {
+      var domListItem = document.createElement("span");
+      domListItem.className = "dom-list-item";
+      domListItem.textContent = "item-" + domIndex;
+      domList.appendChild(domListItem);
+    }
+
+    document.getElementById("media-start").addEventListener("click", async function() {
+      var result = document.getElementById("media-result");
+      var video = document.getElementById("media-preview");
+      var stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        var videoTrack = stream.getVideoTracks()[0];
+        var audioTrack = stream.getAudioTracks()[0];
+        video.srcObject = new MediaStream([videoTrack]);
+        await video.play();
+        await new Promise(function(resolve) { setTimeout(resolve, 500); });
+
+        var canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        var context = canvas.getContext("2d");
+        context.drawImage(video, 0, 0);
+        var pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+        var videoSignal = 0;
+        for (var index = 0; index < pixels.length; index += 4) {
+          videoSignal += pixels[index] + pixels[index + 1] + pixels[index + 2];
+        }
+
+        var recorder = new MediaRecorder(new MediaStream([audioTrack]));
+        var chunks = [];
+        var stopped = new Promise(function(resolve) {
+          recorder.ondataavailable = function(event) { chunks.push(event.data); };
+          recorder.onstop = resolve;
+        });
+        recorder.start(250);
+        await new Promise(function(resolve) { setTimeout(resolve, 750); });
+        recorder.stop();
+        await stopped;
+
+        result.textContent = JSON.stringify({
+          status: "ok",
+          videoWidth: canvas.width,
+          videoHeight: canvas.height,
+          videoSignal: videoSignal,
+          audioChunks: chunks.length,
+          audioBytes: chunks.reduce(function(total, chunk) { return total + chunk.size; }, 0)
+        });
+      } catch (error) {
+        result.textContent = JSON.stringify({ status: "error", message: String(error) });
+      } finally {
+        if (stream) {
+          stream.getTracks().forEach(function(track) { track.stop(); });
+        }
+      }
     });
   </script>
 </body>

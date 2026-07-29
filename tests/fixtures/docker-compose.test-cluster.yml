@@ -1,4 +1,4 @@
-# Cluster test compose: 10 browsers + redis + haproxy queue-proxy + web server
+# Cluster test compose: 3 browsers + redis + haproxy queue-proxy + web server
 # Used by tests/test_cluster.sh — do not start manually.
 
 services:
@@ -25,9 +25,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512m
+          memory: 5g
         reservations:
-          memory: 256m
+          memory: 512m
     memswap_limit: 8g
     depends_on:
       - redis

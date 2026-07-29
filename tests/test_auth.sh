@@ -3,7 +3,7 @@
 
 test_auth_token() {
     local name="${CONTAINER_NAME}-auth"
-    local key="supersecretkey123"
+    local key="test-token-only-not-a-secret"
 
     local ip base
     ip=$(start_extra_container "$name" -e "AUTH_TOKEN=${key}")
@@ -30,7 +30,7 @@ test_auth_token() {
     # POST / with wrong key must return 401
     code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$base" \
         -H "Content-Type: application/json" \
-        -H "Authorization: Bearer wrongkey" \
+        -H "Authorization: Bearer wrong-token-not-a-secret" \
         -d '{"action":"ping"}')
     assert_eq "$code" "401" "auth: POST / wrong token returns 401" || { stop_extra_container "$name"; return 1; }
 

@@ -137,6 +137,20 @@ async def run_script(
             No parameters.
         get_html: Get full HTML source of the current page.
             No parameters.
+        get_page_info: Get current URL, title, ready state, viewport, document, and scroll data.
+            No parameters.
+        get_element: Get one element's tag, text, attributes, bounding box, and visibility.
+            - selector (str, required): CSS selector or XPath.
+        get_elements: Get a bounded list of matching element summaries.
+            - selector (str, required): CSS selector or XPath.
+            - limit (int): 1-100, default 20.
+        get_computed_style: Get selected computed CSS properties for one element.
+            - selector (str, required): CSS selector or XPath.
+            - properties (list[str]): Up to 50 CSS property names. Defaults to display,
+              visibility, color, and background-color.
+        get_virtual_media_state: Report whether configured virtual camera and microphone
+            sources are active for getUserMedia().
+            No parameters.
         get_interactive_elements: Find all interactive elements (buttons, links, inputs).
             - visible_only (bool): Only viewport-visible elements. Default true.
             Returns: list of elements with x, y, width, height, text, selector.

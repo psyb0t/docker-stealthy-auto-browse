@@ -14,11 +14,16 @@
 | `HTTP_LISTEN_HOST` | `0.0.0.0`       | Host address the HTTP API binds to.                                                                                                                                                                                                                                                                      |
 | `HTTP_LISTEN_PORT` | `8080`          | Port the HTTP API listens on.                                                                                                                                                                                                                                                                            |
 | `AUTH_TOKEN`       | —               | If set, all requests (except `/health`) require an `Authorization: Bearer <token>` header. Applies to both HTTP API and MCP.                                                                                                                                                                             |
+| `VIRTUAL_MEDIA_DIR` | `/media` | Directory containing virtual media files. Configured source paths must resolve inside this directory. Mount it read-only. |
+| `VIRTUAL_CAMERA_FILE` | — | Video file to return as the video track from page `getUserMedia()`. Absolute or relative to `VIRTUAL_MEDIA_DIR`; validated at startup. |
+| `VIRTUAL_MICROPHONE_FILE` | — | Audio file to return as the audio track from page `getUserMedia()`. Absolute or relative to `VIRTUAL_MEDIA_DIR`; validated at startup. |
 | `VNC_LISTEN_HOST`  | `0.0.0.0`       | Host address VNC (noVNC + x11vnc) binds to.                                                                                                                                                                                                                                                              |
 | `VNC_LISTEN_PORT`  | `5900`          | Port the noVNC web viewer listens on.                                                                                                                                                                                                                                                                    |
 | `REDIS_URL`        | —               | Redis connection string for cross-instance cookie sync. See [cluster-mode.md](./cluster-mode.md).                                                                                                                                                                                                        |
 | `LOG_LEVEL`        | `INFO`          | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`. Filter what the JSON logger emits to stderr.                                                                                                                                                                                                                 |
 | `LOG_FILE`         | —               | If set, ALSO write JSON logs to this file with 10MB × 5 backup rotation (in addition to stderr). Useful when you want a persistent log alongside `docker logs`.                                                                                                                                          |
+
+The cluster compose file defaults to five browser replicas and reads `NUM_REPLICAS`, `BROWSER_MEMORY_LIMIT` (default `5g`), and `BROWSER_MEMORY_RESERVATION` (default `512m`) to size the fleet. See [cluster mode](./cluster-mode.md#environment-variables).
 
 ## Examples
 
@@ -53,6 +58,20 @@ mkdir -p ./recordings
 docker run -d -p 8080:8080 -v ./recordings:/recordings psyb0t/stealthy-auto-browse
 # Then drive `start_recording` / `stop_recording` via the API; files land in ./recordings/<slug>.mp4
 ```
+
+**Virtual camera and microphone (file-backed `getUserMedia()`):**
+
+```bash
+mkdir -p ./media
+# Put a supported browser video file at ./media/camera.webm and audio file at ./media/microphone.wav.
+docker run -d -p 8080:8080 \
+  -v ./media:/media:ro \
+  -e VIRTUAL_CAMERA_FILE=camera.webm \
+  -e VIRTUAL_MICROPHONE_FILE=microphone.wav \
+  psyb0t/stealthy-auto-browse
+```
+
+The files are supplied only to page `navigator.mediaDevices.getUserMedia()` calls; they do not create native devices in `enumerateDevices()`. When virtual media is configured, `getUserMedia()` is also made available to HTTP pages so controlled local test fixtures can report camera/microphone results directly. Requests for a kind without a configured source fail with `NotFoundError` rather than using hardware; virtual tracks retain the source file's format and do not emulate incompatible exact constraints. Source paths are resolved at browser startup, must stay inside `VIRTUAL_MEDIA_DIR` (including after symlink resolution), and require a browser restart to change. Treat the mounted media as test input for the pages you navigate to.
 
 ## Persistent Profiles
 

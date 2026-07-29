@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.1.0] — 2026-07-29
+
+### Added
+
+- **File-backed virtual media.** Configure a video and/or audio file inside a mounted `/media` directory and pages receive camera/microphone tracks from those files through `navigator.mediaDevices.getUserMedia()`. Paths are startup-validated, including symlink resolution, to remain inside the configured media directory. Requests for an unconfigured kind fail rather than falling back to a native device.
+- **DOM inspection primitives.** `get_page_info`, `get_element`, `get_elements`, and `get_computed_style` provide scraper-style page and CSS data without requiring custom JavaScript. `get_virtual_media_state` reports configured virtual source types.
+- Browser fixture coverage now visibly starts both virtual media tracks, verifies rendered camera pixels and a non-silent encoded microphone stream, and covers each single-source configuration.
+
+### Changed
+
+- Cluster browser replicas now default to a 5GB memory limit with a configurable 512MB reservation. The previous 512MB hard limit OOM-killed Camoufox at the default display size.
+- Cluster mode now starts five browser replicas by default, reducing the default fleet's potential memory allocation from 50GB to 25GB.
+- `get_elements` now consistently defaults to 20 results across the HTTP API, MCP documentation, and test fixture.
+
+### Fixed
+
+- Browser recovery retries the one startup navigation race that can occur immediately after Camoufox relaunches.
+- Default-user containers no longer recursively change ownership of the already-owned Camoufox home directory before startup.
+- Multi-browser integration tests now isolate their resource-heavy runs and clean up their exact temporary containers on every exit path.
+
 ## [2.0.0] — 2026-07-29
 
 ### Breaking

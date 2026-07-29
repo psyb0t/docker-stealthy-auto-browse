@@ -146,6 +146,10 @@ All actions are sent as `POST /` with JSON body `{"action": "name", ...params}`.
 | `get_interactive_elements` | `visible_only` | Scans the page and returns **every** interactive element (buttons, links, inputs, selects, textareas) with their viewport coordinates (`x`, `y`), dimensions (`w`, `h`), `text`, CSS `selector`, and `visible` status. This is how you find what to click. |
 | `get_text`                 | —              | Returns all visible text from the page body (truncated to 10,000 chars). Usually the first thing to call after navigating — tells you what's on the page without a screenshot.                                                                             |
 | `get_html`                 | —              | Returns the full HTML source of the page. Use when `get_text` doesn't give enough structure.                                                                                                                                                               |
+| `get_page_info`            | —              | Returns the current URL, title, ready state, viewport/document dimensions, and scroll position.                                                                                                                                                           |
+| `get_element`              | `selector`     | Returns one matching element's tag, text (truncated to 10,000 chars), attributes, bounding box, and visibility.                                                                                                                                          |
+| `get_elements`             | `selector`, `limit` | Returns summaries for up to `limit` matching elements (1–100; default 20). Each summary includes tag, text, attributes, bounding box, and visibility.                                                                                              |
+| `get_computed_style`       | `selector`, `properties` | Returns computed CSS property values. `properties` accepts up to 50 CSS property names; defaults to `display`, `visibility`, `color`, and `background-color`.                                                                                   |
 | `eval`                     | `expression`   | Executes JavaScript in the page context and returns the result. Example: `"document.title"`, `"document.querySelectorAll('a').length"`.                                                                                                                    |
 
 ### Wait Conditions
@@ -253,6 +257,13 @@ Capture `console.log`, `console.error`, `console.warn`, and other console output
 | `sleep`           | `duration`                                                  | Pauses for N seconds. Prefer `wait_for_element` or `wait_for_text` when waiting for page content.                                                                                                                                            |
 | `close`           | —                                                           | Shuts down the browser. The container stops after this.                                                                                                                                                                                      |
 | `save_screenshot` | `output_id`, `path`, `type`, `width`, `height`, `whLargest` | Captures a screenshot. `type`: `"browser"` (default) or `"desktop"`. Optional `path` to also write PNG to disk. In script mode, `output_id` collects the base64 PNG into the outputs dict. Supports resize via `width`/`height`/`whLargest`. |
+| `get_virtual_media_state` | — | Reports whether a virtual camera and/or microphone source was configured at browser startup. |
+
+### Virtual Camera and Microphone
+
+Set `VIRTUAL_CAMERA_FILE` and/or `VIRTUAL_MICROPHONE_FILE` to make the configured video or audio file available as the corresponding track returned by page `navigator.mediaDevices.getUserMedia()`. Both files must resolve inside `VIRTUAL_MEDIA_DIR` (default `/media`), normally a read-only bind mount. The browser must restart after changing the source configuration.
+
+This virtualizes `getUserMedia()` streams only: it does not add devices to `enumerateDevices()`. If a request asks for a kind without a configured virtual source, it fails with `NotFoundError` instead of using a native device. Virtual tracks retain the configured file's format and do not emulate incompatible exact media constraints. Use `get_virtual_media_state` to confirm which source types were configured.
 
 ### Screen Recording
 

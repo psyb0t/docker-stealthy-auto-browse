@@ -26,7 +26,8 @@ _fix_perms() {
 
     # Browser home dir — camoufox cache lives here regardless
     # of which UID runs the app
-    if [ -d /home/browser ]; then
+    if [ -d /home/browser ] &&
+        [ "$(stat -c '%u:%g' /home/browser)" != "$TARGET_UID:$TARGET_GID" ]; then
         chown -R "$TARGET_UID:$TARGET_GID" /home/browser
     fi
 }
@@ -129,11 +130,11 @@ else
     python main.py "$@" &
 fi
 SESSION_PID=$!
-PIDS+=($SESSION_PID)
+PIDS+=("$SESSION_PID")
 
 if [ "$SCRIPT_MODE" = "false" ]; then
     # Wait for API to be ready
-    for i in {1..30}; do
+    for ((attempt = 0; attempt < 30; attempt += 1)); do
         if curl -s "http://localhost:${HTTP_LISTEN_PORT}/health" > /dev/null 2>&1; then
             break
         fi

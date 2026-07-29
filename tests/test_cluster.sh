@@ -27,6 +27,7 @@ test_cluster() {(
     cd "$WORKDIR"
 
     local NUM_BROWSERS=3
+    local BROWSER_HEALTH_ATTEMPTS="${BROWSER_HEALTH_ATTEMPTS:-150}"
     local COMPOSE="docker compose -f tests/fixtures/docker-compose.test-cluster.yml -p sab-cluster-test"
     local IMAGE="psyb0t/stealthy-auto-browse:latest-test"
     local REDIS_CONTAINER="sab-cluster-test-redis-1"
@@ -51,6 +52,7 @@ test_cluster() {(
 
     # --- Cleanup ---
 
+    # shellcheck disable=SC2317 # ShellCheck does not trace handlers invoked by EXIT traps.
     _cleanup() {
         echo ""
         log "Cleaning up cluster..."
@@ -161,7 +163,7 @@ test_cluster() {(
     # ============================================================
 
     log_sep
-    log "Phase 1: Building test image and starting 10-browser cluster"
+    log "Phase 1: Building test image and starting ${NUM_BROWSERS}-browser cluster"
     log_sep
 
     log "Building image: $IMAGE ..."
@@ -211,7 +213,7 @@ test_cluster() {(
     local HEALTH_PIDS=()
     for i in "${!BROWSER_URLS[@]}"; do
         (
-            for j in $(seq 1 90); do
+            for ((attempt = 0; attempt < BROWSER_HEALTH_ATTEMPTS; attempt += 1)); do
                 curl -sf --max-time 5 "${BROWSER_URLS[$i]}/health" >/dev/null 2>&1 && exit 0
                 sleep 2
             done
@@ -246,7 +248,7 @@ test_cluster() {(
     log_sep
 
     local GOTO_RESULTS_FILE="/tmp/sab-cluster-test-goto.txt"
-    > "$GOTO_RESULTS_FILE"
+    : > "$GOTO_RESULTS_FILE"
     local GOTO_PIDS=()
 
     for i in "${!BROWSER_URLS[@]}"; do
@@ -539,7 +541,7 @@ print(','.join(missing) if missing else 'none')
     log "Test 6.3 — 20 concurrent ping requests via queue-proxy"
 
     local CONC_RESULTS_FILE="/tmp/sab-cluster-test-conc.txt"
-    > "$CONC_RESULTS_FILE"
+    : > "$CONC_RESULTS_FILE"
     local CONC_PIDS=()
 
     for i in $(seq 1 20); do
@@ -572,7 +574,7 @@ print(','.join(missing) if missing else 'none')
     log "Test 6.35 — 500 concurrent requests via queue-proxy (stress test)"
 
     local STRESS_RESULTS_FILE="/tmp/sab-cluster-test-stress.txt"
-    > "$STRESS_RESULTS_FILE"
+    : > "$STRESS_RESULTS_FILE"
     local STRESS_PIDS=()
 
     for i in $(seq 1 500); do
