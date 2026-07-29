@@ -19,8 +19,6 @@ If `AUTH_TOKEN` is set, all requests (except `/health`) require authentication:
 Authorization: Bearer <token>
 ```
 
-Or pass it as a query param: `?auth_token=<token>` (useful for MCP clients that can't set headers).
-
 ## Request Correlation Headers
 
 Every request gets a `trace_id` (logged on every line of the server's JSON log for that request) and a `request_id`. Both come back in the response so you can correlate your side with server logs.

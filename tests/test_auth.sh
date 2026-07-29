@@ -42,11 +42,18 @@ test_auth_token() {
         -d '{"action":"ping"}')
     assert_success "$resp" "auth: POST / correct token succeeds" || { stop_extra_container "$name"; return 1; }
 
-    # POST / with correct key via query param must succeed
-    resp=$(curl -sf -X POST "$base?auth_token=${key}" \
+    # Query-string tokens are never accepted.
+    code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$base?auth_token=${key}" \
         -H "Content-Type: application/json" \
         -d '{"action":"ping"}')
-    assert_success "$resp" "auth: POST / query param token succeeds" || { stop_extra_container "$name"; return 1; }
+    assert_eq "$code" "401" "auth: query token returns 401" || { stop_extra_container "$name"; return 1; }
+
+    # Reject query parameters even with a valid header: they are not auth.
+    code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$base?auth_token=ignored" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer ${key}" \
+        -d '{"action":"ping"}')
+    assert_eq "$code" "401" "auth: query parameter with valid header returns 401" || { stop_extra_container "$name"; return 1; }
 
     # MCP /mcp/ without auth must return 401
     code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$base/mcp/" \
@@ -54,6 +61,13 @@ test_auth_token() {
         -H "Accept: application/json, text/event-stream" \
         -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"0.1"}}}')
     assert_eq "$code" "401" "auth: MCP no token returns 401" || { stop_extra_container "$name"; return 1; }
+
+    # MCP must reject query-string tokens too.
+    code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$base/mcp/?auth_token=${key}" \
+        -H "Content-Type: application/json" \
+        -H "Accept: application/json, text/event-stream" \
+        -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"0.1"}}}')
+    assert_eq "$code" "401" "auth: MCP query token returns 401" || { stop_extra_container "$name"; return 1; }
 
     # MCP /mcp/ with correct key must succeed (not 401)
     code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$base/mcp/" \

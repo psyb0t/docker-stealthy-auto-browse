@@ -208,14 +208,11 @@ Set `AUTH_TOKEN` to require a Bearer token on all requests (except `/health`):
 docker run -d -p 8080:8080 -e AUTH_TOKEN=mysecretkey psyb0t/stealthy-auto-browse
 ```
 
-Pass the token via header or query param:
+Pass the token in the `Authorization` header:
 
 ```bash
 # Header
 curl -H "Authorization: Bearer mysecretkey" http://localhost:8080 ...
-
-# Query param (useful for MCP clients that can't set headers)
-# MCP endpoint: http://localhost:8080/mcp/?auth_token=mysecretkey
 ```
 
 ## Examples

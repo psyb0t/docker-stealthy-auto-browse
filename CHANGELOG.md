@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.0.0] — 2026-07-29
+
+### Breaking
+
+- **Query-string authentication has been removed.** When `AUTH_TOKEN` is configured, authenticated endpoints now reject requests containing `?auth_token=<token>` with HTTP 401. Send the token only in the `Authorization: Bearer <token>` header for both the HTTP API and MCP endpoint.
+
+### Changed
+
+- Token comparison now uses a constant-time comparison.
+- Codex and OpenClaw plugin metadata now tracks the release version.
+
 ## [1.4.7] — 2026-07-27
 
 ### Fixed

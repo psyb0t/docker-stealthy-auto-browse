@@ -72,7 +72,7 @@ All commands: `POST $STEALTHY_AUTO_BROWSE_URL/` with JSON body `{"action": "name
 Authorization: Bearer <key>
 ```
 
-A query-param form (`?auth_token=<key>`) exists for MCP clients that can't set headers — avoid it for normal API calls because query strings end up in logs.
+Query-string authentication is not supported because URLs leak into logs.
 
 In single-instance mode, requests are serialized automatically — only one runs at a time, the rest queue up.
 
@@ -384,7 +384,7 @@ http://127.0.0.1:8080/mcp/
 
 Connect any MCP-compatible client to that URL. All actions from the HTTP API are available as tools — dedicated tools include `goto`, `screenshot`, `system_click`, `system_type`, `eval_js`, `get_text`, `click`, `fill`, `run_script` (multi-step), and `browser_action` (generic fallback for everything else — cookies, tabs, storage, dialogs, downloads, logging, recording, and more).
 
-If `AUTH_TOKEN` is set, connect to `http://127.0.0.1:8080/mcp/?auth_token=<key>`. Avoid sending tokens via query string when the endpoint is reachable beyond localhost — query strings end up in proxy logs.
+If `AUTH_TOKEN` is set, configure the MCP client to send `Authorization: Bearer <key>` when connecting to `http://127.0.0.1:8080/mcp/`.
 
 Works in both standalone and cluster mode. In cluster mode, only `run_script` is available (same restriction as HTTP API).
 

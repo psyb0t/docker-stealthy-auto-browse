@@ -17,6 +17,7 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+import hmac
 import io
 import os
 import random
@@ -1040,9 +1041,13 @@ async def auth_middleware(request: Request, call_next: Any) -> Any:
     /health is always allowed so HAProxy health checks work without auth.
     """
     if AUTH_TOKEN and request.url.path != "/health":
+        if "auth_token" in request.query_params:
+            return JSONResponse(
+                {"success": False, "error": "Unauthorized"}, status_code=401
+            )
         auth = request.headers.get("Authorization", "")
-        query_token = request.query_params.get("auth_token", "")
-        if auth != f"Bearer {AUTH_TOKEN}" and query_token != AUTH_TOKEN:
+        expected_auth = f"Bearer {AUTH_TOKEN}"
+        if not hmac.compare_digest(auth.encode(), expected_auth.encode()):
             return JSONResponse(
                 {"success": False, "error": "Unauthorized"}, status_code=401
             )
