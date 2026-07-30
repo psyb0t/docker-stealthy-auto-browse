@@ -257,13 +257,22 @@ Capture `console.log`, `console.error`, `console.warn`, and other console output
 | `sleep`           | `duration`                                                  | Pauses for N seconds. Prefer `wait_for_element` or `wait_for_text` when waiting for page content.                                                                                                                                            |
 | `close`           | —                                                           | Shuts down the browser. The container stops after this.                                                                                                                                                                                      |
 | `save_screenshot` | `output_id`, `path`, `type`, `width`, `height`, `whLargest` | Captures a screenshot. `type`: `"browser"` (default) or `"desktop"`. Optional `path` to also write PNG to disk. In script mode, `output_id` collects the base64 PNG into the outputs dict. Supports resize via `width`/`height`/`whLargest`. |
-| `get_virtual_media_state` | — | Reports whether a virtual camera and/or microphone source was configured at browser startup. |
+| `get_virtual_media_state` | — | Reports virtual-media configuration and, in dynamic mode, each active source basename and source revision. |
 
 ### Virtual Camera and Microphone
 
-Set `VIRTUAL_CAMERA_FILE` and/or `VIRTUAL_MICROPHONE_FILE` to make the configured video or audio file available as the corresponding track returned by page `navigator.mediaDevices.getUserMedia()`. Both files must resolve inside `VIRTUAL_MEDIA_DIR` (default `/media`), normally a read-only bind mount. The browser must restart after changing the source configuration.
+Set `VIRTUAL_CAMERA_FILE` and/or `VIRTUAL_MICROPHONE_FILE` to make the configured video or audio file available as the corresponding track returned by page `navigator.mediaDevices.getUserMedia()`. Both files must resolve inside `VIRTUAL_MEDIA_DIR` (default `/media`), normally a read-only bind mount. The browser must restart after changing this static source configuration.
 
-This virtualizes `getUserMedia()` streams only: it does not add devices to `enumerateDevices()`. If a request asks for a kind without a configured virtual source, it fails with `NotFoundError` instead of using a native device. Virtual tracks retain the configured file's format and do not emulate incompatible exact media constraints. Use `get_virtual_media_state` to confirm which source types were configured.
+With `VIRTUAL_MEDIA_DYNAMIC=true`, these actions switch a file-backed source while preserving the identities of tracks already returned to a page. Dynamic mode is disabled by default.
+
+| Action | Parameters | What It Does |
+| ------ | ---------- | ------------ |
+| `set_virtual_media_source` | `kind`, `source` | Selects an existing source for `kind` (`"camera"` or `"microphone"`). `source` is a relative name that resolves to a regular file inside `VIRTUAL_MEDIA_DIR`. |
+| `upload_virtual_media` | `kind`, `filename`, `content_base64`, `activate` | Stores strict base64 file content under `VIRTUAL_MEDIA_DIR` for `kind` (`"camera"` or `"microphone"`). `filename` must be a safe basename whose declared media type matches `kind`; it supplies only the extension. The response returns a generated collision-safe stored basename, and no existing named source is overwritten. Before storage or activation, `ffprobe` must confirm the decoded content contains the requested video or audio stream. `activate` optionally switches to the uploaded source immediately. Uploads are limited by `VIRTUAL_MEDIA_UPLOAD_MAX_BYTES` (50 MiB by default). |
+
+Both actions require dynamic mode. Uploads also require a writable `VIRTUAL_MEDIA_DIR`. They are ordinary authenticated actions: when `AUTH_TOKEN` is set, include `Authorization: Bearer <token>` as for every other action. The controller accepts only approved files under the configured media directory—never arbitrary host paths, remote URLs, WebSocket streams, or other live ingress. `get_virtual_media_state` reports the active source basename and revision without exposing source paths or upload bytes.
+
+This virtualizes `getUserMedia()` streams only: it does not add devices to `enumerateDevices()`. If a request asks for a kind without a configured virtual source, it fails with `NotFoundError` instead of using a native device. Virtual tracks retain the configured file's format and do not emulate incompatible exact media constraints. Use `get_virtual_media_state` to confirm the configured source types and dynamic source state.
 
 ### Screen Recording
 

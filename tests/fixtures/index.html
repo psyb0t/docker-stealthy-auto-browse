@@ -50,6 +50,7 @@
   <!-- Virtual-media feedback for camera/microphone integration tests -->
   <section id="media-test">
     <button id="media-start" type="button">Start camera and microphone</button>
+    <button id="media-measure" type="button" disabled>Measure virtual media</button>
     <video id="media-preview" autoplay muted playsinline></video>
     <pre id="media-result">not-started</pre>
   </section>
@@ -82,56 +83,137 @@
       domList.appendChild(domListItem);
     }
 
+    async function measureVirtualMedia() {
+      var fixture = window.mediaFixture;
+      if (!fixture) {
+        throw new Error("Virtual media has not started");
+      }
+
+      await new Promise(function(resolve) { setTimeout(resolve, 1500); });
+      var canvas = document.createElement("canvas");
+      canvas.width = fixture.video.videoWidth;
+      canvas.height = fixture.video.videoHeight;
+      if (!canvas.width || !canvas.height) {
+        throw new Error("Virtual camera produced no frame");
+      }
+      var context = canvas.getContext("2d");
+      context.drawImage(fixture.video, 0, 0);
+      var pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      var videoSignal = 0;
+      for (var index = 0; index < pixels.length; index += 4) {
+        videoSignal += pixels[index] + pixels[index + 1] + pixels[index + 2];
+      }
+
+      var samples = new Float32Array(fixture.analyser.fftSize);
+      fixture.analyser.getFloatTimeDomainData(samples);
+      var audioLevel = 0;
+      for (var sampleIndex = 0; sampleIndex < samples.length; sampleIndex += 1) {
+        audioLevel += Math.abs(samples[sampleIndex]);
+      }
+      audioLevel /= samples.length;
+
+      var spectrum = new Float32Array(fixture.analyser.frequencyBinCount);
+      fixture.analyser.getFloatFrequencyData(spectrum);
+      var audioPeakBin = 0;
+      for (var binIndex = 1; binIndex < spectrum.length; binIndex += 1) {
+        if (spectrum[binIndex] > spectrum[audioPeakBin]) {
+          audioPeakBin = binIndex;
+        }
+      }
+
+      var recorder = new MediaRecorder(new MediaStream([fixture.audioTrack]));
+      var chunks = [];
+      var stopped = new Promise(function(resolve) {
+        recorder.ondataavailable = function(event) { chunks.push(event.data); };
+        recorder.onstop = resolve;
+      });
+      recorder.start(250);
+      await new Promise(function(resolve) { setTimeout(resolve, 750); });
+      recorder.stop();
+      await stopped;
+
+      var recording = new Blob(chunks, { type: recorder.mimeType });
+      var decodedAudio = await fixture.audioContext.decodeAudioData(
+        await recording.arrayBuffer()
+      );
+      var recordedSamples = decodedAudio.getChannelData(0);
+      var recordedAudioLevel = 0;
+      var zeroCrossings = 0;
+      for (var recordedIndex = 0; recordedIndex < recordedSamples.length; recordedIndex += 1) {
+        var recordedSample = recordedSamples[recordedIndex];
+        recordedAudioLevel += Math.abs(recordedSample);
+        if (recordedIndex > 0 && recordedSamples[recordedIndex - 1] <= 0 && recordedSample > 0) {
+          zeroCrossings += 1;
+        }
+      }
+      recordedAudioLevel /= recordedSamples.length;
+      var estimatedFrequency = zeroCrossings * decodedAudio.sampleRate / recordedSamples.length;
+
+      return {
+        status: "ok",
+        videoWidth: canvas.width,
+        videoHeight: canvas.height,
+        videoSignal: videoSignal,
+        audioLevel: recordedAudioLevel,
+        audioPeakBin: Math.round(estimatedFrequency),
+        liveAudioLevel: audioLevel,
+        audioChunks: chunks.length,
+        audioBytes: chunks.reduce(function(total, chunk) { return total + chunk.size; }, 0),
+        videoTrackId: fixture.videoTrack.id,
+        audioTrackId: fixture.audioTrack.id
+      };
+    }
+
+    async function writeVirtualMediaMeasurement() {
+      var result = document.getElementById("media-result");
+      result.textContent = JSON.stringify({ status: "measuring" });
+      try {
+        result.textContent = JSON.stringify(await measureVirtualMedia());
+      } catch (error) {
+        result.textContent = JSON.stringify({ status: "error", message: String(error) });
+      }
+    }
+
     document.getElementById("media-start").addEventListener("click", async function() {
       var result = document.getElementById("media-result");
       var video = document.getElementById("media-preview");
-      var stream;
+      result.textContent = JSON.stringify({ status: "starting" });
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        var audioContext = new AudioContext();
+        var analyser = audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        audioContext.resume().catch(function(error) {
+          result.textContent = JSON.stringify({ status: "error", message: String(error) });
+        });
+
+        var stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        result.textContent = JSON.stringify({ status: "stream-acquired" });
         var videoTrack = stream.getVideoTracks()[0];
         var audioTrack = stream.getAudioTracks()[0];
         video.srcObject = new MediaStream([videoTrack]);
+
+        var audioSource = audioContext.createMediaStreamSource(new MediaStream([audioTrack]));
+        audioSource.connect(analyser);
+        analyser.connect(audioContext.destination);
+
         await video.play();
-        await new Promise(function(resolve) { setTimeout(resolve, 500); });
+        result.textContent = JSON.stringify({ status: "preview-playing" });
 
-        var canvas = document.createElement("canvas");
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        var context = canvas.getContext("2d");
-        context.drawImage(video, 0, 0);
-        var pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-        var videoSignal = 0;
-        for (var index = 0; index < pixels.length; index += 4) {
-          videoSignal += pixels[index] + pixels[index + 1] + pixels[index + 2];
-        }
-
-        var recorder = new MediaRecorder(new MediaStream([audioTrack]));
-        var chunks = [];
-        var stopped = new Promise(function(resolve) {
-          recorder.ondataavailable = function(event) { chunks.push(event.data); };
-          recorder.onstop = resolve;
-        });
-        recorder.start(250);
-        await new Promise(function(resolve) { setTimeout(resolve, 750); });
-        recorder.stop();
-        await stopped;
-
-        result.textContent = JSON.stringify({
-          status: "ok",
-          videoWidth: canvas.width,
-          videoHeight: canvas.height,
-          videoSignal: videoSignal,
-          audioChunks: chunks.length,
-          audioBytes: chunks.reduce(function(total, chunk) { return total + chunk.size; }, 0)
-        });
+        window.mediaFixture = {
+          video: video,
+          videoTrack: videoTrack,
+          audioTrack: audioTrack,
+          audioContext: audioContext,
+          analyser: analyser
+        };
+        document.getElementById("media-measure").disabled = false;
+        await writeVirtualMediaMeasurement();
       } catch (error) {
         result.textContent = JSON.stringify({ status: "error", message: String(error) });
-      } finally {
-        if (stream) {
-          stream.getTracks().forEach(function(track) { track.stop(); });
-        }
       }
     });
+
+    document.getElementById("media-measure").addEventListener("click", writeVirtualMediaMeasurement);
   </script>
 </body>
 </html>

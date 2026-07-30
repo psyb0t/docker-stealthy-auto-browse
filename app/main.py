@@ -29,7 +29,7 @@ from typing import Any
 
 import uvicorn
 import yaml
-from browser import Browser, BrowserConfig
+from browser import Browser, BrowserConfig, BrowserError
 from fastapi import FastAPI, Request
 from PIL import Image
 from recorder import Recorder, RecorderError, cleanup_orphan_tmp_files
@@ -508,6 +508,57 @@ async def dispatch_action(cmd: dict) -> dict:
         if not _last_dialog:
             return make_response(True, {"dialog": None})
         return make_response(True, {"dialog": _last_dialog})
+
+    # Runtime controls are independent of the active page. A caller can
+    # select a source before a page requests getUserMedia().
+    if action == "get_virtual_media_state":
+        if browser is None:
+            return make_response(False, error="Browser not ready")
+        return make_response(True, browser.virtual_media_state())
+
+    if action == "set_virtual_media_source":
+        if browser is None:
+            return make_response(False, error="Browser not ready")
+        kind = cmd.get("kind")
+        source = cmd.get("source")
+        if not isinstance(kind, str):
+            return make_response(False, error="kind must be a string")
+        if not isinstance(source, str):
+            return make_response(False, error="source must be a string")
+        try:
+            state = browser.set_virtual_media_source(kind, source)
+            await browser.notify_virtual_media_source_change()
+            return make_response(True, state)
+        except BrowserError as error:
+            return make_response(False, error=str(error))
+
+    if action == "upload_virtual_media":
+        if browser is None:
+            return make_response(False, error="Browser not ready")
+        kind = cmd.get("kind")
+        filename = cmd.get("filename")
+        content_b64 = cmd.get("content_base64")
+        activate = cmd.get("activate", False)
+        if not isinstance(kind, str):
+            return make_response(False, error="kind must be a string")
+        if not isinstance(filename, str):
+            return make_response(False, error="filename must be a string")
+        if not isinstance(content_b64, str):
+            return make_response(False, error="content_base64 must be a string")
+        if not isinstance(activate, bool):
+            return make_response(False, error="activate must be a boolean")
+        try:
+            result = browser.upload_virtual_media(
+                kind,
+                filename,
+                content_b64,
+                activate=activate,
+            )
+            if activate:
+                await browser.notify_virtual_media_source_change()
+        except BrowserError as error:
+            return make_response(False, error=str(error))
+        return make_response(True, result)
 
     # --- Tab management ---
 
@@ -992,10 +1043,6 @@ async def dispatch_action(cmd: dict) -> dict:
             properties,
         )
         return make_response(True, {"selector": selector, "styles": styles})
-
-    if action == "get_virtual_media_state":
-        assert browser is not None
-        return make_response(True, browser.virtual_media_state())
 
     # --- Wait conditions ---
 

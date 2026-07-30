@@ -110,7 +110,11 @@ docker run -d -p 8080:8080 \
   psyb0t/stealthy-auto-browse
 ```
 
-Sources must remain inside `/media`; restart the browser after changing them. A request for a kind without a configured virtual source fails with `NotFoundError` rather than falling back to hardware. Virtual tracks use the source file's native format, so pages must not require incompatible exact media constraints. This virtualizes `getUserMedia()` only, not `enumerateDevices()`. See [docs/configuration.md](docs/configuration.md) for details.
+Sources must remain inside `/media`; restart the browser after changing them. A request for a kind without a configured virtual source fails with `NotFoundError` rather than falling back to hardware. Virtual tracks use the source file's native format, so pages must not require incompatible exact media constraints. This virtualizes `getUserMedia()` only, not `enumerateDevices()`.
+
+To switch sources during an authorized test without replacing an already acquired camera or microphone track, enable `VIRTUAL_MEDIA_DYNAMIC=true`. Dynamic mode is disabled by default. Use `set_virtual_media_source` to choose an existing relative file name under `VIRTUAL_MEDIA_DIR`, or `upload_virtual_media` to add bounded base64 content and optionally activate it. An upload filename is only a safe, type-matching media name; the service generates a collision-safe stored basename, returns it, and never overwrites an existing named source. Before storage or activation, the decoded upload is checked with `ffprobe` for a stream matching the requested camera or microphone kind. The media directory must be writable for uploads; `VIRTUAL_MEDIA_UPLOAD_MAX_BYTES` defaults to 50 MiB. Existing page streams keep their track identities while the source changes.
+
+Dynamic mode accepts files from the configured media directory only. It does not accept arbitrary host paths, remote URLs, WebSocket streams, or other live ingress. Both actions use the normal API authentication: when `AUTH_TOKEN` is set, send the usual `Authorization: Bearer <token>` header. See [docs/api.md#virtual-camera-and-microphone](docs/api.md#virtual-camera-and-microphone) and [docs/configuration.md](docs/configuration.md) for the action contract and writable-volume setup.
 
 ## MCP Server
 

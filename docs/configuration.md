@@ -14,9 +14,11 @@
 | `HTTP_LISTEN_HOST` | `0.0.0.0`       | Host address the HTTP API binds to.                                                                                                                                                                                                                                                                      |
 | `HTTP_LISTEN_PORT` | `8080`          | Port the HTTP API listens on.                                                                                                                                                                                                                                                                            |
 | `AUTH_TOKEN`       | —               | If set, all requests (except `/health`) require an `Authorization: Bearer <token>` header. Applies to both HTTP API and MCP.                                                                                                                                                                             |
-| `VIRTUAL_MEDIA_DIR` | `/media` | Directory containing virtual media files. Configured source paths must resolve inside this directory. Mount it read-only. |
+| `VIRTUAL_MEDIA_DIR` | `/media` | Directory containing virtual media files. Configured source paths and dynamic source names must resolve inside this directory. Mount it read-only for static media; dynamic uploads require it to be writable. |
 | `VIRTUAL_CAMERA_FILE` | — | Video file to return as the video track from page `getUserMedia()`. Absolute or relative to `VIRTUAL_MEDIA_DIR`; validated at startup. |
 | `VIRTUAL_MICROPHONE_FILE` | — | Audio file to return as the audio track from page `getUserMedia()`. Absolute or relative to `VIRTUAL_MEDIA_DIR`; validated at startup. |
+| `VIRTUAL_MEDIA_DYNAMIC` | `false` | Enables runtime selection and bounded upload of file-backed virtual camera and microphone sources. Existing static-media behavior is unchanged when false. Uploads require a safe filename with a declared video/audio type matching the requested kind, are stored under generated collision-safe basenames, and are `ffprobe`-checked for the requested stream before storage or activation. |
+| `VIRTUAL_MEDIA_UPLOAD_MAX_BYTES` | `50 MiB` | Maximum decoded upload size accepted by `upload_virtual_media` when dynamic mode is enabled. |
 | `VNC_LISTEN_HOST`  | `0.0.0.0`       | Host address VNC (noVNC + x11vnc) binds to.                                                                                                                                                                                                                                                              |
 | `VNC_LISTEN_PORT`  | `5900`          | Port the noVNC web viewer listens on.                                                                                                                                                                                                                                                                    |
 | `REDIS_URL`        | —               | Redis connection string for cross-instance cookie sync. See [cluster-mode.md](./cluster-mode.md).                                                                                                                                                                                                        |
@@ -71,7 +73,20 @@ docker run -d -p 8080:8080 \
   psyb0t/stealthy-auto-browse
 ```
 
-The files are supplied only to page `navigator.mediaDevices.getUserMedia()` calls; they do not create native devices in `enumerateDevices()`. When virtual media is configured, `getUserMedia()` is also made available to HTTP pages so controlled local test fixtures can report camera/microphone results directly. Requests for a kind without a configured source fail with `NotFoundError` rather than using hardware; virtual tracks retain the source file's format and do not emulate incompatible exact constraints. Source paths are resolved at browser startup, must stay inside `VIRTUAL_MEDIA_DIR` (including after symlink resolution), and require a browser restart to change. Treat the mounted media as test input for the pages you navigate to.
+The files are supplied only to page `navigator.mediaDevices.getUserMedia()` calls; they do not create native devices in `enumerateDevices()`. When virtual media is configured, `getUserMedia()` is also made available to HTTP pages so controlled local test fixtures can report camera/microphone results directly. Requests for a kind without a configured source fail with `NotFoundError` rather than using hardware; virtual tracks retain the source file's format and do not emulate incompatible exact media constraints. Source paths are resolved at browser startup, must stay inside `VIRTUAL_MEDIA_DIR` (including after symlink resolution), and require a browser restart to change. Treat the mounted media as test input for the pages you navigate to.
+
+**Dynamic virtual media (runtime source switching):**
+
+```bash
+mkdir -p ./media
+docker run -d -p 8080:8080 \
+  -v ./media:/media:rw \
+  -e VIRTUAL_MEDIA_DYNAMIC=true \
+  -e AUTH_TOKEN=your-token-here \
+  psyb0t/stealthy-auto-browse
+```
+
+Dynamic mode remains file-backed: `set_virtual_media_source` accepts an existing relative source name, and `upload_virtual_media` stores a bounded base64 upload inside `VIRTUAL_MEDIA_DIR`. Its filename must be a safe basename with a declared media type matching the requested kind; it supplies only the extension. The service generates and returns a collision-safe stored basename rather than overwriting a named source, and checks the decoded file with `ffprobe` for the requested stream before storage or activation. The directory must be writable for uploads; the decoded payload limit is `VIRTUAL_MEDIA_UPLOAD_MAX_BYTES` (50 MiB by default). A page that has already received a virtual stream keeps the same camera/microphone track identities while the source changes. Dynamic mode does not accept arbitrary host paths, remote URLs, WebSocket streams, or other live media ingress. Both actions use the normal Bearer authentication when `AUTH_TOKEN` is set. See [the API reference](./api.md#virtual-camera-and-microphone) for parameters and failure conditions.
 
 ## Persistent Profiles
 

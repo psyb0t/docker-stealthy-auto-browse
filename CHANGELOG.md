@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.2.0] — 2026-07-30
+
+### Added
+
+- **Runtime-switchable virtual media.** Set `VIRTUAL_MEDIA_DYNAMIC=true` to select an existing contained camera or microphone file with `set_virtual_media_source`, or upload bounded base64 media with `upload_virtual_media`. Both paths preserve camera and microphone track identities already acquired by a page, so authorized compatibility tests can change their input without re-requesting `getUserMedia()`.
+- Dynamic uploads use generated collision-safe filenames, strict base64 decoding, a configurable `VIRTUAL_MEDIA_UPLOAD_MAX_BYTES` limit (50 MiB by default), and `ffprobe` stream validation before storage or activation. Source selection accepts only regular files contained in `VIRTUAL_MEDIA_DIR`; remote URLs, WebSocket feeds, arbitrary host paths, and other live ingress remain unsupported.
+- `get_virtual_media_state` now reports dynamic-mode state, active source basenames, and the source revision without exposing source paths or uploaded bytes.
+
+### Changed
+
+- The HTTP API, MCP descriptions, README, configuration guide, and published agent skill now document runtime source switching, writable-volume requirements for uploads, authentication, and static-mode compatibility.
+
 ## [2.1.0] — 2026-07-29
 
 ### Added
