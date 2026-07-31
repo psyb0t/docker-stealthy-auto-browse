@@ -174,6 +174,8 @@ cat my-script.yaml | docker run --rm -i \
 
 Full docs: [docs/script-mode.md](docs/script-mode.md)
 
+Script mode also supports explicit `if` branches plus bounded `repeat` and `while` loops. Conditions can inspect elements, visible text, URLs, JavaScript booleans, and prior `output_id` values; see [the control-flow reference](docs/script-mode.md#control-flow).
+
 ## Page Loaders
 
 Define URL patterns + action sequences in YAML files. Mount them at `/loaders`. Whenever `goto` matches a pattern, the loader runs automatically — removes popups, waits for content, cleans up the page. Greasemonkey for the HTTP API.

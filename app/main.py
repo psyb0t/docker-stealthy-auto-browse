@@ -33,7 +33,7 @@ from browser import Browser, BrowserConfig, BrowserError
 from fastapi import FastAPI, Request
 from PIL import Image
 from recorder import Recorder, RecorderError, cleanup_orphan_tmp_files
-from script_runner import load_script, run_script
+from script_runner import ScriptValidationError, load_script, run_script, validate_script
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from system import System
 
@@ -480,11 +480,12 @@ async def dispatch_action(cmd: dict) -> dict:
         steps = cmd.get("steps")
         yaml_content = cmd.get("yaml")
         if yaml_content:
-            script_data = yaml.safe_load(yaml_content)
-            if not script_data or not isinstance(script_data, dict):
+            if not isinstance(yaml_content, str):
+                return make_response(False, error="yaml must be a string")
+            try:
+                script_data = yaml.safe_load(yaml_content)
+            except yaml.YAMLError:
                 return make_response(False, error="invalid YAML")
-            if "steps" not in script_data:
-                return make_response(False, error="YAML missing steps")
         elif steps:
             script_data = {
                 "name": cmd.get("name", "api_script"),
@@ -493,6 +494,10 @@ async def dispatch_action(cmd: dict) -> dict:
             }
         else:
             return make_response(False, error="steps or yaml required")
+        try:
+            validate_script(script_data)
+        except ScriptValidationError as error:
+            return make_response(False, error=str(error))
         result = await run_script(script_data, dispatch_action, stdout=io.StringIO())
         result.pop("_binary", None)
         return make_response(True, result)

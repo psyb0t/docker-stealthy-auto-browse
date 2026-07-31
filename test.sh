@@ -63,6 +63,7 @@ MAIN_TESTS=(
     test_run_script_on_error_stop
     test_run_script_on_error_continue
     test_run_script_no_steps
+    test_run_script_control_flow
     test_request_lock
     # test_screenshots.sh
     test_screenshot_browser

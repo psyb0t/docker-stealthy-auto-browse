@@ -113,7 +113,12 @@ async def run_script(
     load-balanced cluster.
 
     Each step is a dict with "action" and its parameters. Add "output_id" to
-    any step to collect its result in the response outputs dict.
+    any action step to collect its result in the response outputs dict. Steps
+    can also use control nodes: {"if": {"condition": ..., "then": [...]}}
+    selects a branch; {"repeat": {"count": 1, "steps": [...]}} repeats a
+    bounded body; and {"while": {"condition": ..., "max_iterations": 1,
+    "steps": [...]}} runs only within its explicit bound. Conditions support
+    element, text, URL-glob, JavaScript-boolean, and prior-output checks.
 
     steps example: [{"action": "goto", "url": "https://example.com",
     "wait_until": "networkidle"}, {"action": "get_text", "output_id":

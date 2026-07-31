@@ -1,0 +1,72 @@
+name: Control Flow Fixture
+on_error: stop
+steps:
+  - action: goto
+    url: ${env.TEST_URL}
+    wait_until: domcontentloaded
+  - action: eval
+    expression: "true"
+    output_id: bootstrap
+  - if:
+      condition:
+        type: all
+        conditions:
+          - type: element
+            selector: "#test-form"
+            state: visible
+          - type: text
+            text: "${env.EXPECTED_TEXT}"
+          - type: url
+            matches: "*index.html"
+          - type: javascript
+            expression: "document.title === 'Test Page'"
+      then:
+        - action: eval
+          expression: "(() => { document.body.dataset.controlElement = 'then'; return 'element-text-url-javascript'; })()"
+          output_id: page_condition_branch
+      else:
+        - action: eval
+          expression: "'unexpected-else'"
+          output_id: page_condition_branch
+  - if:
+      condition:
+        type: output
+        output_id: bootstrap
+        path: [result]
+        equals: true
+      then:
+        - action: eval
+          expression: "(() => { document.body.dataset.controlOutput = 'then'; return 'output-then'; })()"
+          output_id: output_condition_branch
+  - if:
+      condition:
+        type: javascript
+        expression: "false"
+      then:
+        - action: eval
+          expression: "'unexpected-then'"
+          output_id: false_condition_branch
+      else:
+        - action: eval
+          expression: "(() => { document.body.dataset.controlElse = 'else'; return 'else-ran'; })()"
+          output_id: false_condition_branch
+  - repeat:
+      count: 3
+      steps:
+        - action: eval
+          expression: "(() => { window.controlRepeatCount = (window.controlRepeatCount || 0) + 1; return window.controlRepeatCount; })()"
+          output_id: repeat_count
+  - action: eval
+    expression: "(() => { window.controlWhileCount = 0; return true; })()"
+  - while:
+      condition:
+        type: javascript
+        expression: "window.controlWhileCount < 2"
+      max_iterations: 3
+      steps:
+        - action: eval
+          expression: "(() => { window.controlWhileCount += 1; return window.controlWhileCount; })()"
+          output_id: while_count
+  - action: eval
+    expression: "JSON.stringify({element: document.body.dataset.controlElement, output: document.body.dataset.controlOutput, elseBranch: document.body.dataset.controlElse, repeat: window.controlRepeatCount, while: window.controlWhileCount})"
+    output_id: control_flow_state

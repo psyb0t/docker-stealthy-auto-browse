@@ -171,12 +171,18 @@ try:
     r = tool_call(10, "run_script", {
         "steps": [
             {"action": "goto", "url": test_page, "wait_until": "load"},
-            {"action": "eval", "expression": "document.title", "output_id": "title"}
+            {
+                "if": {
+                    "condition": {"type": "element", "selector": "#test-form", "state": "visible"},
+                    "then": [{"action": "eval", "expression": "'mcp-then'", "output_id": "branch"}],
+                    "else": [{"action": "eval", "expression": "'mcp-else'", "output_id": "branch"}],
+                }
+            },
         ]
     })
     txt = tool_text(r)
-    ok = "Test Page" in txt and '"success": true' in txt or '"success":true' in txt
-    results.append(("10. run_script", ok, txt[:120] if not ok else ""))
+    ok = "mcp-then" in txt and ('"success": true' in txt or '"success":true' in txt)
+    results.append(("10. run_script control flow", ok, txt[:120] if not ok else ""))
 except Exception as e:
     results.append(("10. run_script", False, str(e)))
 

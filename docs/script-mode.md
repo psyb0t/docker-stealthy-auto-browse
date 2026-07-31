@@ -73,6 +73,65 @@ The JSON printed to stdout looks like this:
 - **All HTTP API actions work as script steps** — goto, click, fill, eval, wait_for_element, etc.
 - **Page loaders still fire** on `goto` if configured.
 
+## Control Flow
+
+Alongside ordinary `action` steps, scripts can use one control node per step: `if`, `repeat`, or `while`. Control nodes are intentionally explicit and bounded; they cannot carry sibling action fields.
+
+```yaml
+steps:
+  - action: goto
+    url: ${env.TARGET_URL}
+
+  - if:
+      condition:
+        type: element
+        selector: ".cookie-banner"
+        state: visible
+        timeout: 2
+      then:
+        - action: click
+          selector: ".cookie-banner button.accept"
+      else:
+        - action: eval
+          expression: "true"
+          output_id: no_cookie_banner
+
+  - repeat:
+      count: 3
+      steps:
+        - action: scroll
+          amount: -4
+
+  - while:
+      condition:
+        type: text
+        text: "Load more"
+      max_iterations: 5
+      steps:
+        - action: click
+          selector: "button.load-more"
+```
+
+`if` runs `then` when its condition matches and `else` when it does not. An omitted `else` is a successful no-op. `repeat.count` must be an integer from 1 to 100. `while.max_iterations` is mandatory and has the same range; if the condition still matches after that many body executions, the control step fails instead of silently truncating the workflow. All loop bodies together are limited to 1,000 executed steps, and control/condition nesting is limited to 8 levels.
+
+The script-level `on_error` policy applies inside every nested block. Each control node appears in `step_results` with its branch or per-iteration nested results, while top-level `steps_executed` and `steps_total` retain their existing top-level-step meaning.
+
+### Conditions
+
+Conditions are mappings with a `type`. `timeout` is optional (0 by default), polls for up to 60 seconds, and belongs only on the outer condition.
+
+| Type | Required fields | Matches when |
+| --- | --- | --- |
+| `element` | `selector`; optional `state` | CSS selector reaches `visible` (default), `hidden`, `attached`, or `detached`. |
+| `text` | `text` | The page body's visible text contains the string. |
+| `url` | `matches` | The current URL matches the glob pattern, e.g. `*dashboard*`. |
+| `javascript` | `expression` | The expression evaluates to the boolean `true`. Non-boolean results fail the control step. |
+| `output` | `output_id` and exactly one of `equals` or `exists` | A prior `output_id` exists or its optional list `path` equals the supplied JSON value. |
+| `all` / `any` | `conditions` | Every / any nested condition matches. |
+| `not` | `condition` | Its nested condition does not match. |
+
+Environment placeholders are substituted recursively, including strings in control blocks: `text: "${env.EXPECTED_TEXT}"`. Conditions use the existing page-evaluation capability; only use scripts on targets you are authorized to automate.
+
 ## Example: Screenshot a URL
 
 ```yaml

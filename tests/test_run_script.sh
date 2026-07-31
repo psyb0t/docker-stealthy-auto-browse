@@ -127,17 +127,74 @@ test_run_script_on_error_continue() {
 }
 
 test_run_script_no_steps() {
-    local resp code
+    local resp
 
     # No steps and no yaml — should fail
-    code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE" \
-        -H "Content-Type: application/json" -d '{"action":"run_script"}')
     resp=$(post '{"action":"run_script"}')
     local err
     err=$(echo "$resp" | python3 -c "import sys,json; print(json.load(sys.stdin).get('error',''))" 2>/dev/null)
     echo "$err" | grep -qi "required" || { echo "FAIL: run_script: no steps should error"; return 1; }
 
     echo "OK: run_script_no_steps (error=$err)"
+}
+
+test_run_script_control_flow() {
+    local resp
+    resp=$(python3 - "$BASE" "$TEST_PAGE" << 'PYEOF'
+import json
+import sys
+import urllib.request
+
+base, test_page = sys.argv[1:]
+body = {
+    "action": "run_script",
+    "name": "control_flow_http",
+    "steps": [
+        {"action": "goto", "url": test_page, "wait_until": "domcontentloaded"},
+        {
+            "if": {
+                "condition": {"type": "element", "selector": "#test-form", "state": "visible"},
+                "then": [{"action": "eval", "expression": "'http-then'", "output_id": "branch"}],
+                "else": [{"action": "eval", "expression": "'http-else'", "output_id": "branch"}],
+            }
+        },
+        {"repeat": {"count": 2, "steps": [{"action": "sleep", "duration": 0.01}]}},
+    ],
+}
+request = urllib.request.Request(
+    base,
+    data=json.dumps(body).encode(),
+    headers={"Content-Type": "application/json"},
+)
+print(urllib.request.urlopen(request, timeout=30).read().decode())
+PYEOF
+    )
+    assert_success "$resp" "run_script: control flow HTTP wrapper" || return 1
+
+    echo "$resp" | python3 -c '
+import json
+import sys
+
+data = json.load(sys.stdin)["data"]
+assert data["success"] is True
+assert data["steps_executed"] == data["steps_total"] == 3
+assert data["outputs"]["branch"]["result"] == "http-then"
+assert data["step_results"][1]["data"]["branch"] == "then"
+assert len(data["step_results"][2]["data"]["iterations"]) == 2
+' || return 1
+
+    local invalid_resp
+    invalid_resp=$(post '{"action":"run_script","steps":[{"repeat":{"count":0,"steps":[{"action":"ping"}]}}]}')
+    echo "$invalid_resp" | python3 -c '
+import json
+import sys
+
+response = json.load(sys.stdin)
+assert response["success"] is False
+assert "repeat count" in response["error"]
+' || return 1
+
+    echo "OK: run_script_control_flow (nested controls plus schema rejection)"
 }
 
 test_request_lock() {
@@ -196,5 +253,6 @@ ALL_TESTS+=(
     test_run_script_on_error_stop
     test_run_script_on_error_continue
     test_run_script_no_steps
+    test_run_script_control_flow
     test_request_lock
 )

@@ -6,12 +6,11 @@ SCRIPT_FIXTURES="$WORKDIR/tests/fixtures/scripts"
 _script_run() {
     local script_name="$1"
     shift
-    cat "$SCRIPT_FIXTURES/$script_name" | \
-        docker run --rm -i \
+    docker run --rm -i \
         -e TEST_URL="$TEST_PAGE" \
         "$@" \
         "$IMAGE_NAME:$TEST_TAG" --script \
-        2>/dev/null
+        2>/dev/null < "$SCRIPT_FIXTURES/$script_name"
 }
 
 test_script_basic() {
@@ -295,12 +294,11 @@ test_script_multi_action() {
 test_script_loaders() {
     # Pipe script via stdin with loaders mounted
     local out
-    out=$(cat "$SCRIPT_FIXTURES/loaders_work.yaml" | \
-        docker run --rm -i \
+    out=$(docker run --rm -i \
         -e TEST_URL="$TEST_PAGE" \
         -v "$WORKDIR/tests/fixtures/loaders:/loaders:ro" \
         "$IMAGE_NAME:$TEST_TAG" --script \
-        2>/dev/null)
+        2>/dev/null < "$SCRIPT_FIXTURES/loaders_work.yaml")
 
     if [ -z "$out" ]; then
         echo "  FAIL: script_loaders: no output"
@@ -319,6 +317,51 @@ test_script_loaders() {
     echo "OK: script_loaders (page loader triggered in script mode)"
 }
 
+test_script_runner_unit() {
+    docker run --rm \
+        -e PYTHONDONTWRITEBYTECODE=1 \
+        -v "$WORKDIR/tests/test_script_runner.py:/tests/test_script_runner.py:ro" \
+        --entrypoint python \
+        "$IMAGE_NAME:$TEST_TAG" \
+        /tests/test_script_runner.py || return 1
+    echo "OK: script_runner_unit (validation and control-flow semantics)"
+}
+
+test_script_control_flow() {
+    local out
+    out=$(_script_run control_flow.yaml -e EXPECTED_TEXT=Submit)
+    if [ -z "$out" ]; then
+        echo "  FAIL: script_control_flow: no output"
+        return 1
+    fi
+
+    echo "$out" | python3 -c '
+import json
+import sys
+
+result = json.load(sys.stdin)
+assert result["success"] is True
+assert result["steps_executed"] == result["steps_total"] == 9
+outputs = result["outputs"]
+assert outputs["page_condition_branch"]["result"] == "element-text-url-javascript"
+assert outputs["output_condition_branch"]["result"] == "output-then"
+assert outputs["false_condition_branch"]["result"] == "else-ran"
+assert outputs["repeat_count"]["result"] == 3
+assert outputs["while_count"]["result"] == 2
+state = json.loads(outputs["control_flow_state"]["result"])
+assert state == {"element": "then", "output": "then", "elseBranch": "else", "repeat": 3, "while": 2}
+assert result["step_results"][2]["data"]["branch"] == "then"
+assert result["step_results"][4]["data"]["branch"] == "else"
+assert len(result["step_results"][5]["data"]["iterations"]) == 3
+assert len(result["step_results"][7]["data"]["iterations"]) == 2
+' || {
+        echo "  FAIL: script_control_flow: unexpected result"
+        return 1
+    }
+
+    echo "OK: script_control_flow (all condition types, branches, repeat, while)"
+}
+
 ALL_TESTS+=(
     test_script_basic
     test_script_on_error_continue
@@ -333,4 +376,6 @@ ALL_TESTS+=(
     test_script_no_outputs
     test_script_multi_action
     test_script_loaders
+    test_script_runner_unit
+    test_script_control_flow
 )

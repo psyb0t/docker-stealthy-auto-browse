@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.3.0] — 2026-07-30
+
+### Added
+
+- **Bounded script control flow.** Script mode and `run_script` now support nested `if` branches plus `repeat` and `while` loops. Conditions cover CSS element state, visible text, URL globs, boolean JavaScript results, and prior named outputs; loop iteration, total loop work, condition timeout, and nesting are capped to keep submitted scripts finite.
+
+### Changed
+
+- The HTTP API, MCP tool description, README, script-mode reference, and published agent skill now document the control-flow schema and its execution limits.
+
 ## [2.2.0] — 2026-07-30
 
 ### Added

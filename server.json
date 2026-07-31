@@ -3,7 +3,7 @@
   "name": "io.github.psyb0t/stealthy-auto-browse",
   "title": "Stealthy Auto Browse",
   "description": "Self-hosted MCP server for stealth browser automation with human-like OS-level input.",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "repository": { "url": "https://github.com/psyb0t/docker-stealthy-auto-browse", "source": "github" },
   "packages": [ { "registryType": "oci", "identifier": "docker.io/psyb0t/stealthy-auto-browse:latest", "runtimeHint": "docker", "transport": { "type": "streamable-http", "url": "http://localhost:8080/mcp" } } ]
 }

@@ -466,6 +466,7 @@ steps:
 - **`output_id`** on any step collects its result into `outputs`. Screenshots become base64 data URIs.
 - **`${env.VAR_NAME}`** substitutes environment variables.
 - **`on_error: continue`** keeps going past failures. `stop` (default) halts.
+- **Control flow:** `if` conditions can inspect elements, text, URL globs, JavaScript booleans, and prior outputs. `repeat` and `while` require explicit bounds (1–100 iterations); a `while` that remains true at its bound fails visibly. See the [control-flow reference](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/docs/script-mode.md#control-flow) for the complete schema and limits.
 - **All HTTP API actions** work as script steps.
 - **Logs go to stderr**, stdout is clean JSON.
 - **Exit code** 0 on success, 1 on failure.
