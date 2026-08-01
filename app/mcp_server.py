@@ -142,6 +142,11 @@ async def run_script(
             No parameters.
         get_html: Get full HTML source of the current page.
             No parameters.
+        detect_challenge: Detect documented challenge widgets and conservative generic
+            challenge cues in the current page. Read-only: never clicks, solves, or
+            enters frames. Returns `absent`, `present`, or `unknown`, plus bounded
+            vendor, confidence, location, and sanitised frame-path evidence.
+            No parameters.
         get_page_info: Get current URL, title, ready state, viewport, document, and scroll data.
             No parameters.
         get_element: Get one element's tag, text, attributes, bounding box, and visibility.
@@ -364,6 +369,16 @@ if not _cluster_mode:
         return _text_result(await _call("get_html"))
 
     @mcp.tool
+    async def detect_challenge() -> str:
+        """Detect a challenge widget without clicking, solving, or entering its frame.
+
+        Returns a best-effort `absent`, `present`, or `unknown` status. Known matches
+        include vendor, confidence, locations, and sanitised frame origin/path evidence.
+        An absent result is not proof a site will never show a custom or later challenge.
+        """
+        return _text_result(await _call("detect_challenge"))
+
+    @mcp.tool
     async def get_interactive_elements(visible_only: bool = True) -> str:
         """Find all interactive elements on the page (buttons, links, inputs, etc.).
 
@@ -551,6 +566,7 @@ if not _cluster_mode:
         downloads (get_last_download, upload_file),
         virtual media (get_virtual_media_state, set_virtual_media_source,
         upload_virtual_media),
+        challenge detection (detect_challenge),
         network logging (enable_network_log, get_network_log, etc.),
         console logging (enable_console_log, get_console_log, etc.),
         display (calibrate, get_resolution, enter_fullscreen, exit_fullscreen),

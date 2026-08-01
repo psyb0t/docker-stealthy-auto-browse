@@ -10,7 +10,7 @@ _script_run() {
         -e TEST_URL="$TEST_PAGE" \
         "$@" \
         "$IMAGE_NAME:$TEST_TAG" --script \
-        2>/dev/null < "$SCRIPT_FIXTURES/$script_name"
+        2>/dev/null <"$SCRIPT_FIXTURES/$script_name"
 }
 
 test_script_basic() {
@@ -113,14 +113,14 @@ test_script_save_to_file() {
 }
 
 test_script_exit_code_success() {
-    _script_run basic.yaml > /dev/null
+    _script_run basic.yaml >/dev/null
     local code=$?
     assert_eq "$code" "0" "script_exit_code_success: exit 0" || return 1
     echo "OK: script_exit_code_success (exit code 0)"
 }
 
 test_script_exit_code_failure() {
-    _script_run on_error_stop.yaml > /dev/null
+    _script_run on_error_stop.yaml >/dev/null
     local code=$?
     assert_eq "$code" "1" "script_exit_code_failure: exit 1" || return 1
     echo "OK: script_exit_code_failure (exit code 1)"
@@ -298,7 +298,7 @@ test_script_loaders() {
         -e TEST_URL="$TEST_PAGE" \
         -v "$WORKDIR/tests/fixtures/loaders:/loaders:ro" \
         "$IMAGE_NAME:$TEST_TAG" --script \
-        2>/dev/null < "$SCRIPT_FIXTURES/loaders_work.yaml")
+        2>/dev/null <"$SCRIPT_FIXTURES/loaders_work.yaml")
 
     if [ -z "$out" ]; then
         echo "  FAIL: script_loaders: no output"
@@ -325,6 +325,16 @@ test_script_runner_unit() {
         "$IMAGE_NAME:$TEST_TAG" \
         /tests/test_script_runner.py || return 1
     echo "OK: script_runner_unit (validation and control-flow semantics)"
+}
+
+test_challenge_detector_unit() {
+    docker run --rm \
+        -e PYTHONDONTWRITEBYTECODE=1 \
+        -v "$WORKDIR/tests/test_challenge_detector.py:/tests/test_challenge_detector.py:ro" \
+        --entrypoint python \
+        "$IMAGE_NAME:$TEST_TAG" \
+        /tests/test_challenge_detector.py || return 1
+    echo "OK: challenge_detector_unit (signal matching, redaction, and failures)"
 }
 
 test_script_control_flow() {
@@ -362,6 +372,36 @@ assert len(result["step_results"][7]["data"]["iterations"]) == 2
     echo "OK: script_control_flow (all condition types, branches, repeat, while)"
 }
 
+test_script_challenge_detection() {
+    local out
+    out=$(_script_run challenge_detection.yaml)
+    if [ -z "$out" ]; then
+        echo "  FAIL: script_challenge_detection: no output"
+        return 1
+    fi
+
+    echo "$out" | python3 -c '
+import json
+import sys
+
+result = json.load(sys.stdin)
+assert result["success"] is True
+assert result["outputs"]["challenge"]["detected"] is True
+assert result["outputs"]["challenge"]["status"] == "present"
+assert {match["vendor"] for match in result["outputs"]["challenge"]["matches"]} == {
+    "altcha", "arkose", "aws_waf", "friendlycaptcha", "geetest", "hcaptcha",
+    "recaptcha", "turnstile", "unknown",
+}
+assert "TEST_PUBLIC_KEY_DO_NOT_USE" not in json.dumps(result)
+assert result["outputs"]["decision"]["result"] == "human-review-needed"
+' || {
+        echo "  FAIL: script_challenge_detection: unexpected result"
+        return 1
+    }
+
+    echo "OK: script_challenge_detection (full documented catalogue branches to human review)"
+}
+
 ALL_TESTS+=(
     test_script_basic
     test_script_on_error_continue
@@ -377,5 +417,7 @@ ALL_TESTS+=(
     test_script_multi_action
     test_script_loaders
     test_script_runner_unit
+    test_challenge_detector_unit
     test_script_control_flow
+    test_script_challenge_detection
 )

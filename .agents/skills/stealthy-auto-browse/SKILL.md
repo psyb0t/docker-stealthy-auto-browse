@@ -179,6 +179,7 @@ Response: `{"url": "...", "title": "..."}`
 {"action": "get_text"}
 {"action": "get_html"}
 {"action": "get_page_info"}
+{"action": "detect_challenge"}
 {"action": "get_element", "selector": "main article"}
 {"action": "get_elements", "selector": "main article a", "limit": 25}
 {"action": "get_computed_style", "selector": "main article", "properties": ["display", "font-size"]}
@@ -191,6 +192,12 @@ Response: `{"url": "...", "title": "..."}`
 `get_text` returns visible page text (truncated to 10,000 chars). Call this first after navigating.
 
 For structured extraction, use `get_element` for one matching node or `get_elements` for a bounded list. `get_page_info` returns document/viewport state, and `get_computed_style` exposes selected CSS values without a custom JavaScript expression.
+
+### Challenge Detection
+
+`detect_challenge` is read-only, best-effort detection for authorised QA flows that need to request human review. It returns `absent`, `present`, or `unknown`, plus bounded known-vendor or generic low-confidence evidence. It never clicks, solves, submits, or enters a challenge frame, and excludes query strings, fragments, site keys, response values, page text, and HTML from the result. It recognises documented Turnstile, reCAPTCHA, hCaptcha, Friendly Captcha, ALTCHA, Arkose, AWS WAF, and GeeTest signals when exposed in the top-level page.
+
+Use an `output_id` plus a script `if` output condition to decide whether your orchestration should notify a person. In cluster mode, place `detect_challenge` inside `run_script`.
 
 ### Virtual Camera and Microphone
 
@@ -394,7 +401,7 @@ The browser exposes all actions as MCP tools via Streamable HTTP at `/mcp/` on t
 http://127.0.0.1:8080/mcp/
 ```
 
-Connect any MCP-compatible client to that URL. All actions from the HTTP API are available as tools — dedicated tools include `goto`, `screenshot`, `system_click`, `system_type`, `eval_js`, `get_text`, `click`, `fill`, `run_script` (multi-step), and `browser_action` (generic fallback for everything else — cookies, tabs, storage, dialogs, downloads, logging, recording, and more).
+Connect any MCP-compatible client to that URL. All actions from the HTTP API are available as tools — dedicated tools include `goto`, `screenshot`, `system_click`, `system_type`, `eval_js`, `get_text`, `detect_challenge`, `click`, `fill`, `run_script` (multi-step), and `browser_action` (generic fallback for everything else — cookies, tabs, storage, dialogs, downloads, logging, recording, and more).
 
 If `AUTH_TOKEN` is set, configure the MCP client to send `Authorization: Bearer <key>` when connecting to `http://127.0.0.1:8080/mcp/`.
 

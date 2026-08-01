@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.4.0] — 2026-07-31
+
+### Added
+
+- **Read-only challenge detection.** `detect_challenge` reports bounded, privacy-minimised evidence for documented Turnstile, reCAPTCHA, hCaptcha, Friendly Captcha, ALTCHA, Arkose, AWS WAF, and GeeTest integrations, plus conservative visible generic cues. It is available through HTTP, script mode, `run_script`, and MCP; it never clicks, solves, enters frames, or exposes query strings, site keys, or response tokens.
+
+### Security
+
+- Arkose resource evidence now redacts key-bearing path segments before it can be returned by an API, script, or MCP response.
+
 ## [2.3.0] — 2026-07-30
 
 ### Added
@@ -10,7 +20,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
-- The HTTP API, MCP tool description, README, script-mode reference, and published agent skill now document the control-flow schema and its execution limits.
+- The HTTP API, MCP tool description, README, script-mode reference, and published agent skill now document script-control behavior and limits.
 
 ## [2.2.0] — 2026-07-30
 

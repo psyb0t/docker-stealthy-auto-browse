@@ -1,0 +1,23 @@
+name: Challenge Detection Fixture
+steps:
+  - action: goto
+    url: ${env.TEST_URL}
+    wait_until: domcontentloaded
+  - action: eval
+    expression: window.addDocumentedChallengeFixtures()
+  - action: detect_challenge
+    output_id: challenge
+  - if:
+      condition:
+        type: output
+        output_id: challenge
+        path: [detected]
+        equals: true
+      then:
+        - action: eval
+          expression: "'human-review-needed'"
+          output_id: decision
+      else:
+        - action: eval
+          expression: "'continue'"
+          output_id: decision

@@ -27,7 +27,10 @@ d = json.load(sys.stdin)
 assert 'url' in d, 'missing url'
 assert 'title' in d, 'missing title'
 assert 'window_offset' in d, 'missing window_offset'
-" || { echo "FAIL: state: missing expected fields"; return 1; }
+" || {
+        echo "FAIL: state: missing expected fields"
+        return 1
+    }
     echo "OK: state (status=ready)"
 }
 
@@ -63,7 +66,7 @@ PAGE_CONTENT_ERROR_CASES=(
 test_page_content() {
     local entry label action_json field expected
     for entry in "${PAGE_CONTENT_CASES[@]}"; do
-        IFS='|' read -r label action_json field expected <<< "$entry"
+        IFS='|' read -r label action_json field expected <<<"$entry"
         local resp val
         resp=$(post "$action_json")
         assert_success "$resp" "$label" || return 1
@@ -74,18 +77,205 @@ for k in '${field}'.split('.'):
     d = d[int(k)] if k.isdigit() else d[k]
 print(d)
 ")
-        echo "$val" | grep -q "$expected" || { echo "FAIL: $label: '$expected' not in response"; return 1; }
+        echo "$val" | grep -q "$expected" || {
+            echo "FAIL: $label: '$expected' not in response"
+            return 1
+        }
     done
 
     for entry in "${PAGE_CONTENT_ERROR_CASES[@]}"; do
-        IFS='|' read -r label action_json expected <<< "$entry"
+        IFS='|' read -r label action_json expected <<<"$entry"
         local resp error
         resp=$(post "$action_json")
         error=$(echo "$resp" | python3 -c "import json, sys; print(json.load(sys.stdin).get('error', ''))")
         assert_eq "$error" "$expected" "$label" || return 1
     done
 
-    echo "OK: page_content ($(( ${#PAGE_CONTENT_CASES[@]} + ${#PAGE_CONTENT_ERROR_CASES[@]} )) cases passed)"
+    echo "OK: page_content ($((${#PAGE_CONTENT_CASES[@]} + ${#PAGE_CONTENT_ERROR_CASES[@]})) cases passed)"
+}
+
+test_detect_challenge() {
+    local absent_resp insert_resp detected_resp network_resp sentinel_before sentinel_after
+    absent_resp=$(post "{\"action\": \"goto\", \"url\": \"$TEST_PAGE\"}")
+    assert_success "$absent_resp" "detect_challenge: goto fixture" || return 1
+
+    absent_resp=$(post '{"action": "detect_challenge"}')
+    assert_success "$absent_resp" "detect_challenge: absent response" || return 1
+    echo "$absent_resp" | python3 -c '
+import json
+import sys
+
+data = json.load(sys.stdin)["data"]
+assert data == {"detected": False, "status": "absent", "matches": []}
+' || return 1
+
+    post '{"action": "enable_network_log"}' >/dev/null
+    post '{"action": "clear_network_log"}' >/dev/null
+    insert_resp=$(post '{"action": "eval", "expression": "window.addDocumentedChallengeFixtures()"}')
+    assert_success "$insert_resp" "detect_challenge: insert documented dynamic fixtures" || return 1
+    sentinel_before=$(post '{"action": "eval", "expression": "document.querySelector(\u0027#documented-challenge-fixtures\u0027).getAttribute(\u0027data-detection-sentinel\u0027)"}')
+    assert_success "$sentinel_before" "detect_challenge: capture DOM sentinel" || return 1
+
+    detected_resp=$(post '{"action": "detect_challenge"}')
+    assert_success "$detected_resp" "detect_challenge: present response" || return 1
+    echo "$detected_resp" | python3 -c '
+import json
+import sys
+
+response = json.load(sys.stdin)
+data = response["data"]
+assert data["detected"] is True
+assert data["status"] == "present"
+matches = {item["vendor"]: item for item in data["matches"]}
+assert set(matches) == {
+    "altcha", "arkose", "aws_waf", "friendlycaptcha", "geetest", "hcaptcha",
+    "recaptcha", "turnstile", "unknown",
+}
+assert matches["turnstile"]["confidence"] == "high"
+assert {"iframe", "element", "script"}.issubset(matches["turnstile"]["locations"])
+assert matches["recaptcha"]["confidence"] == "high"
+assert matches["hcaptcha"]["confidence"] == "high"
+assert matches["friendlycaptcha"]["confidence"] == "high"
+assert matches["altcha"]["confidence"] == "high"
+assert matches["arkose"]["confidence"] == "high"
+assert matches["aws_waf"]["confidence"] == "high"
+assert matches["geetest"]["confidence"] == "medium"
+assert matches["unknown"]["confidence"] == "low"
+assert all("fixture_auth_token" not in json.dumps(item) for item in matches.values())
+assert "TEST_SITEKEY_DO_NOT_USE" not in json.dumps(data)
+assert "TEST_PUBLIC_KEY_DO_NOT_USE" not in json.dumps(data)
+' || return 1
+
+    sentinel_after=$(post '{"action": "eval", "expression": "document.querySelector(\u0027#documented-challenge-fixtures\u0027).getAttribute(\u0027data-detection-sentinel\u0027)"}')
+    printf "%s\n%s\n" "$sentinel_before" "$sentinel_after" | python3 -c '
+import json
+import sys
+
+before, after = (json.loads(value)["data"]["result"] for value in sys.stdin.read().splitlines())
+assert before == after == "unchanged"
+' || return 1
+
+    network_resp=$(post '{"action": "get_network_log"}')
+    echo "$network_resp" | python3 -c '
+import json
+import sys
+
+entries = json.load(sys.stdin)["data"]["log"]
+vendor_hosts = {
+    "arkoselabs.com", "challenges.cloudflare.com", "hcaptcha.com",
+    "recaptcha.net", "google.com", "friendlycaptcha", "jsdelivr.net",
+}
+assert not any(any(host in json.dumps(entry) for host in vendor_hosts) for entry in entries)
+' || return 1
+    post '{"action": "disable_network_log"}' >/dev/null
+
+    echo "OK: detect_challenge (absent, documented dynamic fixture catalogue, no DOM/network side effects)"
+}
+
+test_detect_challenge_raw_dom_selectors() {
+    local result
+    result=$(
+        python3 - "$BASE" "$TEST_PAGE" <<'PYEOF'
+import json
+import sys
+import urllib.request
+
+base_url, test_page = sys.argv[1:]
+
+
+def post(payload):
+    request = urllib.request.Request(
+        base_url + "/",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        data = json.loads(response.read().decode())
+    assert data["success"] is True, data
+    return data["data"]
+
+
+def assert_selector(name, expression, expected_vendor):
+    post({"action": "goto", "url": test_page})
+    post({"action": "eval", "expression": expression})
+    result = post({"action": "detect_challenge"})
+    vendors = {match["vendor"] for match in result["matches"]}
+    if expected_vendor is None:
+        assert result == {"detected": False, "status": "absent", "matches": []}, (name, result)
+    else:
+        assert result["detected"] is True, (name, result)
+        assert vendors == {expected_vendor}, (name, result)
+    assert "private-response-value" not in json.dumps(result), (name, result)
+
+
+CASES = (
+    (
+        "iframe title",
+        "const n=document.createElement('iframe');n.title='CAPTCHA verification';n.width='300';n.height='65';document.body.append(n)",
+        "unknown",
+    ),
+    (
+        "iframe challenge title",
+        "const n=document.createElement('iframe');n.title='Challenge available';n.width='300';n.height='65';document.body.append(n)",
+        "unknown",
+    ),
+    (
+        "dialog aria label",
+        "const n=document.createElement('div');n.setAttribute('role','dialog');n.setAttribute('aria-label','Human verification');n.style.width='300px';n.style.height='65px';document.body.append(n)",
+        "unknown",
+    ),
+    (
+        "data captcha",
+        "const n=document.createElement('div');n.setAttribute('data-captcha','fixture');n.style.width='300px';n.style.height='65px';document.body.append(n)",
+        "unknown",
+    ),
+    (
+        "data challenge",
+        "const n=document.createElement('div');n.setAttribute('data-challenge','fixture');n.style.width='300px';n.style.height='65px';document.body.append(n)",
+        "unknown",
+    ),
+    (
+        "hidden generic control",
+        "const n=document.createElement('div');n.setAttribute('data-captcha','fixture');n.style.display='none';document.body.append(n)",
+        None,
+    ),
+    (
+        "visibility-hidden generic control",
+        "const n=document.createElement('div');n.setAttribute('data-captcha','fixture');n.style.visibility='hidden';n.style.width='300px';n.style.height='65px';document.body.append(n)",
+        None,
+    ),
+    (
+        "zero-sized generic control",
+        "const n=document.createElement('div');n.setAttribute('data-captcha','fixture');document.body.append(n)",
+        None,
+    ),
+    (
+        "iframe srcdoc content is ignored",
+        "const n=document.createElement('iframe');n.srcdoc='<div data-captcha=\"inside-frame\"></div>';n.width='300';n.height='65';document.body.append(n)",
+        None,
+    ),
+    (
+        "reCAPTCHA named response",
+        "const n=document.createElement('textarea');n.name='g-recaptcha-response';n.value='private-response-value';document.body.append(n)",
+        "recaptcha",
+    ),
+    (
+        "hCaptcha named response",
+        "const n=document.createElement('textarea');n.name='h-captcha-response';n.value='private-response-value';document.body.append(n)",
+        "hcaptcha",
+    ),
+)
+
+for name, expression, expected_vendor in CASES:
+    assert_selector(name, expression, expected_vendor)
+
+print(f"OK: detect_challenge raw DOM selectors ({len(CASES)} cases passed)")
+PYEOF
+    ) || {
+        echo "FAIL: detect_challenge raw DOM selectors"
+        return 1
+    }
+    echo "$result"
 }
 
 test_get_interactive_elements() {
@@ -138,6 +328,8 @@ ALL_TESTS+=(
     test_state
     test_goto
     test_page_content
+    test_detect_challenge
+    test_detect_challenge_raw_dom_selectors
     test_get_interactive_elements
     test_get_resolution
     test_calibrate

@@ -120,6 +120,8 @@ Dynamic mode accepts files from the configured media directory only. It does not
 
 AI agents can control the browser over the [Model Context Protocol](https://modelcontextprotocol.io/) via Streamable HTTP at `/mcp` on the same port 8080. All browser actions are exposed as MCP tools — navigation, screenshots, clicking, typing, JavaScript evaluation, cookies, and more.
 
+For authorised test flows that need a human review when a verification widget appears, use `detect_challenge`. It is read-only: it reports a best-effort `absent`, `present`, or `unknown` status with bounded vendor/location evidence, but never clicks, enters a frame, or solves a challenge. In cluster mode, include it as a `run_script` step. See [the API reference](docs/api.md#challenge-detection).
+
 Connect any MCP-compatible client (Claude Desktop, Claude Code, custom agents) to `http://localhost:8080/mcp/` and start browsing.
 
 Works in both standalone and [cluster mode](#cluster-mode).

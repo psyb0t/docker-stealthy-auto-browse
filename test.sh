@@ -22,6 +22,7 @@ MAIN_TESTS=(
     test_state
     test_goto
     test_page_content
+    test_detect_challenge
     test_get_interactive_elements
     test_get_resolution
     test_calibrate
@@ -175,11 +176,11 @@ if [ ${#MAIN_TO_RUN[@]} -gt 0 ]; then
     echo "--- Sequential tests (shared container) ---"
     for t in "${MAIN_TO_RUN[@]}"; do
         local_log="$RESULTS_DIR/${t}.log"
-        echo "=== $t === [$(_ts)]" > "$local_log"
+        echo "=== $t === [$(_ts)]" >"$local_log"
 
         echo -n "[$(_ts)] $t ... "
         test_setup
-        if $t >> "$local_log" 2>&1; then
+        if $t >>"$local_log" 2>&1; then
             PASSED=$((PASSED + 1))
             echo "OK"
         else
@@ -221,10 +222,10 @@ if [ ${#EXTRA_TO_RUN[@]} -gt 0 ]; then
 
         # Launch test in background
         local_log="$RESULTS_DIR/${t}.log"
-        echo "=== $t === [$(_ts)]" > "$local_log"
+        echo "=== $t === [$(_ts)]" >"$local_log"
         (
             set +e
-            $t >> "$local_log" 2>&1
+            $t >>"$local_log" 2>&1
             exit $?
         ) &
         BG_PIDS["$t"]=$!
@@ -252,10 +253,10 @@ if [ ${#HEAVY_TO_RUN[@]} -gt 0 ]; then
     echo "--- Heavy tests (run alone) ---"
     for t in "${HEAVY_TO_RUN[@]}"; do
         local_log="$RESULTS_DIR/${t}.log"
-        echo "=== $t === [$(_ts)]" > "$local_log"
+        echo "=== $t === [$(_ts)]" >"$local_log"
 
         echo -n "[$(_ts)] $t ... "
-        if $t >> "$local_log" 2>&1; then
+        if $t >>"$local_log" 2>&1; then
             PASSED=$((PASSED + 1))
             echo "OK"
         else

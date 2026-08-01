@@ -40,7 +40,8 @@ print('true' if d['steps_executed'] == 3 and d['steps_total'] == 3 and d['succes
 
 test_run_script_yaml() {
     local resp
-    resp=$(python3 - "$BASE" "$TEST_PAGE" << 'PYEOF'
+    resp=$(
+        python3 - "$BASE" "$TEST_PAGE" <<'PYEOF'
 import json, sys, urllib.request
 base, test_page = sys.argv[1], sys.argv[2]
 yaml_content = f"""name: test_yaml
@@ -133,14 +134,18 @@ test_run_script_no_steps() {
     resp=$(post '{"action":"run_script"}')
     local err
     err=$(echo "$resp" | python3 -c "import sys,json; print(json.load(sys.stdin).get('error',''))" 2>/dev/null)
-    echo "$err" | grep -qi "required" || { echo "FAIL: run_script: no steps should error"; return 1; }
+    echo "$err" | grep -qi "required" || {
+        echo "FAIL: run_script: no steps should error"
+        return 1
+    }
 
     echo "OK: run_script_no_steps (error=$err)"
 }
 
 test_run_script_control_flow() {
     local resp
-    resp=$(python3 - "$BASE" "$TEST_PAGE" << 'PYEOF'
+    resp=$(
+        python3 - "$BASE" "$TEST_PAGE" <<'PYEOF'
 import json
 import sys
 import urllib.request
@@ -151,9 +156,11 @@ body = {
     "name": "control_flow_http",
     "steps": [
         {"action": "goto", "url": test_page, "wait_until": "domcontentloaded"},
+        {"action": "eval", "expression": "window.addDocumentedChallengeFixtures()"},
+        {"action": "detect_challenge", "output_id": "challenge"},
         {
             "if": {
-                "condition": {"type": "element", "selector": "#test-form", "state": "visible"},
+                "condition": {"type": "output", "output_id": "challenge", "path": ["detected"], "equals": True},
                 "then": [{"action": "eval", "expression": "'http-then'", "output_id": "branch"}],
                 "else": [{"action": "eval", "expression": "'http-else'", "output_id": "branch"}],
             }
@@ -177,10 +184,16 @@ import sys
 
 data = json.load(sys.stdin)["data"]
 assert data["success"] is True
-assert data["steps_executed"] == data["steps_total"] == 3
+assert data["steps_executed"] == data["steps_total"] == 5
+assert data["outputs"]["challenge"]["status"] == "present"
+assert {match["vendor"] for match in data["outputs"]["challenge"]["matches"]} == {
+    "altcha", "arkose", "aws_waf", "friendlycaptcha", "geetest", "hcaptcha",
+    "recaptcha", "turnstile", "unknown",
+}
+assert "TEST_PUBLIC_KEY_DO_NOT_USE" not in json.dumps(data)
 assert data["outputs"]["branch"]["result"] == "http-then"
-assert data["step_results"][1]["data"]["branch"] == "then"
-assert len(data["step_results"][2]["data"]["iterations"]) == 2
+assert data["step_results"][3]["data"]["branch"] == "then"
+assert len(data["step_results"][4]["data"]["iterations"]) == 2
 ' || return 1
 
     local invalid_resp
@@ -204,20 +217,20 @@ test_request_lock() {
     start=$(date +%s%N)
 
     curl -sf --max-time 10 -X POST "$BASE" -H 'Content-Type: application/json' \
-        -d '{"action":"sleep","duration":2}' > /dev/null &
+        -d '{"action":"sleep","duration":2}' >/dev/null &
     local pid1=$!
 
     sleep 0.1
 
     curl -sf --max-time 10 -X POST "$BASE" -H 'Content-Type: application/json' \
-        -d '{"action":"sleep","duration":2}' > /dev/null &
+        -d '{"action":"sleep","duration":2}' >/dev/null &
     local pid2=$!
 
     wait $pid1
     wait $pid2
 
     end=$(date +%s%N)
-    total_ms=$(( (end - start) / 1000000 ))
+    total_ms=$(((end - start) / 1000000))
 
     if [ "$total_ms" -lt 3500 ]; then
         echo "FAIL: request_lock: two 2s sleeps took ${total_ms}ms (expected >= 3500ms if serialized)"
@@ -226,7 +239,7 @@ test_request_lock() {
 
     # Verify /health is not blocked during a locked request
     curl -sf --max-time 10 -X POST "$BASE" -H 'Content-Type: application/json' \
-        -d '{"action":"sleep","duration":3}' > /dev/null &
+        -d '{"action":"sleep","duration":3}' >/dev/null &
     local pid3=$!
     sleep 0.2
 
@@ -234,7 +247,7 @@ test_request_lock() {
     health_start=$(date +%s%N)
     health=$(curl -sf --max-time 5 "$BASE/health")
     health_end=$(date +%s%N)
-    health_ms=$(( (health_end - health_start) / 1000000 ))
+    health_ms=$(((health_end - health_start) / 1000000))
     wait $pid3
 
     assert_eq "$health" "ok" "request_lock: /health not blocked" || return 1

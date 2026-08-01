@@ -1,6 +1,6 @@
 {
   "name": "@psyb0t/stealthy-auto-browse",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "mcpName": "io.github.psyb0t/stealthy-auto-browse",
   "description": "Connect an OpenClaw/MCP agent to a self-hosted stealthy-auto-browse stealth browser API over MCP.",
   "type": "module",

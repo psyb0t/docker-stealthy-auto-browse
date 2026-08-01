@@ -3,7 +3,7 @@
 #
 # Sourced by test.sh; registered as test_mcp in ALL_TESTS.
 
-test_mcp() {(
+test_mcp() { (
     set -euo pipefail
     local PASS=0 FAIL=0
 
@@ -12,7 +12,8 @@ test_mcp() {(
     # Run all MCP tests via a single Python script
     local result
     # shellcheck disable=SC2153 # BASE is initialized by tests/common.sh during setup.
-    result=$(python3 - "$BASE" "$TEST_PAGE" << 'PYEOF'
+    result=$(
+        python3 - "$BASE" "$TEST_PAGE" <<'PYEOF'
 import json, sys, urllib.request
 
 base_url = sys.argv[1]
@@ -68,6 +69,16 @@ def tool_text(resp):
             return c["text"]
     return ""
 
+EXPECTED_CHALLENGE_VENDORS = {
+    "altcha", "arkose", "aws_waf", "friendlycaptcha", "geetest", "hcaptcha",
+    "recaptcha", "turnstile", "unknown",
+}
+
+def challenge_data(text):
+    response = json.loads(text)
+    assert response["success"] is True
+    return response["data"]
+
 results = []
 
 # 1. Initialize
@@ -88,9 +99,9 @@ try:
     r = mcp_request(2, "tools/list", {})
     tools = r.get("result", {}).get("tools", [])
     names = [t["name"] for t in tools]
-    ok = len(tools) == 17
-    results.append((f"2. tools/list ({len(tools)} tools, expect 17)", ok, f"got: {names}" if not ok else ""))
-    expected = ["goto","get_text","get_html","screenshot","system_click","eval_js","browser_action","run_script"]
+    ok = len(tools) == 18
+    results.append((f"2. tools/list ({len(tools)} tools, expect 18)", ok, f"got: {names}" if not ok else ""))
+    expected = ["goto","get_text","get_html","detect_challenge","screenshot","system_click","eval_js","browser_action","run_script"]
     missing = [n for n in expected if n not in names]
     ok2 = len(missing) == 0
     results.append(("2b. expected tools present", ok2, f"missing: {missing}" if missing else ""))
@@ -115,32 +126,54 @@ try:
 except Exception as e:
     results.append(("4. get_text", False, str(e)))
 
-# 5. eval_js
+# 5. detect_challenge
 try:
-    r = tool_call(5, "eval_js", {"expression": "document.title"})
+    absent_data = challenge_data(tool_text(tool_call(50, "detect_challenge")))
+    assert absent_data == {"detected": False, "status": "absent", "matches": []}
+    tool_call(5, "eval_js", {"expression": "window.addDocumentedChallengeFixtures()"})
+    r = tool_call(51, "detect_challenge")
+    data = challenge_data(tool_text(r))
+    matches = {match["vendor"]: match for match in data["matches"]}
+    assert data["detected"] is True
+    assert data["status"] == "present"
+    assert set(matches) == EXPECTED_CHALLENGE_VENDORS
+    assert matches["turnstile"]["confidence"] == "high"
+    assert matches["aws_waf"]["confidence"] == "high"
+    assert matches["geetest"]["confidence"] == "medium"
+    assert matches["unknown"]["confidence"] == "low"
+    assert "fixture_auth_token" not in json.dumps(data)
+    assert "TEST_SITEKEY_DO_NOT_USE" not in json.dumps(data)
+    assert "TEST_PUBLIC_KEY_DO_NOT_USE" not in json.dumps(data)
+    results.append(("5. detect_challenge contract", True, ""))
+except Exception as e:
+    results.append(("5. detect_challenge contract", False, str(e)))
+
+# 6. eval_js
+try:
+    r = tool_call(6, "eval_js", {"expression": "document.title"})
     txt = tool_text(r)
     ok = "Test Page" in txt
-    results.append(("5. eval_js", ok, txt[:80] if not ok else ""))
+    results.append(("6. eval_js", ok, txt[:80] if not ok else ""))
 except Exception as e:
-    results.append(("5. eval_js", False, str(e)))
+    results.append(("6. eval_js", False, str(e)))
 
-# 6. system_click
+# 7. system_click
 try:
-    r = tool_call(6, "system_click", {"x": 500, "y": 300})
+    r = tool_call(7, "system_click", {"x": 500, "y": 300})
     txt = tool_text(r)
     ok = '"success": true' in txt or '"success":true' in txt
-    results.append(("6. system_click", ok, txt[:80] if not ok else ""))
+    results.append(("7. system_click", ok, txt[:80] if not ok else ""))
 except Exception as e:
-    results.append(("6. system_click", False, str(e)))
+    results.append(("7. system_click", False, str(e)))
 
-# 7. browser_action ping
+# 8. browser_action ping
 try:
-    r = tool_call(7, "browser_action", {"action": "ping"})
+    r = tool_call(8, "browser_action", {"action": "ping"})
     txt = tool_text(r)
     ok = "pong" in txt
-    results.append(("7. browser_action ping", ok, txt[:80] if not ok else ""))
+    results.append(("8. browser_action ping", ok, txt[:80] if not ok else ""))
 except Exception as e:
-    results.append(("7. browser_action ping", False, str(e)))
+    results.append(("8. browser_action ping", False, str(e)))
 
 # 8. browser_action cookies
 try:
@@ -171,18 +204,25 @@ try:
     r = tool_call(10, "run_script", {
         "steps": [
             {"action": "goto", "url": test_page, "wait_until": "load"},
+            {"action": "eval", "expression": "window.addDocumentedChallengeFixtures()"},
+            {"action": "detect_challenge", "output_id": "challenge"},
             {
                 "if": {
-                    "condition": {"type": "element", "selector": "#test-form", "state": "visible"},
+                    "condition": {"type": "output", "output_id": "challenge", "path": ["detected"], "equals": True},
                     "then": [{"action": "eval", "expression": "'mcp-then'", "output_id": "branch"}],
                     "else": [{"action": "eval", "expression": "'mcp-else'", "output_id": "branch"}],
                 }
             },
         ]
     })
-    txt = tool_text(r)
-    ok = "mcp-then" in txt and ('"success": true' in txt or '"success":true' in txt)
-    results.append(("10. run_script control flow", ok, txt[:120] if not ok else ""))
+    data = challenge_data(tool_text(r))
+    ok = (
+        data["outputs"]["branch"]["result"] == "mcp-then"
+        and {match["vendor"] for match in data["outputs"]["challenge"]["matches"]}
+        == EXPECTED_CHALLENGE_VENDORS
+        and "TEST_PUBLIC_KEY_DO_NOT_USE" not in json.dumps(data)
+    )
+    results.append(("10. run_script control flow", ok, json.dumps(data)[:120] if not ok else ""))
 except Exception as e:
     results.append(("10. run_script", False, str(e)))
 
@@ -223,11 +263,11 @@ for name, ok, err in results:
     echo "  MCP results: $PASS passed, $FAIL failed"
     [ "$FAIL" -gt 0 ] && return 1
     return 0
-)}
+); }
 
 ALL_TESTS+=(test_mcp)
 
-test_mcp_cluster_mode() {(
+test_mcp_cluster_mode() { (
     set -euo pipefail
     local PASS=0 FAIL=0
 
@@ -240,11 +280,15 @@ test_mcp_cluster_mode() {(
     ip=$(start_extra_container "$name" -e "NUM_REPLICAS=3")
     local CBASE="http://${ip}:8080"
 
-    wait_for_api "$CBASE" 180 || { echo "  FAIL: container never became healthy"; return 1; }
+    wait_for_api "$CBASE" 180 || {
+        echo "  FAIL: container never became healthy"
+        return 1
+    }
 
     # Run all tests via Python
     local result
-    result=$(python3 - "$CBASE" "$TEST_PAGE" << 'PYEOF'
+    result=$(
+        python3 - "$CBASE" "$TEST_PAGE" <<'PYEOF'
 import json, sys, urllib.request
 
 base_url = sys.argv[1]
@@ -339,7 +383,8 @@ try:
     params = {"name": "run_script", "arguments": {
         "steps": [
             {"action": "goto", "url": test_page, "wait_until": "load"},
-            {"action": "get_text", "output_id": "text"}
+            {"action": "eval", "expression": "window.addDocumentedChallengeFixtures()"},
+            {"action": "detect_challenge", "output_id": "challenge"}
         ]
     }}
     r = mcp_request(4, "tools/call", params)
@@ -348,10 +393,19 @@ try:
     for c in content:
         if c.get("type") == "text":
             txt = c["text"]
-    ok = "Submit" in txt and ('"success": true' in txt or '"success":true' in txt)
-    results.append(("MCP run_script works", ok, txt[:120] if not ok else ""))
+    data = json.loads(txt)["data"]
+    ok = (
+        data["outputs"]["challenge"]["status"] == "present"
+        and {match["vendor"] for match in data["outputs"]["challenge"]["matches"]}
+        == {
+            "altcha", "arkose", "aws_waf", "friendlycaptcha", "geetest", "hcaptcha",
+            "recaptcha", "turnstile", "unknown",
+        }
+        and "TEST_PUBLIC_KEY_DO_NOT_USE" not in json.dumps(data)
+    )
+    results.append(("MCP run_script documented catalogue", ok, txt[:120] if not ok else ""))
 except Exception as e:
-    results.append(("MCP run_script works", False, str(e)))
+    results.append(("MCP run_script documented catalogue", False, str(e)))
 
 # 5. MCP individual tool call rejected
 try:
@@ -361,6 +415,15 @@ try:
     results.append(("MCP individual tools blocked", is_error, "" if is_error else "goto should fail"))
 except Exception as e:
     results.append(("MCP individual tools blocked", True, ""))
+
+# 5b. MCP direct challenge detection is rejected in cluster mode.
+try:
+    params = {"name": "detect_challenge", "arguments": {}}
+    r = mcp_request(51, "tools/call", params)
+    is_error = r.get("error") is not None or r.get("result", {}).get("isError", False)
+    results.append(("MCP direct challenge detection blocked", is_error, "" if is_error else "detect_challenge should fail"))
+except Exception:
+    results.append(("MCP direct challenge detection blocked", True, ""))
 
 # --- HTTP API tests ---
 
@@ -380,13 +443,30 @@ try:
 except Exception as e:
     results.append(("HTTP get_text rejected", False, str(e)))
 
+# 7b. HTTP direct challenge detection is rejected in cluster mode.
+try:
+    r = http_post("detect_challenge")
+    ok = not r.get("success") and "cluster mode" in r.get("error", "")
+    results.append(("HTTP direct challenge detection rejected", ok, r.get("error", "")[:80] if not ok else ""))
+except Exception as e:
+    results.append(("HTTP direct challenge detection rejected", False, str(e)))
+
 # 8. HTTP run_script works
 try:
     r = http_post("run_script", {"steps": [
         {"action": "goto", "url": test_page, "wait_until": "load"},
-        {"action": "get_text", "output_id": "t"}
+        {"action": "eval", "expression": "window.addDocumentedChallengeFixtures()"},
+        {"action": "detect_challenge", "output_id": "challenge"}
     ]})
-    ok = r.get("success") and "Submit" in json.dumps(r)
+    ok = (
+        r.get("success")
+        and {match["vendor"] for match in r["data"]["outputs"]["challenge"]["matches"]}
+        == {
+            "altcha", "arkose", "aws_waf", "friendlycaptcha", "geetest", "hcaptcha",
+            "recaptcha", "turnstile", "unknown",
+        }
+        and "TEST_PUBLIC_KEY_DO_NOT_USE" not in json.dumps(r)
+    )
     results.append(("HTTP run_script works", ok, json.dumps(r)[:120] if not ok else ""))
 except Exception as e:
     results.append(("HTTP run_script works", False, str(e)))
@@ -434,6 +514,6 @@ for name, ok, err in results:
     echo "  Cluster-mode results: $PASS passed, $FAIL failed"
     [ "$FAIL" -gt 0 ] && return 1
     return 0
-)}
+); }
 
 ALL_TESTS+=(test_mcp_cluster_mode)

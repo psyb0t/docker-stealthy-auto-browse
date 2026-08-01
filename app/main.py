@@ -33,6 +33,7 @@ from browser import Browser, BrowserConfig, BrowserError
 from fastapi import FastAPI, Request
 from PIL import Image
 from recorder import Recorder, RecorderError, cleanup_orphan_tmp_files
+from challenge_detector import detect_challenges
 from script_runner import ScriptValidationError, load_script, run_script, validate_script
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from system import System
@@ -980,6 +981,9 @@ async def dispatch_action(cmd: dict) -> dict:
             scroll: { x: scrollX, y: scrollY },
         })""")
         return make_response(True, info)
+
+    if action == "detect_challenge":
+        return make_response(True, await detect_challenges(page))
 
     if action == "get_element":
         selector = cmd.get("selector", "")

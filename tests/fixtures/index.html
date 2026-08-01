@@ -47,6 +47,9 @@
   <div id="upload-result"></div>
   <div id="dom-list"></div>
 
+  <!-- A local-only, dynamic challenge-shaped fixture for detection tests. -->
+  <div id="challenge-fixture-host"></div>
+
   <!-- Virtual-media feedback for camera/microphone integration tests -->
   <section id="media-test">
     <button id="media-start" type="button">Start camera and microphone</button>
@@ -82,6 +85,143 @@
       domListItem.textContent = "item-" + domIndex;
       domList.appendChild(domListItem);
     }
+
+    window.addChallengeFixture = function() {
+      if (document.getElementById("challenge-fixture")) {
+        return;
+      }
+      var widget = document.createElement("div");
+      widget.id = "challenge-fixture";
+      widget.className = "cf-turnstile";
+      widget.style.width = "300px";
+      widget.style.height = "65px";
+      var frame = document.createElement("iframe");
+      frame.title = "Challenge fixture";
+      frame.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?test_token=never-returned";
+      frame.srcdoc = "<!doctype html><title>local challenge fixture</title>";
+      frame.style.width = "300px";
+      frame.style.height = "65px";
+      widget.appendChild(frame);
+      document.getElementById("challenge-fixture-host").appendChild(widget);
+    };
+
+    function addChallengeFixtureFrame(container, id, title, source) {
+      var frame = document.createElement("iframe");
+      frame.id = id;
+      frame.title = title;
+      frame.srcdoc = "<!doctype html><title>local challenge fixture</title>";
+      frame.setAttribute("src", source);
+      frame.style.width = "300px";
+      frame.style.height = "65px";
+      container.appendChild(frame);
+    }
+
+    function addInertChallengeFixtureScript(container, source) {
+      var script = document.createElement("script");
+      script.type = "application/x-challenge-fixture";
+      script.setAttribute("src", source);
+      container.appendChild(script);
+    }
+
+    window.addDocumentedChallengeFixtures = function() {
+      if (document.getElementById("documented-challenge-fixtures")) {
+        return;
+      }
+
+      var fixture = document.createElement("section");
+      fixture.id = "documented-challenge-fixtures";
+      fixture.setAttribute("data-detection-sentinel", "unchanged");
+
+      var turnstile = document.createElement("div");
+      turnstile.className = "cf-turnstile";
+      turnstile.setAttribute("data-sitekey", "TEST_SITEKEY_DO_NOT_USE");
+      fixture.appendChild(turnstile);
+
+      var recaptcha = document.createElement("div");
+      recaptcha.className = "g-recaptcha";
+      recaptcha.setAttribute("data-sitekey", "TEST_SITEKEY_DO_NOT_USE");
+      fixture.appendChild(recaptcha);
+
+      var hcaptcha = document.createElement("div");
+      hcaptcha.className = "h-captcha";
+      hcaptcha.setAttribute("data-sitekey", "TEST_SITEKEY_DO_NOT_USE");
+      fixture.appendChild(hcaptcha);
+
+      var friendlyCaptcha = document.createElement("div");
+      friendlyCaptcha.className = "frc-captcha";
+      friendlyCaptcha.setAttribute("data-sitekey", "TEST_SITEKEY_DO_NOT_USE");
+      fixture.appendChild(friendlyCaptcha);
+
+      var altcha = document.createElement("altcha-widget");
+      altcha.setAttribute("challenge", "/local-challenge");
+      fixture.appendChild(altcha);
+
+      var genericChallenge = document.createElement("div");
+      genericChallenge.setAttribute("role", "dialog");
+      genericChallenge.setAttribute("aria-label", "Verification required");
+      genericChallenge.setAttribute("data-challenge", "local");
+      genericChallenge.style.width = "300px";
+      genericChallenge.style.height = "65px";
+      fixture.appendChild(genericChallenge);
+
+      var hiddenGenericChallenge = document.createElement("div");
+      hiddenGenericChallenge.setAttribute("data-captcha", "stale-template");
+      hiddenGenericChallenge.style.display = "none";
+      fixture.appendChild(hiddenGenericChallenge);
+
+      addChallengeFixtureFrame(
+        fixture,
+        "turnstile-frame",
+        "Turnstile fixture",
+        "https://challenges.cloudflare.com/turnstile/v0/api.js?fixture_auth_token=never-returned"
+      );
+      addChallengeFixtureFrame(
+        fixture,
+        "cloudflare-challenge-frame",
+        "Cloudflare challenge fixture",
+        "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/orchestrate/jsch/v1"
+      );
+      addChallengeFixtureFrame(
+        fixture,
+        "recaptcha-frame",
+        "reCAPTCHA fixture",
+        "https://www.recaptcha.net/recaptcha/api2/anchor?fixture_token=never-returned"
+      );
+      addChallengeFixtureFrame(
+        fixture,
+        "arkose-frame",
+        "Arkose Challenge",
+        "https://iframe.arkoselabs.com/TEST_PUBLIC_KEY_DO_NOT_USE/lightbox.html"
+      );
+      addChallengeFixtureFrame(
+        fixture,
+        "generic-challenge-frame",
+        "Captcha fixture",
+        "https://example.invalid/local-captcha"
+      );
+
+      addInertChallengeFixtureScript(
+        fixture,
+        "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
+      );
+      addInertChallengeFixtureScript(
+        fixture,
+        "https://www.google.com/recaptcha/api.js?render=explicit"
+      );
+      addInertChallengeFixtureScript(fixture, "https://js.hcaptcha.com/1/api.js");
+      addInertChallengeFixtureScript(
+        fixture,
+        "https://cdn.jsdelivr.net/npm/@friendlycaptcha/sdk/site.min.js"
+      );
+      addInertChallengeFixtureScript(
+        fixture,
+        "https://client-api.arkoselabs.com/v2/TEST_PUBLIC_KEY_DO_NOT_USE/api.js"
+      );
+
+      window.AwsWafCaptcha = { renderCaptcha: function() {} };
+      window.initGeetest4 = function() {};
+      document.getElementById("challenge-fixture-host").appendChild(fixture);
+    };
 
     async function measureVirtualMedia() {
       var fixture = window.mediaFixture;
