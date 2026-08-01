@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.5.1] — 2026-08-01
+
+CI plumbing only. No code in this repo changed — both commits in this release
+touch `.github/workflows/issue-pull.yml`.
+
+The pipeline split (building and publishing in `pipeline.yml`, everything that
+leaves the host beside it in `mirror-and-archive.yml`), the Codeberg mirror
+alongside GitLab, and the archiving to the Wayback Machine, Software Heritage
+and archive.org all shipped earlier. What this release adds:
+
+- Issues opened on either mirror are copied back to GitHub every six hours, and
+  closed here when the original closes.
+- Only the scheduled run is jittered; a manually triggered one starts
+  immediately.
+
+Pull requests remain switched off on the mirrors — they are force-pushed from
+GitHub, so anything merged there would be destroyed by the next sync. Issues
+and forking stay enabled.
+
 ## [2.5.0] — 2026-08-01
 
 ### Added
