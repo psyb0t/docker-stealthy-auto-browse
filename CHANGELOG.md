@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.5.0] — 2026-08-01
+
+### Added
+
+- **Challenge viewport handoff.** `detect_challenge` now accepts `scroll_into_view: true` through HTTP, MCP, script mode, and `run_script`. It brings the first rendered detected frame or widget into the viewport for VNC handoff without clicking, focusing, solving, submitting, or entering the challenge frame.
+
 ## [2.4.0] — 2026-07-31
 
 ### Added

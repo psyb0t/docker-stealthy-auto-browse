@@ -87,6 +87,36 @@ _SNAPSHOT_SCRIPT = r"""() => {
   };
 }"""
 
+_SCROLL_INTO_VIEW_SCRIPT = r"""(target) => {
+  if (!target || typeof target !== "object") return false;
+  const { x, y, width, height } = target;
+  if (
+    ![x, y, width, height].every(Number.isFinite) ||
+    width <= 0 ||
+    height <= 0
+  ) return false;
+
+  const isInViewport = (top) => (
+    x < window.innerWidth &&
+    x + width > 0 &&
+    top < window.innerHeight &&
+    top + height > 0
+  );
+  if (isInViewport(y)) return true;
+
+  const documentY = window.scrollY + y;
+  const maximumScrollY = Math.max(
+    0,
+    document.documentElement.scrollHeight - window.innerHeight,
+  );
+  const desiredScrollY = Math.max(
+    0,
+    Math.min(maximumScrollY, documentY - (window.innerHeight - height) / 2),
+  );
+  window.scrollTo(0, desiredScrollY);
+  return isInViewport(documentY - window.scrollY);
+}"""
+
 
 def _bounded_strings(values: Iterable[str], limit: int) -> list[str]:
     output: list[str] = []
@@ -146,6 +176,63 @@ def _vendor_for_resource(resource: dict[str, str]) -> tuple[str, str, str] | Non
     if "@friendlycaptcha/" in path:
         return ("friendlycaptcha", "medium", "documented-script-path")
     return None
+
+
+def _first_visible_scroll_target(snapshot: Any) -> dict[str, float] | None:
+    """Return the first visible detected frame or widget with geometry."""
+    if not isinstance(snapshot, dict):
+        return None
+
+    iframes = snapshot.get("iframes")
+    if isinstance(iframes, list):
+        for candidate in iframes[:_MAX_SNAPSHOT_ITEMS]:
+            if (
+                not isinstance(candidate, dict)
+                or candidate.get("visible") is not True
+            ):
+                continue
+            resource = _sanitise_resource(candidate.get("resource"))
+            if not resource or not _vendor_for_resource(resource):
+                continue
+            bounding_box = _sanitise_bounding_box(
+                candidate.get("bounding_box")
+            )
+            if bounding_box:
+                return bounding_box
+
+    elements = snapshot.get("elements")
+    if not isinstance(elements, list):
+        return None
+    for candidate in elements[:_MAX_SNAPSHOT_ITEMS]:
+        if (
+            not isinstance(candidate, dict)
+            or candidate.get("visible") is not True
+        ):
+            continue
+        marker = candidate.get("marker")
+        if marker not in _KNOWN_ELEMENT_VENDORS and marker != _GENERIC_ELEMENT_MARKER:
+            continue
+        bounding_box = _sanitise_bounding_box(candidate.get("bounding_box"))
+        if bounding_box:
+            return bounding_box
+    return None
+
+
+async def _scroll_into_view(page: Any, snapshot: Any) -> bool:
+    target = _first_visible_scroll_target(snapshot)
+    if not target:
+        return False
+    try:
+        return bool(await page.evaluate(_SCROLL_INTO_VIEW_SCRIPT, target))
+    except Exception as error:
+        logger.warning(
+            "challenge scroll failed",
+            extra={
+                "reason": "page_evaluate_failed",
+                "error_type": type(error).__name__,
+            },
+        )
+        return False
 
 
 def _add_match(
@@ -252,14 +339,28 @@ def classify_challenge_snapshot(snapshot: Any) -> dict[str, Any]:
     }
 
 
-async def detect_challenges(page: Any) -> dict[str, Any]:
-    """Return a bounded, read-only challenge summary for the active page."""
+async def detect_challenges(
+    page: Any,
+    *,
+    scroll_into_view: bool = False,
+) -> dict[str, Any]:
+    """Return a bounded challenge summary and optionally reveal its target."""
     try:
         snapshot = await page.evaluate(_SNAPSHOT_SCRIPT)
     except Exception as error:
         logger.warning(
             "challenge snapshot failed",
-            extra={"reason": "page_evaluate_failed", "error_type": type(error).__name__},
+            extra={
+                "reason": "page_evaluate_failed",
+                "error_type": type(error).__name__,
+            },
         )
-        return {"detected": False, "status": "unknown", "matches": []}
-    return classify_challenge_snapshot(snapshot)
+        result = {"detected": False, "status": "unknown", "matches": []}
+        if scroll_into_view:
+            result["scrolled_into_view"] = False
+        return result
+
+    result = classify_challenge_snapshot(snapshot)
+    if scroll_into_view:
+        result["scrolled_into_view"] = await _scroll_into_view(page, snapshot)
+    return result

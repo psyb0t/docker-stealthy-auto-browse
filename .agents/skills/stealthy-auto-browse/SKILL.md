@@ -195,7 +195,7 @@ For structured extraction, use `get_element` for one matching node or `get_eleme
 
 ### Challenge Detection
 
-`detect_challenge` is read-only, best-effort detection for authorised QA flows that need to request human review. It returns `absent`, `present`, or `unknown`, plus bounded known-vendor or generic low-confidence evidence. It never clicks, solves, submits, or enters a challenge frame, and excludes query strings, fragments, site keys, response values, page text, and HTML from the result. It recognises documented Turnstile, reCAPTCHA, hCaptcha, Friendly Captcha, ALTCHA, Arkose, AWS WAF, and GeeTest signals when exposed in the top-level page.
+`detect_challenge` is read-only, best-effort detection for authorised QA flows that need to request human review. It returns `absent`, `present`, or `unknown`, plus bounded known-vendor or generic low-confidence evidence. It never clicks, solves, submits, or enters a challenge frame, and excludes query strings, fragments, site keys, response values, page text, and HTML from the result. Set `scroll_into_view: true` to bring the first visible detected frame or widget into the viewport for VNC handoff; it still never clicks or focuses it. It recognises documented Turnstile, reCAPTCHA, hCaptcha, Friendly Captcha, ALTCHA, Arkose, AWS WAF, and GeeTest signals when exposed in the top-level page.
 
 Use an `output_id` plus a script `if` output condition to decide whether your orchestration should notify a person. In cluster mode, place `detect_challenge` inside `run_script`.
 

@@ -146,7 +146,8 @@ async def run_script(
             challenge cues in the current page. Read-only: never clicks, solves, or
             enters frames. Returns `absent`, `present`, or `unknown`, plus bounded
             vendor, confidence, location, and sanitised frame-path evidence.
-            No parameters.
+            - scroll_into_view (bool): When true, scroll the first visible detected
+              frame or widget into the viewport without clicking or focusing it.
         get_page_info: Get current URL, title, ready state, viewport, document, and scroll data.
             No parameters.
         get_element: Get one element's tag, text, attributes, bounding box, and visibility.
@@ -369,14 +370,20 @@ if not _cluster_mode:
         return _text_result(await _call("get_html"))
 
     @mcp.tool
-    async def detect_challenge() -> str:
+    async def detect_challenge(scroll_into_view: bool = False) -> str:
         """Detect a challenge widget without clicking, solving, or entering its frame.
 
         Returns a best-effort `absent`, `present`, or `unknown` status. Known matches
         include vendor, confidence, locations, and sanitised frame origin/path evidence.
         An absent result is not proof a site will never show a custom or later challenge.
+
+        Args:
+            scroll_into_view: Scroll the first visible detected frame or widget into
+                the viewport. This never clicks, focuses, solves, or submits it.
         """
-        return _text_result(await _call("detect_challenge"))
+        return _text_result(
+            await _call("detect_challenge", scroll_into_view=scroll_into_view)
+        )
 
     @mcp.tool
     async def get_interactive_elements(visible_only: bool = True) -> str:

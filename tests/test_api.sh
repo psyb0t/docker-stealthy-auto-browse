@@ -172,6 +172,73 @@ assert not any(any(host in json.dumps(entry) for host in vendor_hosts) for entry
     echo "OK: detect_challenge (absent, documented dynamic fixture catalogue, no DOM/network side effects)"
 }
 
+test_detect_challenge_scroll_into_view() {
+    local result
+    result=$(
+        python3 - "$BASE" "$TEST_PAGE" <<'PYEOF'
+import json
+import sys
+import urllib.request
+
+base_url, test_page = sys.argv[1:]
+
+
+def post(payload):
+    request = urllib.request.Request(
+        base_url + "/",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.loads(response.read().decode())
+
+
+def success(payload):
+    response = post(payload)
+    assert response["success"] is True, response
+    return response["data"]
+
+
+success({"action": "goto", "url": test_page})
+success(
+    {
+        "action": "eval",
+        "expression": "const widget=document.createElement('div');widget.id='offscreen-turnstile';widget.className='cf-turnstile';widget.style.width='300px';widget.style.height='65px';document.getElementById('bottom-marker').appendChild(widget);window.scrollTo(0,0)",
+    }
+)
+
+default_result = success({"action": "detect_challenge"})
+assert default_result["detected"] is True, default_result
+assert "scrolled_into_view" not in default_result, default_result
+assert success({"action": "eval", "expression": "scrollY"})["result"] == 0
+
+scrolled_result = success({"action": "detect_challenge", "scroll_into_view": True})
+assert scrolled_result["scrolled_into_view"] is True, scrolled_result
+in_viewport = success(
+    {
+        "action": "eval",
+        "expression": "(() => { const rect=document.getElementById('offscreen-turnstile').getBoundingClientRect(); return rect.top >= 0 && rect.bottom <= innerHeight })()",
+    }
+)
+assert in_viewport["result"] is True, in_viewport
+scroll_position = success({"action": "eval", "expression": "scrollY"})["result"]
+already_visible_result = success({"action": "detect_challenge", "scroll_into_view": True})
+assert already_visible_result["scrolled_into_view"] is True, already_visible_result
+assert success({"action": "eval", "expression": "scrollY"})["result"] == scroll_position
+
+invalid_result = post({"action": "detect_challenge", "scroll_into_view": "true"})
+assert invalid_result["success"] is False, invalid_result
+assert invalid_result["error"] == "scroll_into_view must be a boolean", invalid_result
+
+print("OK: detect_challenge scroll_into_view (opt-in viewport reveal and boolean validation)")
+PYEOF
+    ) || {
+        echo "FAIL: detect_challenge scroll_into_view"
+        return 1
+    }
+    echo "$result"
+}
+
 test_detect_challenge_raw_dom_selectors() {
     local result
     result=$(
@@ -329,6 +396,7 @@ ALL_TESTS+=(
     test_goto
     test_page_content
     test_detect_challenge
+    test_detect_challenge_scroll_into_view
     test_detect_challenge_raw_dom_selectors
     test_get_interactive_elements
     test_get_resolution

@@ -1,7 +1,7 @@
 {
   "name": "@psyb0t/stealthy-auto-browse",
   "id": "@psyb0t/stealthy-auto-browse",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "type": "code-plugin",
   "summary": "Wire an OpenClaw agent to a self-hosted stealthy-auto-browse stealth browser over MCP — navigation, OS-level input, screenshots, and page inspection as tools.",
   "description": "A thin stdio<->HTTP bridge that connects an MCP client (OpenClaw, Claude, Cursor, Codex, ...) to a running stealthy-auto-browse instance's MCP endpoint (/mcp), exposing its browser-automation tools: navigation, Playwright DOM input (click/fill), OS-level input via PyAutoGUI (system_click/system_type/send_key/mouse_move/scroll), screenshots, page inspection (get_text/get_html/get_interactive_elements/eval_js), wait conditions, multi-step scripts (run_script), and a generic browser_action fallback for cookies/tabs/storage/dialogs/recording. stealthy-auto-browse is self-hosted — you run the container yourself and point this bridge at it. These tools drive a real browser and OS-level keyboard/mouse input on the machine running the server and can log into sites and act as you — use it ONLY against systems and sites you are authorized to control, and only for actions the user explicitly requested. See https://github.com/psyb0t/docker-stealthy-auto-browse.",

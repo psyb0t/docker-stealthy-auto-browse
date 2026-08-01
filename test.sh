@@ -23,6 +23,8 @@ MAIN_TESTS=(
     test_goto
     test_page_content
     test_detect_challenge
+    test_detect_challenge_scroll_into_view
+    test_detect_challenge_raw_dom_selectors
     test_get_interactive_elements
     test_get_resolution
     test_calibrate

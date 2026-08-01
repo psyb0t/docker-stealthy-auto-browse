@@ -215,10 +215,12 @@ def test_absent_and_malformed_snapshots_have_stable_empty_schema() -> None:
 class SnapshotPage:
     def __init__(self, snapshot: dict[str, Any]) -> None:
         self.snapshot = snapshot
-        self.expression = ""
+        self.expressions: list[tuple[str, Any]] = []
 
-    async def evaluate(self, expression: str) -> dict[str, Any]:
-        self.expression = expression
+    async def evaluate(self, expression: str, argument: Any = None) -> Any:
+        self.expressions.append((expression, argument))
+        if "window.scrollTo" in expression:
+            return True
         return self.snapshot
 
 
@@ -232,9 +234,57 @@ async def test_page_evaluation_success_and_failure() -> None:
     page = SnapshotPage({"iframes": [{"resource": TURNSTILE_RESOURCE}]})
     result = await detect_challenges(page)
     assert result["status"] == "present"
-    assert "new URL(value, document.baseURI)" in page.expression
-    assert "document.querySelectorAll" in page.expression
+    assert "new URL(value, document.baseURI)" in page.expressions[0][0]
+    assert "document.querySelectorAll" in page.expressions[0][0]
     assert await detect_challenges(FailingPage()) == UNKNOWN_RESULT
+
+
+async def test_scroll_into_view_uses_visible_detected_geometry() -> None:
+    page = SnapshotPage(
+        {
+            "iframes": [
+                {
+                    "resource": TURNSTILE_RESOURCE,
+                    "visible": True,
+                    "bounding_box": {
+                        "x": 10,
+                        "y": 1200,
+                        "width": 300,
+                        "height": 65,
+                    },
+                }
+            ]
+        }
+    )
+    result = await detect_challenges(page, scroll_into_view=True)
+    assert result["scrolled_into_view"] is True
+    assert len(page.expressions) == 2
+    assert "window.scrollTo" in page.expressions[1][0]
+    assert page.expressions[1][1] == {
+        "x": 10.0,
+        "y": 1200.0,
+        "width": 300.0,
+        "height": 65.0,
+    }
+
+    hidden_page = SnapshotPage(
+        {
+            "elements": [
+                {
+                    "marker": "turnstile",
+                    "visible": False,
+                    "bounding_box": {"x": 10, "y": 1200, "width": 300, "height": 65},
+                }
+            ]
+        }
+    )
+    hidden_result = await detect_challenges(hidden_page, scroll_into_view=True)
+    assert hidden_result["detected"] is True
+    assert hidden_result["scrolled_into_view"] is False
+    assert len(hidden_page.expressions) == 1
+
+    unknown_result = await detect_challenges(FailingPage(), scroll_into_view=True)
+    assert unknown_result == {**UNKNOWN_RESULT, "scrolled_into_view": False}
 
 
 def main() -> None:
@@ -244,6 +294,7 @@ def main() -> None:
     test_resource_boundaries_and_false_positives()
     test_absent_and_malformed_snapshots_have_stable_empty_schema()
     asyncio.run(test_page_evaluation_success_and_failure())
+    asyncio.run(test_scroll_into_view_uses_visible_detected_geometry())
     print("OK: challenge detector unit tests")
 
 

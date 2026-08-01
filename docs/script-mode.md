@@ -134,11 +134,12 @@ Environment placeholders are substituted recursively, including strings in contr
 
 ### Example: Detect a Challenge and Pause for Human Review
 
-`detect_challenge` is a read-only page-inspection action. It can tell a workflow that a documented verification widget or a conservative generic challenge cue is present, but it never clicks, solves, or enters a challenge frame. Use an `output` condition to hand the decision to your orchestration layer.
+`detect_challenge` is a read-only page-inspection action. It can tell a workflow that a documented verification widget or a conservative generic challenge cue is present, but it never clicks, solves, or enters a challenge frame. Set `scroll_into_view: true` to bring the first visible detected frame or widget into the viewport for a human takeover; that still never clicks or focuses it. Use an `output` condition to hand the decision to your orchestration layer.
 
 ```yaml
 steps:
   - action: detect_challenge
+    scroll_into_view: true
     output_id: challenge
   - if:
       condition:
@@ -152,7 +153,7 @@ steps:
           output_id: disposition
 ```
 
-`challenge.status` is `absent`, `present`, or `unknown`. Treat `unknown` as an operational decision point rather than proof that a challenge is absent. See [api.md#challenge-detection](api.md#challenge-detection) for the bounded result schema and supported signatures.
+`challenge.status` is `absent`, `present`, or `unknown`. When `scroll_into_view` is enabled, `challenge.scrolled_into_view` reports whether a detected target is in the viewport after the action. Treat `unknown` as an operational decision point rather than proof that a challenge is absent. See [api.md#challenge-detection](api.md#challenge-detection) for the bounded result schema and supported signatures.
 
 ## Example: Screenshot a URL
 

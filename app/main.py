@@ -983,7 +983,13 @@ async def dispatch_action(cmd: dict) -> dict:
         return make_response(True, info)
 
     if action == "detect_challenge":
-        return make_response(True, await detect_challenges(page))
+        scroll_into_view = cmd.get("scroll_into_view", False)
+        if not isinstance(scroll_into_view, bool):
+            return make_response(False, error="scroll_into_view must be a boolean")
+        return make_response(
+            True,
+            await detect_challenges(page, scroll_into_view=scroll_into_view),
+        )
 
     if action == "get_element":
         selector = cmd.get("selector", "")

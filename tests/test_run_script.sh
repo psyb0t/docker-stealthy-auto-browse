@@ -157,7 +157,16 @@ body = {
     "steps": [
         {"action": "goto", "url": test_page, "wait_until": "domcontentloaded"},
         {"action": "eval", "expression": "window.addDocumentedChallengeFixtures()"},
-        {"action": "detect_challenge", "output_id": "challenge"},
+        {
+            "action": "eval",
+            "expression": "document.querySelector('#documented-challenge-fixtures').style.marginTop='4000px'",
+        },
+        {"action": "detect_challenge", "scroll_into_view": True, "output_id": "challenge"},
+        {
+            "action": "eval",
+            "expression": "(() => { const rect = document.querySelector('#documented-challenge-fixtures').getBoundingClientRect(); return rect.top >= 0 && rect.bottom <= innerHeight })()",
+            "output_id": "challenge_in_viewport",
+        },
         {
             "if": {
                 "condition": {"type": "output", "output_id": "challenge", "path": ["detected"], "equals": True},
@@ -184,16 +193,18 @@ import sys
 
 data = json.load(sys.stdin)["data"]
 assert data["success"] is True
-assert data["steps_executed"] == data["steps_total"] == 5
+assert data["steps_executed"] == data["steps_total"] == 7
 assert data["outputs"]["challenge"]["status"] == "present"
+assert data["outputs"]["challenge"]["scrolled_into_view"] is True
+assert data["outputs"]["challenge_in_viewport"]["result"] is True
 assert {match["vendor"] for match in data["outputs"]["challenge"]["matches"]} == {
     "altcha", "arkose", "aws_waf", "friendlycaptcha", "geetest", "hcaptcha",
     "recaptcha", "turnstile", "unknown",
 }
 assert "TEST_PUBLIC_KEY_DO_NOT_USE" not in json.dumps(data)
 assert data["outputs"]["branch"]["result"] == "http-then"
-assert data["step_results"][3]["data"]["branch"] == "then"
-assert len(data["step_results"][4]["data"]["iterations"]) == 2
+assert data["step_results"][5]["data"]["branch"] == "then"
+assert len(data["step_results"][6]["data"]["iterations"]) == 2
 ' || return 1
 
     local invalid_resp

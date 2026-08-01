@@ -147,7 +147,7 @@ All actions are sent as `POST /` with JSON body `{"action": "name", ...params}`.
 | `get_text`                 | —              | Returns all visible text from the page body (truncated to 10,000 chars). Usually the first thing to call after navigating — tells you what's on the page without a screenshot.                                                                             |
 | `get_html`                 | —              | Returns the full HTML source of the page. Use when `get_text` doesn't give enough structure.                                                                                                                                                               |
 | `get_page_info`            | —              | Returns the current URL, title, ready state, viewport/document dimensions, and scroll position.                                                                                                                                                           |
-| `detect_challenge`         | —              | Read-only best-effort detection of documented challenge integrations and conservative visible generic cues. Returns `absent`, `present`, or `unknown`; never clicks, solves, enters a frame, returns site keys/tokens, or returns URL queries/fragments. |
+| `detect_challenge`         | `scroll_into_view` | Read-only best-effort detection of documented challenge integrations and conservative visible generic cues. Optional viewport reveal never clicks, solves, focuses, or enters a frame. |
 | `get_element`              | `selector`     | Returns one matching element's tag, text (truncated to 10,000 chars), attributes, bounding box, and visibility.                                                                                                                                          |
 | `get_elements`             | `selector`, `limit` | Returns summaries for up to `limit` matching elements (1–100; default 20). Each summary includes tag, text, attributes, bounding box, and visibility.                                                                                              |
 | `get_computed_style`       | `selector`, `properties` | Returns computed CSS property values. `properties` accepts up to 50 CSS property names; defaults to `display`, `visibility`, `color`, and `background-color`.                                                                                   |
@@ -161,6 +161,14 @@ All actions are sent as `POST /` with JSON body `{"action": "name", ...params}`.
 {"action": "detect_challenge"}
 ```
 
+Pass `"scroll_into_view": true` when a person will take over in VNC and the first visible detected frame or widget should be brought into the viewport:
+
+```json
+{"action": "detect_challenge", "scroll_into_view": true}
+```
+
+`scroll_into_view` defaults to `false`, preserving read-only detection behavior. When requested, the action scrolls only; it never clicks, focuses, solves, submits, or enters a challenge frame. The opt-in response adds `data.scrolled_into_view`, which is `true` when a detected target is in the viewport after the action. It is `false` when no visible detected target with usable geometry is available or the page cannot scroll it into view.
+
 The action returns `data.status` as `"absent"`, `"present"`, or `"unknown"`. `unknown` means that the page snapshot could not be evaluated; it is deliberately not reported as absence. When present, `matches` contain `vendor`, `confidence` (`"high"`, `"medium"`, or `"low"`), `locations`, fixed `evidence` labels, and bounded frame/element bounding boxes where available. Frame evidence includes only host plus path: query strings, fragments, site keys, response values, element text, attributes, and HTML are excluded.
 
 Known high-confidence markers cover Cloudflare Turnstile, Google reCAPTCHA, hCaptcha, Friendly Captcha, ALTCHA, Arkose, AWS WAF, and GeeTest where their documented container, iframe/script origin, or global is present. A visible generic captcha/challenge cue is returned as vendor `"unknown"` at low confidence. This is intentionally best-effort: an `absent` result does not guarantee that a custom, delayed, or server-side challenge will not appear later.
@@ -170,6 +178,7 @@ Use it inside a script with the existing output condition:
 ```yaml
 steps:
   - action: detect_challenge
+    scroll_into_view: true
     output_id: challenge
   - if:
       condition:

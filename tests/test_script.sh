@@ -388,6 +388,8 @@ result = json.load(sys.stdin)
 assert result["success"] is True
 assert result["outputs"]["challenge"]["detected"] is True
 assert result["outputs"]["challenge"]["status"] == "present"
+assert result["outputs"]["challenge"]["scrolled_into_view"] is True
+assert result["outputs"]["challenge_in_viewport"]["result"] is True
 assert {match["vendor"] for match in result["outputs"]["challenge"]["matches"]} == {
     "altcha", "arkose", "aws_waf", "friendlycaptcha", "geetest", "hcaptcha",
     "recaptcha", "turnstile", "unknown",
@@ -399,7 +401,7 @@ assert result["outputs"]["decision"]["result"] == "human-review-needed"
         return 1
     }
 
-    echo "OK: script_challenge_detection (full documented catalogue branches to human review)"
+    echo "OK: script_challenge_detection (detector scrolls documented catalogue into view)"
 }
 
 ALL_TESTS+=(

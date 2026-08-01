@@ -130,6 +130,30 @@ except Exception as e:
 try:
     absent_data = challenge_data(tool_text(tool_call(50, "detect_challenge")))
     assert absent_data == {"detected": False, "status": "absent", "matches": []}
+    tool_call(
+        501,
+        "eval_js",
+        {
+            "expression": "const widget=document.createElement('div');widget.id='mcp-offscreen-turnstile';widget.className='cf-turnstile';widget.style.width='300px';widget.style.height='65px';document.getElementById('bottom-marker').appendChild(widget);window.scrollTo(0,0)",
+        },
+    )
+    scrolled_data = challenge_data(
+        tool_text(tool_call(502, "detect_challenge", {"scroll_into_view": True}))
+    )
+    assert scrolled_data["scrolled_into_view"] is True, scrolled_data
+    viewport_data = challenge_data(
+        tool_text(
+            tool_call(
+                503,
+                "eval_js",
+                {
+                    "expression": "(() => { const rect=document.getElementById('mcp-offscreen-turnstile').getBoundingClientRect(); return rect.top >= 0 && rect.bottom <= innerHeight })()",
+                },
+            )
+        )
+    )
+    assert viewport_data["result"] is True, viewport_data
+    tool_call(504, "goto", {"url": test_page, "wait_until": "networkidle"})
     tool_call(5, "eval_js", {"expression": "window.addDocumentedChallengeFixtures()"})
     r = tool_call(51, "detect_challenge")
     data = challenge_data(tool_text(r))
@@ -144,9 +168,9 @@ try:
     assert "fixture_auth_token" not in json.dumps(data)
     assert "TEST_SITEKEY_DO_NOT_USE" not in json.dumps(data)
     assert "TEST_PUBLIC_KEY_DO_NOT_USE" not in json.dumps(data)
-    results.append(("5. detect_challenge contract", True, ""))
+    results.append(("5. detect_challenge contract and viewport reveal", True, ""))
 except Exception as e:
-    results.append(("5. detect_challenge contract", False, str(e)))
+    results.append(("5. detect_challenge contract and viewport reveal", False, str(e)))
 
 # 6. eval_js
 try:
