@@ -75,7 +75,7 @@ Notes on the hardening flags:
 | `XVFB_RESOLUTION` | `1920x1080` | Virtual display resolution. Any size works (e.g. `1920x1920`, `2560x1440`); the framebuffer is allocated to match, so screen recording captures this exact size. Larger = more memory. |
 | `XVFB_DEPTH` | `24` | Color depth (16/24/32). |
 | `TZ` | `UTC` | Match your IP location for realistic test fingerprints. |
-| `PROXY_URL` | — | HTTP proxy for all browser traffic. Format: `http://user:pass@host:port`. Use only proxies you own or are authorized to use. |
+| `PROXY_URL` | — | HTTP or SOCKS5 proxy for all browser traffic. Use `http://user:pass@host:port` or `socks5://host:port`, and only use exits you own or are authorized to use. [pr0xteus](https://github.com/psyb0t/pr0xteus) supplies private WireGuard-backed SOCKS5 cells; the browser must join its `pr0xteus-egress` Docker network. |
 | `LOADERS_DIR` | `/loaders` | Directory for page loader YAML files. |
 | `USE_VIEWPORT` | `false` | Playwright viewport control. Required for width < ~450px. Makes automation easier to fingerprint. |
 | `HTTP_LISTEN_HOST` | `0.0.0.0` | HTTP API bind address inside the container. Combine with a `127.0.0.1:8080:8080` port mapping to confine to localhost on the host. |
@@ -110,6 +110,10 @@ docker run -d -p 127.0.0.1:8080:8080 \
   -e PROXY_URL=http://user:pass@proxy.you-own.example:8888 \
   --env-file .env.browser \
   psyb0t/stealthy-auto-browse@$DIGEST
+
+# For a private pr0xteus SOCKS5 cell, allocate its URL first, join this browser
+# to pr0xteus-egress, then pass the returned socks5:// URL as PROXY_URL.
+# The working allocation-to-browser command sequence is in docs/configuration.md.
 
 # Custom resolution
 docker run -d -p 127.0.0.1:8080:8080 \

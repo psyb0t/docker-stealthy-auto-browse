@@ -248,7 +248,7 @@ See [`.agents/skills/stealthy-auto-browse/scripts/`](.agents/skills/stealthy-aut
 
 ## Configuration
 
-Full environment variables table, proxy setup, persistent profiles, browser extensions, and VNC access: [docs/configuration.md](docs/configuration.md)
+Full environment variables table, proxy setup (including a working private [pr0xteus](https://github.com/psyb0t/pr0xteus) SOCKS5-cell example), persistent profiles, browser extensions, and VNC access: [docs/configuration.md](docs/configuration.md)
 
 ## Bot Detection Results
 

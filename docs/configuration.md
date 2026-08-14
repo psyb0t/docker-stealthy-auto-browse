@@ -10,7 +10,7 @@
 | `LANG`             | `en_US.UTF-8`   | Browser locale/language. Override with `-e LANG=fr_FR.UTF-8` etc. to change the browser's locale.                                                                                                                                                                                                        |
 | `USE_VIEWPORT`     | `false`         | Enables Playwright viewport control. Required if you need widths below ~450px (Firefox minimum without it). **Reduces stealth** because it adds Playwright viewport management. Only use for mobile layout testing on sites that don't have bot detection.                                               |
 | `LOADERS_DIR`      | `/loaders`      | Directory the container scans for page loader YAML files. See [page-loaders.md](./page-loaders.md).                                                                                                                                                                                                      |
-| `PROXY_URL`        | —               | Routes all browser traffic through an HTTP proxy. Format: `http://user:pass@host:port`. Useful with residential proxies to match your IP to a specific location.                                                                                                                                         |
+| `PROXY_URL`        | —               | Routes all browser traffic through an HTTP or SOCKS5 proxy. Examples: `http://user:pass@host:port` or `socks5://host:port`. Use an authorized exit whose location matches the browser fingerprint you are testing. |
 | `HTTP_LISTEN_HOST` | `0.0.0.0`       | Host address the HTTP API binds to.                                                                                                                                                                                                                                                                      |
 | `HTTP_LISTEN_PORT` | `8080`          | Port the HTTP API listens on.                                                                                                                                                                                                                                                                            |
 | `AUTH_TOKEN`       | —               | If set, all requests (except `/health`) require an `Authorization: Bearer <token>` header. Applies to both HTTP API and MCP.                                                                                                                                                                             |
@@ -40,6 +40,36 @@ docker run -d -e TZ=Europe/Bucharest -p 8080:8080 psyb0t/stealthy-auto-browse
 ```bash
 docker run -d -e PROXY_URL=http://user:pass@proxy:8888 -p 8080:8080 psyb0t/stealthy-auto-browse
 ```
+
+**Use a private [pr0xteus](https://github.com/psyb0t/pr0xteus) WireGuard/SOCKS5 cell:**
+
+First complete pr0xteus's [operator setup and real egress proof](https://github.com/psyb0t/pr0xteus/blob/main/docs/complete-example.md). It keeps its control API on host loopback and creates the returned SOCKS5 cell only on the private `pr0xteus-egress` Docker network. Allocate the configured exit, then start the browser on that same network:
+
+```bash
+pr0xteus_dir=/absolute/path/to/pr0xteus
+token="$(<"$pr0xteus_dir/secrets/pr0xteus_api_token")"
+auth_header=(--header @<(printf 'Authorization: Bearer %s' "$token"))
+
+allocation="$(
+  curl --fail-with-body \
+    "${auth_header[@]}" \
+    --header 'Content-Type: application/json' \
+    --data '{"country":"US"}' \
+    http://127.0.0.1:8000/v1/proxies
+)"
+proxy_url="$(jq -er '.url' <<<"$allocation")"
+
+docker run -d --name browser \
+  --network pr0xteus-egress \
+  -p 127.0.0.1:8080:8080 \
+  -e PROXY_URL="$proxy_url" \
+  psyb0t/stealthy-auto-browse
+
+unset token allocation proxy_url
+unset -a auth_header
+```
+
+The returned `socks5://pr0xteus-tunnel-...:1080` URL is private Docker-network plumbing, not a host or public proxy address. Do not publish the cell port or reuse its hostname outside a workload joined to `pr0xteus-egress`. Request a country/pool that actually matches your configured WireGuard node, then set `TZ`, locale, and other browser settings consistently with that exit. Add `AUTH_TOKEN` before letting another local process control the browser.
 
 **Custom resolution:**
 

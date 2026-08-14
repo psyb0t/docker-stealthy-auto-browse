@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.5.2] — 2026-08-14
+
+Documented running the browser through a private pr0xteus WireGuard/SOCKS5
+cell.
+
+- `PROXY_URL` now explicitly documents HTTP and SOCKS5 URL support.
+- Added a complete allocation-to-browser example that keeps the cell on
+  pr0xteus's private Docker network, plus links from the README and agent setup
+  reference.
+
 ## [2.5.1] — 2026-08-01
 
 CI plumbing only. No code in this repo changed — both commits in this release

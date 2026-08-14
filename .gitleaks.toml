@@ -1,0 +1,46 @@
+title = "stealthy-auto-browse secret scanning"
+
+[extend]
+useDefault = true
+
+# `gitleaks dir` scans the working tree rather than Git's tracked-file set.
+# These paths are already ignored local state; path allowlists keep the release
+# gate focused on files that can actually ship.
+[[allowlists]]
+description = "Ignored local state and release tooling"
+paths = [
+  '''(^|/)\.mypy_cache(?:/|$)''',
+  '''(^|/)__pycache__(?:/|$)''',
+  '''(^|/)AGENTS\.md$''',
+  '''(^|/)\.research_files(?:/|$)''',
+  '''(^|/)app/profile(?:/|$)''',
+  '''(^|/)CLAUDE\.md$''',
+  '''(^|/)screenshot\.png$''',
+  '''(^|/)\.testdata(?:/|$)''',
+  '''(^|/)\.git-update\.sh$''',
+  '''(^|/)ANUSTIMES\.md$''',
+  '''(^|/)research_files(?:/|$)''',
+  '''(^|/)reply\.txt$''',
+  '''(^|/)git-update\.sh$''',
+  '''(^|/)\.claude(?:/|$)''',
+  '''(^|/)lasttest\.log$''',
+  '''(^|/)tests/results(?:/|$)''',
+  '''(^|/)plan\.md$''',
+  '''(^|/)\.demo-recordings(?:/|$)''',
+  '''(^|/)\.telemetry(?:/|$)''',
+  '''(^|/)\.testing(?:/|$)''',
+  '''(^|/)\.anustimes(?:/|$)''',
+  '''(^|/)\.brutal_reviews(?:/|$)''',
+  '''(^|/)\.secaudit(?:/|$)''',
+  '''(^|/)\.plan-and-delegate(?:/|$)''',
+]
+
+# These are visibly fake documentation/test values, not credentials. Keep this
+# exact-value exemption narrow: a real bearer value in either tracked file must
+# still fail the release gate.
+[[allowlists]]
+description = "Explicit fake bearer-token examples"
+regexes = [
+  '''your-token-here''',
+  '''wrong-token-not-a-secret''',
+]
