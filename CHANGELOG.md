@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.6.2] 2026-08-23
+
+### Fixed
+
+- Allow the ClawHub publish workflow to read the tagged source. This fixes the
+  release pipeline after the code workflow permission tightening in 2.6.1.
+
 ## [2.6.1] 2026-08-23
 
 ### Added
