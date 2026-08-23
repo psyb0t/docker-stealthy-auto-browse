@@ -55,10 +55,9 @@ test_screenshot_resize() {
 
     # Also verify desktop resize works
     curl -sf "$BASE/screenshot/desktop?whLargest=256" -o "$tmpdir/resize_desktop.png"
-    local desk_dims desk_w desk_h
+    local desk_dims desk_w
     desk_dims=$(png_dimensions "$tmpdir/resize_desktop.png")
     desk_w="${desk_dims%%x*}"
-    desk_h="${desk_dims##*x}"
     # Default is 1920x1080, width is largest so should be 256
     assert_eq "$desk_w" "256" "screenshot_resize[desktop_whLargest]: width" || return 1
 

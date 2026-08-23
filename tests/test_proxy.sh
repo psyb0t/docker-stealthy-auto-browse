@@ -16,7 +16,7 @@ test_proxy() {
     EXTRA_CONTAINERS+=("$_PROXY_CONTAINER")
 
     proxy_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$_PROXY_CONTAINER")
-    for i in $(seq 1 20); do
+    for _ in $(seq 1 20); do
         docker logs "$_PROXY_CONTAINER" 2>&1 | grep -q "PROXY_READY" && break
         sleep 1
     done
@@ -30,7 +30,7 @@ test_proxy() {
     EXTRA_CONTAINERS+=("$_PROXY_WEBSERVER")
 
     web_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$_PROXY_WEBSERVER")
-    for i in $(seq 1 20); do
+    for _ in $(seq 1 20); do
         docker logs "$_PROXY_WEBSERVER" 2>&1 | grep -q "SERVER_READY" && break
         sleep 1
     done

@@ -17,7 +17,7 @@ test_redis_cookie_sync() {
     EXTRA_CONTAINERS+=("$_RS_REDIS")
     redis_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$_RS_REDIS")
 
-    for i in $(seq 1 20); do
+    for _ in $(seq 1 20); do
         docker exec "$_RS_REDIS" redis-cli ping 2>/dev/null | grep -q "PONG" && break
         sleep 1
     done

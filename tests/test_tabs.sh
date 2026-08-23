@@ -32,7 +32,7 @@ test_new_tab() {
 }
 
 test_switch_tab() {
-    local resp url
+    local resp
 
     # Switch to first tab (index 0)
     resp=$(post '{"action": "switch_tab", "index": 0}')

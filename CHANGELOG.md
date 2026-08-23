@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.6.1] 2026-08-23
+
+### Added
+
+- Docker-backed `make lint`, `make test`, `make test-unit`, and `make sec`
+  commands. The complete test suite gets the Docker socket. Linting, focused
+  tests, and security scanning do not.
+- The pipeline now runs those code checks before badges, image publishing, and
+  registry publishing. Security findings upload as SARIF to GitHub Security.
+
+### Security
+
+- Browser extension downloads now require HTTPS from Mozilla's extension host
+  and verify a pinned SHA-256 digest before installation.
+
 ## [2.6.0] 2026-08-23
 
 ### Added

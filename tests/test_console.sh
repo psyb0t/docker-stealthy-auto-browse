@@ -70,10 +70,10 @@ test_console_log_disabled() {
 
 test_console_log_script_mode() {
     local out
-    out=$(cat "$WORKDIR/tests/fixtures/scripts/console_log.yaml" | \
-        docker run --rm -i \
+    out=$(docker run --rm -i \
         -e TEST_URL="$TEST_PAGE" \
         "$IMAGE_NAME:$TEST_TAG" --script \
+        < "$WORKDIR/tests/fixtures/scripts/console_log.yaml" \
         2>/dev/null)
 
     if [ -z "$out" ]; then

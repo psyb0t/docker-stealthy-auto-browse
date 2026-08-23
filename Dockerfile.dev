@@ -1,0 +1,28 @@
+ARG BASE_IMAGE=psyb0t/stealthy-auto-browse:dev-base
+FROM ${BASE_IMAGE}
+
+USER root
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        jq \
+        shellcheck \
+    && rm -rf /var/lib/apt/lists/*
+
+# Keep development-only tools out of the browser image. The app dependencies
+# come from the local runtime base so checks exercise what the image ships.
+RUN python -m pip install --no-cache-dir ruff==0.12.12
+
+RUN python -m venv /opt/sectools \
+    && /opt/sectools/bin/pip install --no-cache-dir \
+        semgrep==1.172.0 \
+        bandit==1.9.4 \
+        bandit-sarif-formatter==1.1.1 \
+        pip-audit==2.10.1
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/work/app \
+    SECURITY_TOOLS_PYTHON=/opt/sectools/bin/python
+
+WORKDIR /work
+ENTRYPOINT []

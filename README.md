@@ -23,6 +23,7 @@ Passes Cloudflare, CreepJS, BrowserScan, Pixelscan, and every other bot detector
 - [Cluster Mode](#cluster-mode)
 - [Authentication](#authentication)
 - [Configuration](#configuration)
+- [Development](#development)
 - [Bot Detection Results](#bot-detection-results)
 - [License](#license)
 
@@ -251,6 +252,19 @@ See [`.agents/skills/stealthy-auto-browse/scripts/`](.agents/skills/stealthy-aut
 ## Configuration
 
 Full environment variables table, proxy setup (including a working private [pr0xteus](https://github.com/psyb0t/pr0xteus) SOCKS5-cell example), persistent profiles, browser extensions, and VNC access: [docs/configuration.md](docs/configuration.md)
+
+## Development
+
+Docker is the only development dependency. The Makefile builds a local browser base, then runs linting, tests, and security tools in a separate disposable dev container. Only the complete test target receives the Docker socket because it starts its own browser and fixture containers.
+
+```bash
+make build
+make lint
+make test
+make sec
+```
+
+`make sec` writes `sec.sarif` for GitHub Security. It reports findings without blocking a release. Use `make help` for the complete command list.
 
 ## Bot Detection Results
 

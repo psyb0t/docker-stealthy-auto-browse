@@ -4,7 +4,7 @@
 test_mouse_move() {
     # Move mouse to known position and verify via pyautogui
     post '{"action": "mouse_move", "x": 250, "y": 250, "duration": 0.1}' >/dev/null
-    local resp pos_x pos_y
+    local resp
     resp=$(post '{"action": "eval", "expression": "null"}')
     # Verify action succeeded (mouse_move has no visible DOM effect, check position via API)
     resp=$(post '{"action": "mouse_move", "x": 500, "y": 400, "duration": 0.1}')
