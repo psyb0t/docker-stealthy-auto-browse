@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.6.6] 2026-08-23
+
+### Fixed
+
+- Make the ephemeral virtual-media test fixture writable by the browser user
+  when the Docker-backed test runner uses a different UID.
+
 ## [2.6.5] 2026-08-23
 
 ### Fixed

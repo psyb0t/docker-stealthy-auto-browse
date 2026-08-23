@@ -9,6 +9,8 @@ test_virtual_media_fixture() (
     local readonly_name="${name}-readonly"
     local media_dir
     media_dir=$(mktemp -d "$TESTDATA_DIR/virtual-media.XXXXXX") || return 1
+    # GitHub runs the test driver as UID 1001 while the browser runs as UID 1000.
+    chmod 0777 "$media_dir"
 
     # shellcheck disable=SC2317 # ShellCheck does not trace handlers invoked by EXIT traps.
     cleanup_virtual_media() {
