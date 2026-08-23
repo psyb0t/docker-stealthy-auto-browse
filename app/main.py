@@ -19,12 +19,14 @@ from __future__ import annotations
 import asyncio
 import hmac
 import io
+import math
 import os
 import random
 import subprocess
 import sys
 import tempfile
 import time
+from dataclasses import dataclass
 from typing import Any
 
 import uvicorn
@@ -32,6 +34,7 @@ import yaml
 from browser import Browser, BrowserConfig, BrowserError
 from fastapi import FastAPI, Request
 from PIL import Image
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from recorder import Recorder, RecorderError, cleanup_orphan_tmp_files
 from challenge_detector import detect_challenges
 from script_runner import ScriptValidationError, load_script, run_script, validate_script
@@ -147,6 +150,34 @@ _NUM_REPLICAS = int(os.environ.get("NUM_REPLICAS", "1"))
 _CLUSTER_MODE = _NUM_REPLICAS > 1
 _CLUSTER_ALLOWED_ACTIONS = {"run_script", "ping", "sleep"}
 _NAVIGATION_INTERRUPTED_ERROR = "interrupted by another navigation"
+
+NAVIGATION_TIMEOUT_DEFAULT_SECONDS = 30.0
+NAVIGATION_RETRY_COUNT_DEFAULT = 1
+NAVIGATION_RETRY_DELAY_DEFAULT_SECONDS = 1.0
+
+_NAVIGATION_MIN_TIMEOUT_SECONDS = 0.1
+_NAVIGATION_MAX_TIMEOUT_SECONDS = 120.0
+_NAVIGATION_MIN_RETRY_COUNT = 0
+_NAVIGATION_MAX_RETRY_COUNT = 2
+_NAVIGATION_MIN_RETRY_DELAY_SECONDS = 0.0
+_NAVIGATION_MAX_RETRY_DELAY_SECONDS = 10.0
+_NAVIGATION_MAX_TOTAL_SECONDS = 120.0
+_NAVIGATION_BACKOFF_MULTIPLIER = 2
+_MILLISECONDS_PER_SECOND = 1_000
+
+
+@dataclass(frozen=True)
+class NavigationOptions:
+    """Validated navigation controls expressed in seconds."""
+
+    timeout_seconds: float
+    retry_count: int
+    retry_delay_seconds: float
+
+    @property
+    def timeout_milliseconds(self) -> float:
+        """Return the Playwright timeout value in milliseconds."""
+        return self.timeout_seconds * _MILLISECONDS_PER_SECOND
 
 
 # Parse CLI args: --script <path> (path provided by entrypoint from stdin)
@@ -339,8 +370,78 @@ async def get_active_page() -> Any:
     return _active_page
 
 
-async def _navigate(page: Any, url: str, **goto_kwargs: Any) -> None:
-    """Navigate, retrying once if Firefox is still settling after recovery."""
+def _navigation_number(
+    command: dict[str, Any],
+    field: str,
+    default: float,
+    minimum: float,
+    maximum: float,
+) -> float:
+    """Read one finite, bounded navigation control from an action command."""
+    value = command.get(field, default)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field} must be a number")
+
+    parsed_value = float(value)
+    if not math.isfinite(parsed_value):
+        raise ValueError(f"{field} must be finite")
+    if parsed_value < minimum or parsed_value > maximum:
+        raise ValueError(f"{field} must be between {minimum} and {maximum}")
+    return parsed_value
+
+
+def _navigation_options(command: dict[str, Any]) -> NavigationOptions:
+    """Build bounded, explicit navigation controls for one action command."""
+    timeout_seconds = _navigation_number(
+        command,
+        "timeout",
+        NAVIGATION_TIMEOUT_DEFAULT_SECONDS,
+        _NAVIGATION_MIN_TIMEOUT_SECONDS,
+        _NAVIGATION_MAX_TIMEOUT_SECONDS,
+    )
+    retry_delay_seconds = _navigation_number(
+        command,
+        "retry_delay",
+        NAVIGATION_RETRY_DELAY_DEFAULT_SECONDS,
+        _NAVIGATION_MIN_RETRY_DELAY_SECONDS,
+        _NAVIGATION_MAX_RETRY_DELAY_SECONDS,
+    )
+    retry_count = command.get("retry_count", NAVIGATION_RETRY_COUNT_DEFAULT)
+    if isinstance(retry_count, bool) or not isinstance(retry_count, int):
+        raise ValueError("retry_count must be an integer")
+    if (
+        retry_count < _NAVIGATION_MIN_RETRY_COUNT
+        or retry_count > _NAVIGATION_MAX_RETRY_COUNT
+    ):
+        raise ValueError(
+            "retry_count must be between "
+            f"{_NAVIGATION_MIN_RETRY_COUNT} and {_NAVIGATION_MAX_RETRY_COUNT}"
+        )
+
+    retry_wait_seconds = retry_delay_seconds * (
+        _NAVIGATION_BACKOFF_MULTIPLIER**retry_count - 1
+    )
+    worst_case_seconds = timeout_seconds * (retry_count + 1) + retry_wait_seconds
+    if worst_case_seconds > _NAVIGATION_MAX_TOTAL_SECONDS:
+        raise ValueError(
+            "timeout, retry_count, and retry_delay exceed the "
+            f"{_NAVIGATION_MAX_TOTAL_SECONDS}-second navigation budget"
+        )
+
+    return NavigationOptions(
+        timeout_seconds=timeout_seconds,
+        retry_count=retry_count,
+        retry_delay_seconds=retry_delay_seconds,
+    )
+
+
+async def _navigate_once(
+    page: Any,
+    url: str,
+    navigation_options: NavigationOptions,
+    **goto_kwargs: Any,
+) -> None:
+    """Navigate once, retaining Firefox's interrupted-navigation recovery."""
     try:
         await page.goto(url, **goto_kwargs)
     except Exception as error:
@@ -348,8 +449,41 @@ async def _navigate(page: Any, url: str, **goto_kwargs: Any) -> None:
             raise
 
         log.warning("navigation interrupted while page was settling; retrying")
-        await page.wait_for_load_state("domcontentloaded")
+        await page.wait_for_load_state(
+            "domcontentloaded",
+            timeout=navigation_options.timeout_milliseconds,
+        )
         await page.goto(url, **goto_kwargs)
+
+
+async def _navigate(
+    page: Any,
+    url: str,
+    navigation_options: NavigationOptions,
+    **goto_kwargs: Any,
+) -> None:
+    """Navigate with explicit timeout and bounded timeout retries."""
+    goto_kwargs["timeout"] = navigation_options.timeout_milliseconds
+    for retry_index in range(navigation_options.retry_count + 1):
+        try:
+            await _navigate_once(page, url, navigation_options, **goto_kwargs)
+            return
+        except PlaywrightTimeoutError:
+            if retry_index == navigation_options.retry_count:
+                raise
+
+            retry_delay_seconds = navigation_options.retry_delay_seconds * (
+                _NAVIGATION_BACKOFF_MULTIPLIER**retry_index
+            )
+            log.warning(
+                "navigation timed out; retrying",
+                extra={
+                    "retry_index": retry_index + 1,
+                    "retry_delay_seconds": retry_delay_seconds,
+                },
+            )
+            if retry_delay_seconds:
+                await asyncio.sleep(retry_delay_seconds)
 
 
 async def get_window_offset_js(page) -> dict:
@@ -593,6 +727,7 @@ async def dispatch_action(cmd: dict) -> dict:
             await _navigate(
                 new_page,
                 tab_url,
+                _navigation_options(cmd),
                 wait_until=cmd.get("wait_until", "domcontentloaded"),
             )
         return make_response(
@@ -813,12 +948,13 @@ async def dispatch_action(cmd: dict) -> dict:
                 log.info(f"Loader matched: {loader.name}")
                 return await execute_loader(loader, url)
 
+        navigation_options = _navigation_options(cmd)
         goto_kwargs: dict[str, Any] = {
             "wait_until": cmd.get("wait_until", "domcontentloaded"),
         }
         if cmd.get("referer"):
             goto_kwargs["referer"] = cmd["referer"]
-        await _navigate(page, url, **goto_kwargs)
+        await _navigate(page, url, navigation_options, **goto_kwargs)
         return make_response(True, {"url": page.url, "title": await page.title()})
 
     if action == "refresh":
@@ -827,6 +963,7 @@ async def dispatch_action(cmd: dict) -> dict:
         await _navigate(
             page,
             page.url,
+            _navigation_options(cmd),
             wait_until=cmd.get("wait_until", "domcontentloaded"),
         )
         return make_response(True, {"url": page.url, "title": await page.title()})

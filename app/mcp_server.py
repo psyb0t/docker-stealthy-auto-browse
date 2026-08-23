@@ -134,8 +134,16 @@ async def run_script(
             - url (str, required): Target URL.
             - wait_until (str): "domcontentloaded" (default), "load", "networkidle".
             - referer (str): Optional Referer header value.
+            - timeout (float): Seconds per navigation attempt. Default 30.
+            - retry_count (int): Timeout retries, 0-2. Default 1; 0 disables retries.
+            - retry_delay (float): Base retry delay in seconds. Default 1; later
+              retries double it. Total attempt and delay budget is 120 seconds.
         refresh: Reload current page.
             - wait_until (str): "domcontentloaded" (default), "load", "networkidle".
+            - timeout (float): Seconds per navigation attempt. Default 30.
+            - retry_count (int): Timeout retries, 0-2. Default 1; 0 disables retries.
+            - retry_delay (float): Base retry delay in seconds. Default 1; later
+              retries double it. Total attempt and delay budget is 120 seconds.
 
     PAGE CONTENT:
         get_text: Get visible text from current page (truncated to 10,000 chars).
@@ -250,6 +258,10 @@ async def run_script(
         new_tab: Open a new tab.
             - url (str): Optional URL to navigate to.
             - wait_until (str): Navigation wait condition.
+            - timeout (float): Seconds per navigation attempt. Default 30.
+            - retry_count (int): Timeout retries, 0-2. Default 1; 0 disables retries.
+            - retry_delay (float): Base retry delay in seconds. Default 1; later
+              retries double it. Total attempt and delay budget is 120 seconds.
         switch_tab: Switch to a tab by index.
             - index (int, required): Tab index.
         close_tab: Close a tab.
@@ -346,6 +358,9 @@ if not _cluster_mode:
         url: str,
         wait_until: str = "domcontentloaded",
         referer: str | None = None,
+        timeout: float | None = None,
+        retry_count: int | None = None,
+        retry_delay: float | None = None,
     ) -> str:
         """Navigate the browser to a URL.
 
@@ -354,9 +369,20 @@ if not _cluster_mode:
             wait_until: When to consider navigation done.
                 "domcontentloaded" (default), "load", or "networkidle".
             referer: Optional HTTP Referer header value.
+            timeout: Seconds allowed per attempt. Omit for the app default of 30.
+            retry_count: Timeout retries from 0 through 2. Omit for the app default of 1.
+            retry_delay: Base seconds before a retry. Omit for the app default of 1.
         """
         return _text_result(
-            await _call("goto", url=url, wait_until=wait_until, referer=referer)
+            await _call(
+                "goto",
+                url=url,
+                wait_until=wait_until,
+                referer=referer,
+                timeout=timeout,
+                retry_count=retry_count,
+                retry_delay=retry_delay,
+            )
         )
 
     @mcp.tool

@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.6.0] 2026-08-23
+
+### Added
+
+- `goto`, `refresh`, and `new_tab` now use explicit app-owned navigation
+  controls. Each attempt defaults to a 30-second timeout, one timeout retry,
+  and a one-second retry delay. Callers can set `timeout`, `retry_count`, and
+  `retry_delay`, including `retry_count: 0` to disable retries. Values are
+  bounded, and a request cannot reserve more than 120 seconds of navigation
+  time.
+
 ## [2.5.2] — 2026-08-14
 
 Documented running the browser through a private pr0xteus WireGuard/SOCKS5

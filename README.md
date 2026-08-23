@@ -92,6 +92,8 @@ Also accepts `"yaml": "..."` with the same YAML format used in script mode. In s
 
 See [docs/api.md](docs/api.md) for all actions and the full API reference.
 
+Navigation uses app-owned controls, not a hidden browser-library timeout: each attempt gets 30 seconds by default, one timeout retry, and a one-second retry delay. Pass `timeout`, `retry_count`, and `retry_delay` with `goto`, `refresh`, or `new_tab` when a workflow needs different bounds. `retry_count: 0` disables retries. See [navigation controls](docs/api.md#navigation) for the limits and retry behavior.
+
 ## Two Input Modes
 
 There are two ways to interact with pages. **System input** uses PyAutoGUI to generate real OS-level mouse and keyboard events — the browser cannot tell these apart from a real human. **Playwright input** uses CSS selectors and DOM event injection — easier, but theoretically detectable by behavioral analysis. Use system input on any site with bot protection.

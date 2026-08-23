@@ -26,6 +26,16 @@ test_refresh_wait_until() {
     echo "  OK: refresh with wait_until=load (url=$url)"
 }
 
+test_navigation_options_unit() {
+    docker run --rm \
+        -e PYTHONDONTWRITEBYTECODE=1 \
+        -v "$WORKDIR/tests/test_navigation_options.py:/tests/test_navigation_options.py:ro" \
+        --entrypoint python \
+        "$IMAGE_NAME:$TEST_TAG" \
+        /tests/test_navigation_options.py || return 1
+    echo "OK: navigation_options_unit (explicit timeout and retry controls)"
+}
+
 # --- Table-driven referer tests ---
 # Each case: "label|referer_value|expected"
 # Empty referer_value means no referer param sent. Expected is what the server echoes back.
@@ -69,5 +79,6 @@ test_goto_referer() {
 ALL_TESTS+=(
     test_refresh
     test_refresh_wait_until
+    test_navigation_options_unit
     test_goto_referer
 )

@@ -105,12 +105,24 @@ try:
     missing = [n for n in expected if n not in names]
     ok2 = len(missing) == 0
     results.append(("2b. expected tools present", ok2, f"missing: {missing}" if missing else ""))
+    goto_tool = next(tool for tool in tools if tool["name"] == "goto")
+    navigation_controls = {"timeout", "retry_count", "retry_delay"}
+    goto_properties = goto_tool.get("inputSchema", {}).get("properties", {})
+    missing_controls = navigation_controls.difference(goto_properties)
+    ok3 = not missing_controls
+    results.append(("2c. goto navigation controls", ok3, f"missing: {sorted(missing_controls)}" if missing_controls else ""))
 except Exception as e:
     results.append(("2. tools/list", False, str(e)))
 
 # 3. goto
 try:
-    r = tool_call(3, "goto", {"url": test_page, "wait_until": "networkidle"})
+    r = tool_call(3, "goto", {
+        "url": test_page,
+        "wait_until": "networkidle",
+        "timeout": 10,
+        "retry_count": 0,
+        "retry_delay": 0,
+    })
     txt = tool_text(r)
     ok = '"success": true' in txt or '"success":true' in txt
     results.append(("3. goto", ok, txt[:80] if not ok else ""))

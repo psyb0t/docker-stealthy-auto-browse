@@ -115,10 +115,12 @@ All actions are sent as `POST /` with JSON body `{"action": "name", ...params}`.
 
 ### Navigation
 
-| Action    | Parameters                     | What It Does                                                                                                                                                               |
-| --------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `goto`    | `url`, `wait_until`, `referer` | Navigate to a URL. `wait_until`: `"domcontentloaded"` (default), `"load"`, `"networkidle"`. `referer`: set the HTTP Referer header (useful for sites that check referrer). |
-| `refresh` | `wait_until` (optional)        | Reload the current page. Returns URL and title.                                                                                                                            |
+| Action    | Parameters                                                  | What It Does |
+| --------- | ----------------------------------------------------------- | ------------ |
+| `goto`    | `url`, `wait_until`, `referer`, `timeout`, `retry_count`, `retry_delay` | Navigate to a URL. `wait_until`: `"domcontentloaded"` (default), `"load"`, `"networkidle"`. `referer`: set the HTTP Referer header. |
+| `refresh` | `wait_until`, `timeout`, `retry_count`, `retry_delay`      | Reload the current page. Returns URL and title. |
+
+Navigation never relies on a Playwright default. Every attempt gets the app's explicit `timeout` of 30 seconds unless you set another value. `retry_count` defaults to 1, so a timed-out navigation gets one retry. Set it to 0 to disable retries. `retry_delay` defaults to 1 second and doubles before each further retry. `timeout` must be 0.1-120 seconds, `retry_count` 0-2, `retry_delay` 0-10 seconds, and the whole worst-case attempt sequence must fit within 120 seconds. Only Playwright navigation timeouts retry. Other navigation failures return immediately.
 
 ### System Input (OS-Level, Undetectable — Last Resort)
 
@@ -208,7 +210,7 @@ Use these instead of `sleep` — they wait for **actual page state**, not arbitr
 | Action       | Parameters          | What It Does                                                                                            |
 | ------------ | ------------------- | ------------------------------------------------------------------------------------------------------- |
 | `list_tabs`  | —                   | Returns all open tabs with their index, URL, and which one is active.                                   |
-| `new_tab`    | `url`, `wait_until` | Opens a new tab (becomes the active tab). Optionally navigates to a URL.                                |
+| `new_tab`    | `url`, `wait_until`, `timeout`, `retry_count`, `retry_delay` | Opens a new tab (becomes the active tab). Optionally navigates to a URL with the same explicit navigation controls as `goto`. |
 | `switch_tab` | `index`             | Switches the active tab by index (0-based). All subsequent actions operate on the active tab.           |
 | `close_tab`  | `index` (optional)  | Closes a tab. If no index, closes the active tab. After closing, the last remaining tab becomes active. |
 
