@@ -85,11 +85,27 @@ RUN mkdir -p /app /userdata /loaders /recordings && chown -R browser:browser /ap
 # Allow browser user to write GeoIP db into camoufox package dir
 RUN chown -R browser:browser /usr/local/lib/python3.12/site-packages/camoufox/
 
-# Switch to non-root user for camoufox fetch + extensions
+# Switch to non-root user for the Camoufox archive and extensions
 USER browser
 
-# Download Camoufox browser (writes to ~/.cache/camoufox + GeoIP db to site-packages)
-RUN python -m camoufox fetch
+# Camoufox 0.4.11 resolves its browser binary from the latest compatible GitHub
+# release. Pin the archive too: beta.29 stopped executing the fixture's second
+# inline script, while beta.28 is compatible with the pinned Playwright driver.
+ARG TARGETARCH
+RUN set -eux; \
+    case "$TARGETARCH" in \
+        amd64) camoufox_arch='x86_64'; camoufox_sha='924f3109ccd6d47cd6a0384d67a345fadf975d48b6319f8dbbd5954c588982bd' ;; \
+        arm64) camoufox_arch='arm64'; camoufox_sha='3a105a2fc929e80a79b4b7fce2c93ed62c4fb2c877f3c1ed2a5d66a1c4fe968f' ;; \
+        *) echo "unsupported Camoufox architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    camoufox_url="https://github.com/daijro/camoufox/releases/download/v152.0.4-beta.28/camoufox-152.0.4-beta.28-lin.${camoufox_arch}.zip"; \
+    wget -q -O /tmp/camoufox.zip "$camoufox_url"; \
+    echo "${camoufox_sha}  /tmp/camoufox.zip" | sha256sum -c -; \
+    mkdir -p /home/browser/.cache/camoufox; \
+    python -c 'import zipfile; zipfile.ZipFile("/tmp/camoufox.zip").extractall("/home/browser/.cache/camoufox")'; \
+    printf '{"version":"152.0.4","release":"beta.28"}' > /home/browser/.cache/camoufox/version.json; \
+    chmod -R 0755 /home/browser/.cache/camoufox; \
+    rm /tmp/camoufox.zip
 
 # Copy scripts and install extensions (writes to ~/.cache/camoufox)
 COPY --chown=browser:browser scripts/ /scripts/

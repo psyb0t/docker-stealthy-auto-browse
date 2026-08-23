@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.6.7] 2026-08-23
+
+### Fixed
+
+- Pin and checksum-verify the Camoufox browser archive used by the image. This
+  keeps fresh builds on the compatible browser release instead of silently
+  fetching a newer incompatible one.
+
 ## [2.6.6] 2026-08-23
 
 ### Fixed
