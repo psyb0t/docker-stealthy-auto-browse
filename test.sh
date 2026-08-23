@@ -280,7 +280,9 @@ if [ "$FAILED" -gt 0 ]; then
     echo ""
     echo "Failed test logs:"
     for t in "${FAILED_TESTS[@]}"; do
-        echo "  tests/results/${t}.log"
+        local_log="$RESULTS_DIR/${t}.log"
+        echo "----- tests/results/${t}.log -----"
+        tail -n 200 "$local_log"
     done
     exit 1
 fi

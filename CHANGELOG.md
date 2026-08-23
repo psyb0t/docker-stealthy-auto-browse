@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.6.5] 2026-08-23
+
+### Fixed
+
+- Print the tail of each failed test log in CI so a failure includes the
+  assertion or runtime error that caused it.
+
 ## [2.6.4] 2026-08-23
 
 ### Fixed
