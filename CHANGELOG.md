@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.6.3] 2026-08-23
+
+### Fixed
+
+- Include the Docker CLI in the development image so the complete test suite
+  can create its Docker fixtures from inside that image.
+
 ## [2.6.2] 2026-08-23
 
 ### Fixed
