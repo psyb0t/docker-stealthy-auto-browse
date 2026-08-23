@@ -45,6 +45,7 @@ DEV_RUN_DIND := docker run --rm --init --read-only \
 	--group-add $(DOCKER_GID) \
 	-e HOME=/tmp \
 	-e PYTHONDONTWRITEBYTECODE=1 \
+	-e TEST_DOCKER_NETWORK_ATTACH=true \
 	-v "$(PROJECT_ROOT):$(PROJECT_ROOT)" \
 	-v "$(DOCKER_SOCK):$(DOCKER_SOCK)" \
 	-w "$(PROJECT_ROOT)" \

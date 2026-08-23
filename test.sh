@@ -171,6 +171,7 @@ echo ""
 
 FAILED=0
 PASSED=0
+FAILED_TESTS=()
 
 # --- Run main container tests sequentially ---
 
@@ -187,6 +188,7 @@ if [ ${#MAIN_TO_RUN[@]} -gt 0 ]; then
             echo "OK"
         else
             FAILED=$((FAILED + 1))
+            FAILED_TESTS+=("$t")
             echo "FAIL (see tests/results/${t}.log)"
         fi
         test_teardown
@@ -213,6 +215,7 @@ if [ ${#EXTRA_TO_RUN[@]} -gt 0 ]; then
                         echo "[$(_ts)] $_t ... OK"
                     else
                         FAILED=$((FAILED + 1))
+                        FAILED_TESTS+=("$_t")
                         echo "[$(_ts)] $_t ... FAIL (see tests/results/${_t}.log)"
                     fi
                     unset "BG_PIDS[$_t]"
@@ -243,6 +246,7 @@ if [ ${#EXTRA_TO_RUN[@]} -gt 0 ]; then
             echo "[$(_ts)] $_t ... OK"
         else
             FAILED=$((FAILED + 1))
+            FAILED_TESTS+=("$_t")
             echo "[$(_ts)] $_t ... FAIL (see tests/results/${_t}.log)"
         fi
     done
@@ -263,6 +267,7 @@ if [ ${#HEAVY_TO_RUN[@]} -gt 0 ]; then
             echo "OK"
         else
             FAILED=$((FAILED + 1))
+            FAILED_TESTS+=("$t")
             echo "FAIL (see tests/results/${t}.log)"
         fi
     done
@@ -274,11 +279,8 @@ echo "=== [$(_ts)] Results: $PASSED passed, $FAILED failed ==="
 if [ "$FAILED" -gt 0 ]; then
     echo ""
     echo "Failed test logs:"
-    for t in "${TESTS_TO_RUN[@]}"; do
-        local_log="$RESULTS_DIR/${t}.log"
-        if [ -f "$local_log" ] && grep -qiE "FAIL" "$local_log" 2>/dev/null; then
-            echo "  tests/results/${t}.log"
-        fi
+    for t in "${FAILED_TESTS[@]}"; do
+        echo "  tests/results/${t}.log"
     done
     exit 1
 fi

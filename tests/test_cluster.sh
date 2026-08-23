@@ -33,6 +33,9 @@ test_cluster() {(
     local REDIS_CONTAINER="sab-cluster-test-redis-1"
     local WEBSERVER_CONTAINER="sab-cluster-test-webserver-1"
     local QPROXY_CONTAINER="sab-cluster-test-queue-proxy-1"
+    local CLUSTER_NETWORK="sab-cluster-test_browse"
+    local TEST_RUNNER_CONTAINER_ID=""
+    local TEST_RUNNER_ATTACHED=false
 
     local PASS=0 FAIL=0
     FAILED_TESTS=()
@@ -56,6 +59,11 @@ test_cluster() {(
     _cleanup() {
         echo ""
         log "Cleaning up cluster..."
+        if [ "$TEST_RUNNER_ATTACHED" = true ]; then
+            if ! docker network disconnect "$CLUSTER_NETWORK" "$TEST_RUNNER_CONTAINER_ID"; then
+                log_warn "Could not detach the test runner from the cluster network"
+            fi
+        fi
         $COMPOSE down -v --remove-orphans 2>&1 | grep -v "^$" || true
         log "Done."
     }
@@ -173,6 +181,15 @@ test_cluster() {(
     log "Starting cluster (redis + haproxy + $NUM_BROWSERS browsers + webserver)..."
     $COMPOSE down -v --remove-orphans 2>/dev/null || true
     $COMPOSE up -d --build 2>&1 | grep -v "^$" | grep -v "^Network\|^Container" || true
+
+    if [ "${TEST_DOCKER_NETWORK_ATTACH:-false}" = true ]; then
+        TEST_RUNNER_CONTAINER_ID="$(hostname)"
+        if ! docker network connect "$CLUSTER_NETWORK" "$TEST_RUNNER_CONTAINER_ID"; then
+            log_fail "Could not attach the test runner to the cluster network"
+            exit 1
+        fi
+        TEST_RUNNER_ATTACHED=true
+    fi
 
     local WEBSERVER_IP
     WEBSERVER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$WEBSERVER_CONTAINER" 2>/dev/null || true)

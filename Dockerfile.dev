@@ -1,6 +1,8 @@
 ARG BASE_IMAGE=psyb0t/stealthy-auto-browse:dev-base
 FROM ${BASE_IMAGE}
 
+ARG DOCKER_COMPOSE_VERSION=5.4.0
+
 USER root
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -8,6 +10,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         jq \
         shellcheck \
     && rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+    case "$(dpkg --print-architecture)" in \
+        amd64) compose_arch='x86_64'; compose_sha='837fd1d35bf6a494f41b5b5988269a7be79de337cf1a1a6ff0e45ab51bb4e9be' ;; \
+        arm64) compose_arch='aarch64'; compose_sha='fc5d1371f1ec7987e703da94ede49af3fbfb240b83f22991a98511de7bc4b93b' ;; \
+        *) echo "unsupported Docker Compose architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac; \
+    install -d /usr/local/libexec/docker/cli-plugins; \
+    wget -q -O /usr/local/libexec/docker/cli-plugins/docker-compose \
+        "https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_VERSION}/docker-compose-linux-${compose_arch}"; \
+    echo "${compose_sha}  /usr/local/libexec/docker/cli-plugins/docker-compose" | sha256sum -c -; \
+    chmod 0755 /usr/local/libexec/docker/cli-plugins/docker-compose; \
+    docker compose version
 
 # Keep development-only tools out of the browser image. The app dependencies
 # come from the local runtime base so checks exercise what the image ships.

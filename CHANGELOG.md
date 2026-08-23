@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.6.4] 2026-08-23
+
+### Fixed
+
+- Include Docker Compose in the Docker-backed development image so the complete
+  cluster suite can run in CI.
+- Let that isolated test runner join its temporary cluster network, then detach
+  during teardown. Test reports now name only tests that actually failed.
+
 ## [2.6.3] 2026-08-23
 
 ### Fixed
