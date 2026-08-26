@@ -10,7 +10,7 @@
 | `LANG`             | `en_US.UTF-8`   | Browser locale/language. Override with `-e LANG=fr_FR.UTF-8` etc. to change the browser's locale.                                                                                                                                                                                                        |
 | `USE_VIEWPORT`     | `false`         | Enables Playwright viewport control. Required if you need widths below ~450px (Firefox minimum without it). **Reduces stealth** because it adds Playwright viewport management. Only use for mobile layout testing on sites that don't have bot detection.                                               |
 | `LOADERS_DIR`      | `/loaders`      | Directory the container scans for page loader YAML files. See [page-loaders.md](./page-loaders.md).                                                                                                                                                                                                      |
-| `PROXY_URL`        | —               | Routes all browser traffic through an HTTP or SOCKS5 proxy. Examples: `http://user:pass@host:port` or `socks5://host:port`. Use an authorized exit whose location matches the browser fingerprint you are testing. |
+| `PROXY_URL`        | —               | Routes all browser traffic through a proxy. Both `http://user:pass@host:port` and `socks5://host:port` work, but **Camoufox (Firefox) does not reliably support _authenticated_ SOCKS5** (username/password) — for any exit that needs credentials, use an HTTP proxy. Unauthenticated SOCKS5 is fine. Use an authorized exit whose location matches the browser fingerprint you are testing. |
 | `HTTP_LISTEN_HOST` | `0.0.0.0`       | Host address the HTTP API binds to.                                                                                                                                                                                                                                                                      |
 | `HTTP_LISTEN_PORT` | `8080`          | Port the HTTP API listens on.                                                                                                                                                                                                                                                                            |
 | `AUTH_TOKEN`       | —               | If set, all requests (except `/health`) require an `Authorization: Bearer <token>` header. Applies to both HTTP API and MCP.                                                                                                                                                                             |
@@ -41,35 +41,41 @@ docker run -d -e TZ=Europe/Bucharest -p 8080:8080 psyb0t/stealthy-auto-browse
 docker run -d -e PROXY_URL=http://user:pass@proxy:8888 -p 8080:8080 psyb0t/stealthy-auto-browse
 ```
 
-**Use a private [pr0xteus](https://github.com/psyb0t/pr0xteus) WireGuard/SOCKS5 cell:**
+**Use a private [pr0xteus](https://github.com/psyb0t/pr0xteus) WireGuard HTTP proxy:**
 
-First complete pr0xteus's [operator setup and real egress proof](https://github.com/psyb0t/pr0xteus/blob/main/docs/complete-example.md). It keeps its control API on host loopback and creates the returned SOCKS5 cell only on the private `pr0xteus-egress` Docker network. Allocate the configured exit, then start the browser on that same network:
+[pr0xteus](https://github.com/psyb0t/pr0xteus) v0.11.0+ hands out an authenticated HTTP forward-proxy per lease (alongside a SOCKS5 one). Use the **HTTP** proxy: pr0xteus leases are credentialed, and Camoufox (Firefox) does not reliably support authenticated SOCKS5. First complete pr0xteus's [operator setup and real egress proof](https://github.com/psyb0t/pr0xteus/blob/main/docs/complete-example.md). By default it keeps the control API on `127.0.0.1:8000` and the HTTP proxy on `127.0.0.1:8080`, both on host loopback. Allocate a lease, read its HTTP proxy URL, then run the browser so it can reach that loopback address:
 
 ```bash
-pr0xteus_dir=/absolute/path/to/pr0xteus
-token="$(<"$pr0xteus_dir/secrets/pr0xteus_api_token")"
-auth_header=(--header @<(printf 'Authorization: Bearer %s' "$token"))
+# Read the bearer token from pr0xteus's local .env (mode 0600 — keep it local).
+token="$(sed -n 's/^PR0XTEUS_API_TOKEN=//p' ~/.config/pr0xteus/.env)"
 
 allocation="$(
-  curl --fail-with-body \
-    "${auth_header[@]}" \
+  curl --fail-with-body --request POST \
+    --header "Authorization: Bearer $token" \
     --header 'Content-Type: application/json' \
     --data '{"country":"US"}' \
     http://127.0.0.1:8000/v1/proxies
 )"
-proxy_url="$(jq -er '.url' <<<"$allocation")"
+# v0.11.0 returns proxies.socks5 and proxies.http (the old top-level .url is gone).
+# Camoufox needs the HTTP one — Firefox can't reliably do authenticated SOCKS5.
+proxy_url="$(jq -er '.proxies.http' <<<"$allocation")"
 
+# Share the host network so the browser can reach pr0xteus's loopback proxy, and
+# move the browser's own API off 8080 so it doesn't collide with the proxy on 8080.
 docker run -d --name browser \
-  --network pr0xteus-egress \
-  -p 127.0.0.1:8080:8080 \
+  --network host \
+  -e HTTP_LISTEN_HOST=127.0.0.1 \
+  -e HTTP_LISTEN_PORT=8090 \
+  -e VNC_LISTEN_HOST=127.0.0.1 \
   -e PROXY_URL="$proxy_url" \
   psyb0t/stealthy-auto-browse
 
 unset token allocation proxy_url
-unset -a auth_header
 ```
 
-The returned `socks5://pr0xteus-tunnel-...:1080` URL is private Docker-network plumbing, not a host or public proxy address. Do not publish the cell port or reuse its hostname outside a workload joined to `pr0xteus-egress`. Request a country/pool that actually matches your configured WireGuard node, then set `TZ`, locale, and other browser settings consistently with that exit. Add `AUTH_TOKEN` before letting another local process control the browser.
+The browser API is now on `http://127.0.0.1:8090`. `proxy_url` is a short-lived `http://<lease-id>:<lease-secret>@127.0.0.1:8080` credential targeting pr0xteus's controller, which forwards to the selected WireGuard cell — keep it out of logs and expect it to expire.
+
+Both proxy URLs default to host loopback, so `--network host` is the simplest way for the browser container to reach them. If you can't share the host network, publish pr0xteus's HTTP proxy on an address the browser container can reach (`PR0XTEUS_HTTP_PROXY_HOST_PORT` / `PR0XTEUS_HTTP_PROXY_PUBLIC_ADDRESS`), or use its Tailscale sidecar, then pass that `.proxies.http` URL as `PROXY_URL` — see pr0xteus's [deploy docs](https://github.com/psyb0t/pr0xteus/blob/main/docs/deploy.md). Request a country/pool that actually matches your configured WireGuard node, then set `TZ`, locale, and other browser settings consistently with that exit. Add `AUTH_TOKEN` before letting another local process control the browser.
 
 **Custom resolution:**
 

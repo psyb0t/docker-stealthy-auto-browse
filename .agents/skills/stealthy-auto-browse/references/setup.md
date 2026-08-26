@@ -75,7 +75,7 @@ Notes on the hardening flags:
 | `XVFB_RESOLUTION` | `1920x1080` | Virtual display resolution. Any size works (e.g. `1920x1920`, `2560x1440`); the framebuffer is allocated to match, so screen recording captures this exact size. Larger = more memory. |
 | `XVFB_DEPTH` | `24` | Color depth (16/24/32). |
 | `TZ` | `UTC` | Match your IP location for realistic test fingerprints. |
-| `PROXY_URL` | — | HTTP or SOCKS5 proxy for all browser traffic. Use `http://user:pass@host:port` or `socks5://host:port`, and only use exits you own or are authorized to use. [pr0xteus](https://github.com/psyb0t/pr0xteus) supplies private WireGuard-backed SOCKS5 cells; the browser must join its `pr0xteus-egress` Docker network. |
+| `PROXY_URL` | — | Proxy for all browser traffic — `http://user:pass@host:port` or `socks5://host:port`. **Camoufox (Firefox) does not reliably support authenticated SOCKS5**, so use HTTP for any credentialed exit (unauthenticated SOCKS5 is fine). Only use exits you own or are authorized to use. [pr0xteus](https://github.com/psyb0t/pr0xteus) v0.11.0+ hands out an authenticated HTTP forward-proxy per lease (read `proxies.http`); reach it over the host network or a published address. |
 | `LOADERS_DIR` | `/loaders` | Directory for page loader YAML files. |
 | `USE_VIEWPORT` | `false` | Playwright viewport control. Required for width < ~450px. Makes automation easier to fingerprint. |
 | `HTTP_LISTEN_HOST` | `0.0.0.0` | HTTP API bind address inside the container. Combine with a `127.0.0.1:8080:8080` port mapping to confine to localhost on the host. |
@@ -111,8 +111,8 @@ docker run -d -p 127.0.0.1:8080:8080 \
   --env-file .env.browser \
   psyb0t/stealthy-auto-browse@$DIGEST
 
-# For a private pr0xteus SOCKS5 cell, allocate its URL first, join this browser
-# to pr0xteus-egress, then pass the returned socks5:// URL as PROXY_URL.
+# For a private pr0xteus (v0.11.0+) HTTP proxy, allocate a lease, read its
+# proxies.http URL, and pass that as PROXY_URL (Camoufox can't reliably do authenticated SOCKS5).
 # The working allocation-to-browser command sequence is in docs/configuration.md.
 
 # Custom resolution

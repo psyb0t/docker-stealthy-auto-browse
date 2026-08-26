@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.6.8] 2026-08-26
+
+### Changed
+
+- Update the pr0xteus proxy docs for pr0xteus v0.11.0. `POST /v1/proxies` no
+  longer returns a top-level `url`; it now returns `proxies.socks5` and a new
+  `proxies.http`. The docs use the HTTP forward-proxy, because Camoufox does not
+  reliably support authenticated SOCKS5 and pr0xteus leases are credentialed.
+  The example reaches pr0xteus's controller proxy over the host network,
+  replacing the removed egress-network cell join, and moves the browser API to
+  port 8090 so it does not collide with the proxy on 8080.
+
 ## [2.6.7] 2026-08-23
 
 ### Fixed
