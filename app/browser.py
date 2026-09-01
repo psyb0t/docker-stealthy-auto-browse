@@ -1109,6 +1109,7 @@ class Browser:
     async def _launch_browser(self) -> None:
         """Launch Camoufox with proper C++ level fingerprint injection."""
         from browserforge.fingerprints import Screen
+        from camoufox.addons import DefaultAddons
         from camoufox.utils import launch_options
         from playwright.async_api import async_playwright
 
@@ -1154,6 +1155,13 @@ class Browser:
                 locale=locale,
                 humanize=True,  # Human-like mouse movement
                 i_know_what_im_doing=True,  # We're using our persisted config
+                # uBlock Origin ships via distribution/policies.json
+                # (scripts/install_extensions.py). Camoufox's own default-addon
+                # download leaves an empty addons/UBO cache dir behind on a failed
+                # fetch and never re-validates it, so every later launch raises
+                # InvalidAddonPath and crash-loops the browser. Exclude it here so
+                # that cache path can never poison startup.
+                exclude_addons=[DefaultAddons.UBO],
             )
 
             # Add persistent context settings

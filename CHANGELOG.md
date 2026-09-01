@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.6.9] 2026-09-01
+
+### Fixed
+
+- Exclude Camoufox's bundled uBlock Origin from browser launch. Camoufox
+  downloads its own uBlock Origin the first time it starts and leaves an empty
+  addon cache directory behind when that download fails or is interrupted, then
+  never re-validates it. Every later launch aborts with `InvalidAddonPath:
+  manifest.json is missing` and the container crash-loops. The image already
+  installs uBlock Origin through the extension policy, so the bundled copy is
+  redundant and is now excluded at launch, which removes the crash.
+
 ## [2.6.8] 2026-08-26
 
 ### Changed
