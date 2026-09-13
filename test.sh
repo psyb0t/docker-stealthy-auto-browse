@@ -27,6 +27,7 @@ MAIN_TESTS=(
     test_detect_challenge_raw_dom_selectors
     # test_fingerprint.sh
     test_fingerprint_consistency
+    test_liarjs_live_fingerprint_consistency
     test_get_interactive_elements
     test_get_resolution
     test_calibrate

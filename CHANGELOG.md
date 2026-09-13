@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.6.11] 2026-09-13
+
+### Fixed
+
+- Keep page canvas and worker `OffscreenCanvas` font resolution consistent
+  while exposing a Linux font set that agrees with the generated Linux browser
+  profile.
+- Allow ffmpeg up to 20 seconds to create its first recording output under CPU
+  contention.
+- Make page-content and proxy integration assertions safe under `pipefail`.
+
+### Added
+
+- Add an opt-in `make test-real` regression against liarjs.dev. The default
+  suite remains local and deterministic.
+
 ## [2.6.10] 2026-09-13
 
 ### Fixed

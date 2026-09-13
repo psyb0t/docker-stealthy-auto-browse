@@ -4,6 +4,26 @@
 _PROXY_CONTAINER="stealthy-auto-browse-test-proxy"
 _PROXY_WEBSERVER="stealthy-auto-browse-test-proxy-web"
 _PROXY_BROWSER="stealthy-auto-browse-test-proxy-browser"
+_PROXY_LOG_WAIT_ATTEMPTS=20
+_PROXY_LOG_WAIT_SECONDS=1
+
+_proxy_wait_for_container_log() {
+    local container_name="$1"
+    local expected="$2"
+    local attempt logs
+
+    for ((attempt = 1; attempt <= _PROXY_LOG_WAIT_ATTEMPTS; attempt++)); do
+        if ! logs=$(docker logs "$container_name" 2>&1); then
+            sleep "$_PROXY_LOG_WAIT_SECONDS"
+            continue
+        fi
+        if [[ "$logs" == *"$expected"* ]]; then
+            return 0
+        fi
+        sleep "$_PROXY_LOG_WAIT_SECONDS"
+    done
+    return 1
+}
 
 test_proxy() {
     local proxy_ip web_ip browser_ip resp
@@ -16,10 +36,11 @@ test_proxy() {
     EXTRA_CONTAINERS+=("$_PROXY_CONTAINER")
 
     proxy_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$_PROXY_CONTAINER")
-    for _ in $(seq 1 20); do
-        docker logs "$_PROXY_CONTAINER" 2>&1 | grep -q "PROXY_READY" && break
-        sleep 1
-    done
+    if ! _proxy_wait_for_container_log "$_PROXY_CONTAINER" "PROXY_READY"; then
+        echo "FAIL: proxy: proxy server not ready"
+        docker logs --tail 10 "$_PROXY_CONTAINER" 2>&1
+        return 1
+    fi
 
     # --- Start web server container (target for proxied request) ---
     docker rm -f "$_PROXY_WEBSERVER" >/dev/null 2>&1 || true
@@ -30,10 +51,11 @@ test_proxy() {
     EXTRA_CONTAINERS+=("$_PROXY_WEBSERVER")
 
     web_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$_PROXY_WEBSERVER")
-    for _ in $(seq 1 20); do
-        docker logs "$_PROXY_WEBSERVER" 2>&1 | grep -q "SERVER_READY" && break
-        sleep 1
-    done
+    if ! _proxy_wait_for_container_log "$_PROXY_WEBSERVER" "SERVER_READY"; then
+        echo "FAIL: proxy: target web server not ready"
+        docker logs --tail 10 "$_PROXY_WEBSERVER" 2>&1
+        return 1
+    fi
 
     # --- Start browser container with proxy ---
     browser_ip=$(start_extra_container "$_PROXY_BROWSER" \
@@ -43,9 +65,9 @@ test_proxy() {
     if ! wait_for_api "http://$browser_ip:8080" 180; then
         echo "FAIL: proxy: API not ready"
         echo "  browser logs:"
-        docker logs "$_PROXY_BROWSER" 2>&1 | tail -15
+        docker logs --tail 15 "$_PROXY_BROWSER" 2>&1
         echo "  proxy logs:"
-        docker logs "$_PROXY_CONTAINER" 2>&1 | tail -15
+        docker logs --tail 15 "$_PROXY_CONTAINER" 2>&1
         return 1
     fi
 
@@ -54,9 +76,9 @@ test_proxy() {
         "{\"action\": \"goto\", \"url\": \"http://$web_ip/index.html\"}")
     assert_success "$resp" "proxy: goto through proxy" || {
         echo "  proxy logs:"
-        docker logs "$_PROXY_CONTAINER" 2>&1 | tail -5
+        docker logs --tail 5 "$_PROXY_CONTAINER" 2>&1
         echo "  browser logs:"
-        docker logs "$_PROXY_BROWSER" 2>&1 | tail -5
+        docker logs --tail 5 "$_PROXY_BROWSER" 2>&1
         return 1
     }
 
@@ -66,10 +88,11 @@ test_proxy() {
     assert_eq "$title" "Test Page" "proxy: page title" || return 1
 
     # Verify proxy saw the request
-    sleep 1
-    if ! docker logs "$_PROXY_CONTAINER" 2>&1 | grep -q "PROXIED.*$web_ip"; then
+    if ! _proxy_wait_for_container_log \
+        "$_PROXY_CONTAINER" \
+        "PROXIED GET http://$web_ip/index.html"; then
         echo "FAIL: proxy: request not logged by proxy"
-        docker logs "$_PROXY_CONTAINER" 2>&1 | tail -10
+        docker logs --tail 10 "$_PROXY_CONTAINER" 2>&1
         return 1
     fi
 

@@ -41,6 +41,93 @@ _CAMOUFOX_FONTCONFIG_RELATIVE_PATHS = (
     Path("fontconfigs/linux/fonts.conf"),
 )
 _CAMOUFOX_FONTCONFIG_DIRECTORY_MARKER = '<dir prefix="cwd">fonts</dir>'
+_CAMOUFOX_CONFIG_ENV_PREFIX = "CAMOU_CONFIG_"
+_CAMOUFOX_CANVAS_NOISE_KEYS = (
+    "canvas:aaCapOffset",
+    "canvas:aaOffset",
+)
+_LINUX_SYSTEM_FONT_DIRECTORIES = (
+    Path("/usr/share/fonts/truetype/dejavu"),
+    Path("/usr/share/fonts/truetype/liberation"),
+    Path("/usr/share/fonts/opentype/urw-base35"),
+)
+_LINUX_BROWSER_FONT_FAMILIES = frozenset(
+    {
+        "Arial",
+        "DejaVu Sans",
+        "DejaVu Sans Mono",
+        "DejaVu Serif",
+        "Liberation Mono",
+        "Liberation Sans",
+        "Liberation Serif",
+        "Nimbus Mono PS",
+        "Nimbus Roman",
+        "Nimbus Sans",
+        "Times New Roman",
+        "URW Bookman",
+        "URW Gothic",
+    }
+)
+_LINUX_CANVAS_FONT_ALIASES = {
+    "Arial": "Arimo",
+    "Times New Roman": "Arimo",
+}
+_CANVAS_CONTEXT_WARMUP_SCRIPT = r"""
+async () => {
+    if (typeof OffscreenCanvas !== "function" || typeof Worker !== "function") {
+        throw new Error("canvas worker APIs are unavailable");
+    }
+
+    const text = "warmup A \ud83d\ude00 \u4e2d \u30ab";
+    const draw = context => {
+        context.font = "14px 'Arial'";
+        context.fillText(text, 0, 12);
+        context.font = "18px 'Times New Roman'";
+        context.fillText(text, 0, 32);
+        context.getImageData(0, 0, 64, 40);
+    };
+    draw(new OffscreenCanvas(64, 40).getContext("2d"));
+
+    const workerSource = `
+        "use strict";
+        onmessage = event => {
+            const canvas = new OffscreenCanvas(64, 40);
+            const context = canvas.getContext("2d");
+            context.font = "14px 'Arial'";
+            context.fillText(event.data, 0, 12);
+            context.font = "18px 'Times New Roman'";
+            context.fillText(event.data, 0, 32);
+            context.getImageData(0, 0, 64, 40);
+            postMessage(true);
+        };
+    `;
+    const workerUrl = URL.createObjectURL(
+        new Blob([workerSource], {type: "text/javascript"}),
+    );
+    try {
+        await new Promise((resolve, reject) => {
+            const worker = new Worker(workerUrl);
+            const timeout = setTimeout(() => {
+                worker.terminate();
+                reject(new Error("canvas worker warmup timed out"));
+            }, 5000);
+            worker.onmessage = () => {
+                clearTimeout(timeout);
+                worker.terminate();
+                resolve();
+            };
+            worker.onerror = event => {
+                clearTimeout(timeout);
+                worker.terminate();
+                reject(new Error(event.message));
+            };
+            worker.postMessage(text);
+        });
+    } finally {
+        URL.revokeObjectURL(workerUrl);
+    }
+}
+"""
 _MOBILE_WEBGL_TEXTURE_EXTENSIONS = frozenset(
     {
         "WEBGL_compressed_texture_astc",
@@ -483,15 +570,54 @@ def _prepare_webgl_config(config: dict[str, Any]) -> tuple[str, str]:
         webgl_config = sample_webgl(_CAMOUFOX_TARGET_OS)
 
     webgl_config.pop("webGl2Enabled", None)
-    extensions = webgl_config.get("webGl:supportedExtensions")
-    if isinstance(extensions, list):
-        webgl_config["webGl:supportedExtensions"] = [
+    _filter_mobile_webgl_extensions(webgl_config)
+    config.update(webgl_config)
+    return config["webGl:vendor"], config["webGl:renderer"]
+
+
+def _filter_mobile_webgl_extensions(config: dict[str, Any]) -> None:
+    """Remove mobile texture formats from both desktop WebGL contexts."""
+    for key in ("webGl:supportedExtensions", "webGl2:supportedExtensions"):
+        extensions = config.get(key)
+        if not isinstance(extensions, list):
+            continue
+        config[key] = [
             extension
             for extension in extensions
             if extension not in _MOBILE_WEBGL_TEXTURE_EXTENSIONS
         ]
-    config.update(webgl_config)
-    return config["webGl:vendor"], config["webGl:renderer"]
+
+
+def _prepare_linux_font_families(config: dict[str, Any]) -> None:
+    """Expose installed Linux families and stable canvas compatibility aliases."""
+    configured_fonts = config.get("fonts", [])
+    if not isinstance(configured_fonts, list) or any(
+        not isinstance(font, str) for font in configured_fonts
+    ):
+        raise BrowserError("Camoufox font configuration is invalid")
+    config["fonts"] = sorted(
+        set(configured_fonts).union(_LINUX_BROWSER_FONT_FAMILIES)
+    )
+
+
+def _refresh_camoufox_environment(
+    config: dict[str, Any],
+    options: dict[str, Any],
+) -> None:
+    """Encode the finalized fingerprint after Camoufox mutates it."""
+    from camoufox.utils import get_env_vars
+
+    for key in _CAMOUFOX_CANVAS_NOISE_KEYS:
+        config.pop(key, None)
+    _filter_mobile_webgl_extensions(config)
+
+    environment = options.get("env")
+    if not isinstance(environment, dict):
+        raise BrowserError("Camoufox launch environment is invalid")
+    for key in tuple(environment):
+        if key.startswith(_CAMOUFOX_CONFIG_ENV_PREFIX):
+            environment.pop(key)
+    environment.update(get_env_vars(config, _CAMOUFOX_TARGET_OS))
 
 
 def _update_config_screen(config: dict[str, Any], width: int, height: int) -> None:
@@ -1180,6 +1306,7 @@ class Browser:
             config = _generate_camoufox_config(width, height)
         else:
             _update_config_screen(config, width, height)
+        _prepare_linux_font_families(config)
         webgl_config = _prepare_webgl_config(config)
 
         # Use system locale or default to en-US
@@ -1220,6 +1347,7 @@ class Browser:
                 # that cache path can never poison startup.
                 exclude_addons=[DefaultAddons.UBO],
             )
+            _refresh_camoufox_environment(config, opts)
             self._configure_runtime_fontconfig(opts)
             _save_config(config)
 
@@ -1268,6 +1396,7 @@ class Browser:
             )
             self._browser = self._context
             await self._configure_virtual_media()
+            await self._warm_up_canvas_contexts()
 
             # Crash diagnostics — Playwright fires these events when the
             # browser / page processes die. Without them the only signal is
@@ -1315,6 +1444,17 @@ class Browser:
             await self.stop()
             raise BrowserError(f"Failed to launch browser: {e}") from e
 
+    async def _warm_up_canvas_contexts(self) -> None:
+        """Initialize main and worker canvas font fallback before readiness."""
+        if not self._context:
+            raise BrowserError("browser context is unavailable for canvas warmup")
+        pages = self._context.pages
+        page = pages[0] if pages else await self._context.new_page()
+        try:
+            await page.evaluate(_CANVAS_CONTEXT_WARMUP_SCRIPT)
+        except Exception as error:
+            raise BrowserError("canvas context warmup failed") from error
+
     def _configure_runtime_fontconfig(self, options: dict[str, Any]) -> None:
         """Point fontconfig at Camoufox's bundled Linux fonts and aliases."""
         executable_path = options.get("executable_path")
@@ -1325,6 +1465,13 @@ class Browser:
         fonts_directory = browser_root / "fonts"
         if not fonts_directory.is_dir():
             raise BrowserError("Camoufox bundled fonts directory is missing")
+        missing_directories = [
+            directory
+            for directory in _LINUX_SYSTEM_FONT_DIRECTORIES
+            if not directory.is_dir()
+        ]
+        if missing_directories:
+            raise BrowserError("required Linux system font directory is missing")
 
         source_path = next(
             (
@@ -1353,10 +1500,27 @@ class Browser:
             prefix="stealthy-fontconfig-"
         )
         runtime_path = Path(self._fontconfig_directory.name) / "fonts.conf"
-        absolute_fonts = _xml_escape(str(fonts_directory.resolve()))
+        font_directories = (fonts_directory, *_LINUX_SYSTEM_FONT_DIRECTORIES)
+        directory_entries = "\n".join(
+            f"<dir>{_xml_escape(str(directory.resolve()))}</dir>"
+            for directory in font_directories
+        )
+        alias_entries = "\n".join(
+            (
+                '<match target="pattern">'
+                '<test name="family" compare="eq">'
+                f"<string>{_xml_escape(source_family)}</string>"
+                "</test>"
+                '<edit name="family" mode="assign" binding="strong">'
+                f"<string>{_xml_escape(target_family)}</string>"
+                "</edit>"
+                "</match>"
+            )
+            for source_family, target_family in _LINUX_CANVAS_FONT_ALIASES.items()
+        )
         runtime_source = source.replace(
             _CAMOUFOX_FONTCONFIG_DIRECTORY_MARKER,
-            f"<dir>{absolute_fonts}</dir>",
+            f"{directory_entries}\n{alias_entries}",
             1,
         )
         try:

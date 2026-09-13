@@ -263,10 +263,15 @@ Docker is the only development dependency. The Makefile builds a local browser b
 make build
 make lint
 make test
+make test-real
 make sec
 ```
 
 `make sec` writes `sec.sarif` for GitHub Security. It reports findings without blocking a release. Use `make help` for the complete command list.
+
+`make test-real` is an opt-in live check against [liarjs.dev](https://liarjs.dev/),
+so it requires outbound network access and does not run in the deterministic
+default suite.
 
 ## Bot Detection Results
 
@@ -274,9 +279,10 @@ These are observed results, not a promise that every version of each service
 will return the same result. Test the exact image, proxy, timezone, and target
 flow you plan to use.
 
-| Service                                                                | Observed result | What They Check                                                         |
-| ---------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------- |
-| [CreepJS](https://abrahamjuliot.github.io/creepjs/)                    | **Pass** | Canvas/WebGL fingerprint consistency, lies detection, worker comparison |
+| Service                                                                | Observed result                  | What They Check                                                         |
+| ---------------------------------------------------------------------- | -------------------------------- | ----------------------------------------------------------------------- |
+| [CreepJS](https://abrahamjuliot.github.io/creepjs/)                    | **Pass**                         | Canvas/WebGL fingerprint consistency, lies detection, worker comparison |
+| [liarjs.dev](https://liarjs.dev/)                                      | **82/100, no critical findings** | Font, canvas, worker, GPU, network, and behavioral consistency          |
 | [BrowserScan](https://www.browserscan.net/bot-detection)               | **Pass** | WebDriver flag, CDP signals, navigator properties                       |
 | [Pixelscan](https://pixelscan.net/)                                    | **Pass** | Fingerprint coherence, timezone/IP match, WebRTC leaks                  |
 | [Cloudflare](https://cloudflare.com)                                   | **Pass** | Challenge pages, Turnstile, bot management                              |

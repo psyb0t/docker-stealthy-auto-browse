@@ -144,7 +144,10 @@ cookies and navigator identity. On their first start with this fix, any missing
 graphical properties are assigned and saved. Later starts reuse them. The image
 also resolves Camoufox's bundled Linux font aliases through an absolute runtime
 fontconfig path, so `sans-serif`, `serif`, and `monospace` do not collapse to a
-single fallback family.
+single fallback family. The saved font list includes the image's installed
+Linux families and compatibility aliases used by canvas probes. Page canvas,
+main-thread `OffscreenCanvas`, and worker `OffscreenCanvas` therefore resolve
+the same fonts.
 
 ## Browser Extensions
 

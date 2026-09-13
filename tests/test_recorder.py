@@ -69,6 +69,26 @@ def test_delayed_output_becomes_ready() -> None:
         assert process.signals == []
 
 
+def test_startup_allows_cpu_contention_delay() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        output_path = Path(directory) / "recording.mp4"
+        clock = FakeClock()
+        process = FakeProcess()
+
+        def delayed_sleep(duration: float) -> None:
+            clock.current += duration
+            if clock.current >= 10.05:
+                output_path.write_bytes(b"ftyp")
+
+        with (
+            patch.object(recorder.time, "monotonic", clock.monotonic),
+            patch.object(recorder.time, "sleep", delayed_sleep),
+        ):
+            recorder._wait_for_ffmpeg_output(process, str(output_path))
+
+        assert process.signals == []
+
+
 def test_process_exit_before_output_reports_stderr() -> None:
     process = FakeProcess(returncode=1, stderr=b"cannot open display")
     try:
@@ -128,6 +148,7 @@ def test_start_does_not_publish_active_state_before_output_is_ready() -> None:
 
 def main_test() -> None:
     test_delayed_output_becomes_ready()
+    test_startup_allows_cpu_contention_delay()
     test_process_exit_before_output_reports_stderr()
     test_startup_timeout_terminates_process_and_removes_partial_output()
     test_start_does_not_publish_active_state_before_output_is_ready()

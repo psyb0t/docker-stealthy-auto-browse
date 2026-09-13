@@ -77,10 +77,10 @@ for k in '${field}'.split('.'):
     d = d[int(k)] if k.isdigit() else d[k]
 print(d)
 ")
-        echo "$val" | grep -q "$expected" || {
+        if [[ "$val" != *"$expected"* ]]; then
             echo "FAIL: $label: '$expected' not in response"
             return 1
-        }
+        fi
     done
 
     for entry in "${PAGE_CONTENT_ERROR_CASES[@]}"; do

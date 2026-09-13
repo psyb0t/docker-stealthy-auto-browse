@@ -41,7 +41,11 @@ RUN echo '<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=v
 
 # Firefox/Camoufox dependencies - install firefox-esr to pull correct GTK deps for any arch
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends firefox-esr fonts-liberation \
+    && apt-get install -y --no-install-recommends \
+        firefox-esr \
+        fonts-dejavu-core \
+        fonts-liberation \
+        fonts-urw-base35 \
     && apt-get remove -y --purge firefox-esr \
     && rm -rf /var/lib/apt/lists/*
 

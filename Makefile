@@ -52,7 +52,7 @@ DEV_RUN_DIND := docker run --rm --init --read-only \
 	$(DEV_IMAGE)
 
 .DEFAULT_GOAL := help
-.PHONY: help dev-image shell build build-test lint lint-fix format test test-unit sec generate clean
+.PHONY: help dev-image shell build build-test lint lint-fix format test test-real test-unit sec generate clean
 
 help: ## Show supported development commands.
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -83,6 +83,9 @@ lint-fix: dev-image ## Apply safe Python lint fixes and formatting.
 
 test: dev-image ## Run the complete Docker-backed test suite.
 	$(DEV_RUN_DIND) bash test.sh $(TEST_ARGS)
+
+test-real: dev-image ## Run the opt-in live liarjs.dev fingerprint regression.
+	$(DEV_RUN_DIND) bash test.sh test_liarjs_live_fingerprint_consistency
 
 test-unit: dev-image ## Run in-process Python unit tests.
 	$(DEV_RUN) python tests/test_navigation_options.py

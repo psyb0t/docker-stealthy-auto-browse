@@ -45,9 +45,10 @@ Observed against major bot detection services. Results can change with the
 service version, network exit, timezone, browser build, and tested flow. Run
 your own check against the exact setup you plan to use.
 
-| Service                                                                | Result   | What They Check                                                         |
-| ---------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------- |
-| [CreepJS](https://abrahamjuliot.github.io/creepjs/)                    | **Pass** | Canvas/WebGL fingerprint consistency, lies detection, worker comparison |
+| Service                                                                | Result                           | What They Check                                                         |
+| ---------------------------------------------------------------------- | -------------------------------- | ----------------------------------------------------------------------- |
+| [CreepJS](https://abrahamjuliot.github.io/creepjs/)                    | **Pass**                         | Canvas/WebGL fingerprint consistency, lies detection, worker comparison |
+| [liarjs.dev](https://liarjs.dev/)                                      | **82/100, no critical findings** | Font, canvas, worker, GPU, network, and behavioral consistency          |
 | [BrowserScan](https://www.browserscan.net/bot-detection)               | **Pass** | WebDriver flag, CDP signals, navigator properties                       |
 | [Pixelscan](https://pixelscan.net/)                                    | **Pass** | Fingerprint coherence, timezone/IP match, WebRTC leaks                  |
 | [Cloudflare](https://cloudflare.com)                                   | **Pass** | Challenge pages, Turnstile, bot management                              |
@@ -58,6 +59,12 @@ your own check against the exact setup you plan to use.
 | [DeviceAndBrowserInfo](https://deviceandbrowserinfo.com/are_you_a_bot) | **Pass** | 19 checks, all green, "You are human!"                                  |
 | [IpHey](https://iphey.com/)                                            | **Pass** | "Trustworthy" rating                                                    |
 | [Fingerprint.com](https://fingerprint.com/demo/)                       | **Pass** | Identified as normal Firefox, no bot flags                              |
+
+The liarjs.dev result was observed with `TZ` matched to the network exit. Its
+remaining warnings were empty native media-device enumeration and the human
+challenge not being taken. Run `make test-real` for an opt-in live regression
+of the font, canvas, worker, and WebGL checks. The default suite uses local
+fixtures and does not depend on a third-party service.
 
 ## Why It Actually Works
 
