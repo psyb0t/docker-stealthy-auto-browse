@@ -25,3 +25,40 @@ plan.md
 .secaudit/
 .plan-and-delegate/
 sec.sarif
+
+# Codex and agent scratch
+CODEX.local.md
+.agent_notes/
+.agent_knowledge/
+PLAN.md
+implplan.md
+NOTES.md
+TODO.md
+WIP.md
+
+# Secrets
+.env
+.env.local
+.env.*
+!.env.example
+
+# Test and profile artifacts
+coverage.txt
+coverage.out
+profile.out
+.cover/
+htmlcov/
+
+# Editor and local runtime files
+.vscode/
+.idea/
+.editorconfig
+.envrc
+.tool-versions
+.python-version
+.nvmrc
+pyrightconfig.json
+node_modules/
+.venv/
+target/
+vendor/

@@ -404,6 +404,38 @@ assert result["outputs"]["decision"]["result"] == "human-review-needed"
     echo "OK: script_challenge_detection (detector scrolls documented catalogue into view)"
 }
 
+test_script_fingerprint_consistency() {
+    local out
+    out=$(_script_run fingerprint_consistency.yaml)
+    if [ -z "$out" ]; then
+        echo "  FAIL: script_fingerprint_consistency: no output"
+        return 1
+    fi
+
+    echo "$out" | python3 -c '
+import json
+import sys
+
+result = json.load(sys.stdin)
+assert result["success"] is True
+fingerprint = result["outputs"]["fingerprint"]["result"]
+assert len({round(width, 3) for width in fingerprint["widths"].values()}) == 3
+assert fingerprint["webgl"]["vendor"]
+assert fingerprint["webgl"]["renderer"]
+mobile_extensions = {
+    "WEBGL_compressed_texture_astc",
+    "WEBGL_compressed_texture_etc",
+    "WEBGL_compressed_texture_etc1",
+}
+assert mobile_extensions.isdisjoint(fingerprint["webgl"]["extensions"])
+' || {
+        echo "  FAIL: script_fingerprint_consistency: inconsistent surface"
+        return 1
+    }
+
+    echo "OK: script_fingerprint_consistency (font and WebGL surfaces agree)"
+}
+
 ALL_TESTS+=(
     test_script_basic
     test_script_on_error_continue
@@ -422,4 +454,5 @@ ALL_TESTS+=(
     test_challenge_detector_unit
     test_script_control_flow
     test_script_challenge_detection
+    test_script_fingerprint_consistency
 )

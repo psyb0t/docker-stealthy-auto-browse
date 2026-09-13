@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse as _urlparse
+from xml.sax.saxutils import escape as _xml_escape
 
 from logger import get_logger
 
@@ -33,6 +34,20 @@ DEFAULT_USER_DATA_DIR = "/userdata"
 
 # Persisted browser properties file (stores Camoufox config, not raw fingerprint)
 BROWSER_PROPS_FILE = Path(DEFAULT_USER_DATA_DIR) / "stealthy-auto-browse-props.json"
+
+_CAMOUFOX_TARGET_OS = "lin"
+_CAMOUFOX_FONTCONFIG_RELATIVE_PATHS = (
+    Path("fontconfig/linux/fonts.conf"),
+    Path("fontconfigs/linux/fonts.conf"),
+)
+_CAMOUFOX_FONTCONFIG_DIRECTORY_MARKER = '<dir prefix="cwd">fonts</dir>'
+_MOBILE_WEBGL_TEXTURE_EXTENSIONS = frozenset(
+    {
+        "WEBGL_compressed_texture_astc",
+        "WEBGL_compressed_texture_etc",
+        "WEBGL_compressed_texture_etc1",
+    }
+)
 
 VIRTUAL_MEDIA_DIR = Path(os.environ.get("VIRTUAL_MEDIA_DIR", "/media"))
 VIRTUAL_MEDIA_ORIGIN = "https://virtual-media.stealthy.invalid"
@@ -436,9 +451,10 @@ def _load_persisted_config() -> dict[str, Any] | None:
 
     try:
         with open(BROWSER_PROPS_FILE) as f:
-            return json.load(f)
+            config = json.load(f)
     except (json.JSONDecodeError, OSError):
         return None
+    return config if isinstance(config, dict) else None
 
 
 def _save_config(config: dict[str, Any]) -> None:
@@ -446,6 +462,36 @@ def _save_config(config: dict[str, Any]) -> None:
     BROWSER_PROPS_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(BROWSER_PROPS_FILE, "w") as f:
         json.dump(config, f, indent=2)
+
+
+def _prepare_webgl_config(config: dict[str, Any]) -> tuple[str, str]:
+    """Persist one desktop WebGL cohort without mobile-only extensions."""
+    from camoufox.webgl import sample_webgl
+
+    vendor = config.get("webGl:vendor")
+    renderer = config.get("webGl:renderer")
+    try:
+        if isinstance(vendor, str) and isinstance(renderer, str):
+            webgl_config = sample_webgl(_CAMOUFOX_TARGET_OS, vendor, renderer)
+        else:
+            webgl_config = sample_webgl(_CAMOUFOX_TARGET_OS)
+    except ValueError:
+        log.warning(
+            "persisted WebGL cohort is unavailable; selecting a new Linux cohort",
+            extra={"reason": "invalid_persisted_webgl_cohort"},
+        )
+        webgl_config = sample_webgl(_CAMOUFOX_TARGET_OS)
+
+    webgl_config.pop("webGl2Enabled", None)
+    extensions = webgl_config.get("webGl:supportedExtensions")
+    if isinstance(extensions, list):
+        webgl_config["webGl:supportedExtensions"] = [
+            extension
+            for extension in extensions
+            if extension not in _MOBILE_WEBGL_TEXTURE_EXTENSIONS
+        ]
+    config.update(webgl_config)
+    return config["webGl:vendor"], config["webGl:renderer"]
 
 
 def _update_config_screen(config: dict[str, Any], width: int, height: int) -> None:
@@ -608,6 +654,7 @@ class Browser:
         self._context: Any = None
         self._page: Any = None
         self._state = BrowserState()
+        self._fontconfig_directory: tempfile.TemporaryDirectory[str] | None = None
         self._redis_sync = RedisSync() if RedisSync else None
         self._virtual_media_sources: dict[str, Path | None] = {
             _VIRTUAL_MEDIA_CAMERA: self.config.virtual_camera_file,
@@ -989,6 +1036,17 @@ class Browser:
         if self._redis_sync:
             await self._redis_sync.stop()
 
+        if self._fontconfig_directory:
+            try:
+                self._fontconfig_directory.cleanup()
+            except OSError as error:
+                log.warning(
+                    "runtime fontconfig cleanup failed",
+                    extra={"reason": "fontconfig_cleanup_failed"},
+                    exc_info=error,
+                )
+            self._fontconfig_directory = None
+
         self._state = BrowserState()
 
     async def goto(self, url: str, wait_until: str = "networkidle") -> BrowserState:
@@ -1113,8 +1171,6 @@ class Browser:
         from camoufox.utils import launch_options
         from playwright.async_api import async_playwright
 
-        self._playwright = await async_playwright().start()
-
         # Get window size from XVFB_RESOLUTION
         width, height = _get_default_viewport()
 
@@ -1123,9 +1179,8 @@ class Browser:
         if config is None:
             config = _generate_camoufox_config(width, height)
         else:
-            # Update screen dimensions to match current XVFB_RESOLUTION
             _update_config_screen(config, width, height)
-        _save_config(config)
+        webgl_config = _prepare_webgl_config(config)
 
         # Use system locale or default to en-US
         locale = os.environ.get("LANG", "en_US.UTF-8").split(".")[0].replace("_", "-")
@@ -1135,6 +1190,7 @@ class Browser:
         # Get timezone from TZ env var (set via docker -e TZ=Europe/Bucharest)
         timezone_id = os.environ.get("TZ")
 
+        self._playwright = await async_playwright().start()
         try:
             # Build launch options with proper fingerprint injection
             # This generates env vars with CAMOU_CONFIG_* for C++ level spoofing
@@ -1149,6 +1205,7 @@ class Browser:
             )
             opts = launch_options(
                 config=config,  # Pass our persisted config directly
+                webgl_config=webgl_config,
                 screen=screen,
                 os="linux",
                 headless=False,
@@ -1163,6 +1220,8 @@ class Browser:
                 # that cache path can never poison startup.
                 exclude_addons=[DefaultAddons.UBO],
             )
+            self._configure_runtime_fontconfig(opts)
+            _save_config(config)
 
             # Add persistent context settings
             opts["user_data_dir"] = DEFAULT_USER_DATA_DIR
@@ -1254,7 +1313,59 @@ class Browser:
             subprocess.run(["xdotool", "click", "1"])
         except Exception as e:
             await self.stop()
-            raise BrowserError(f"Failed to launch browser: {e}")
+            raise BrowserError(f"Failed to launch browser: {e}") from e
+
+    def _configure_runtime_fontconfig(self, options: dict[str, Any]) -> None:
+        """Point fontconfig at Camoufox's bundled Linux fonts and aliases."""
+        executable_path = options.get("executable_path")
+        if not isinstance(executable_path, str) or not executable_path:
+            raise BrowserError("Camoufox launch options have no executable path")
+
+        browser_root = Path(executable_path).parent
+        fonts_directory = browser_root / "fonts"
+        if not fonts_directory.is_dir():
+            raise BrowserError("Camoufox bundled fonts directory is missing")
+
+        source_path = next(
+            (
+                browser_root / relative_path
+                for relative_path in _CAMOUFOX_FONTCONFIG_RELATIVE_PATHS
+                if (browser_root / relative_path).is_file()
+            ),
+            None,
+        )
+        if source_path is None:
+            raise BrowserError("Camoufox Linux fonts.conf is missing")
+
+        try:
+            source = source_path.read_text(encoding="utf-8")
+        except OSError as error:
+            raise BrowserError("Camoufox Linux fonts.conf could not be read") from error
+        if _CAMOUFOX_FONTCONFIG_DIRECTORY_MARKER not in source:
+            raise BrowserError("Camoufox Linux fonts.conf has an unsupported layout")
+
+        environment = options.setdefault("env", {})
+        if not isinstance(environment, dict):
+            raise BrowserError("Camoufox launch environment is invalid")
+        if self._fontconfig_directory:
+            self._fontconfig_directory.cleanup()
+        self._fontconfig_directory = tempfile.TemporaryDirectory(
+            prefix="stealthy-fontconfig-"
+        )
+        runtime_path = Path(self._fontconfig_directory.name) / "fonts.conf"
+        absolute_fonts = _xml_escape(str(fonts_directory.resolve()))
+        runtime_source = source.replace(
+            _CAMOUFOX_FONTCONFIG_DIRECTORY_MARKER,
+            f"<dir>{absolute_fonts}</dir>",
+            1,
+        )
+        try:
+            runtime_path.write_text(runtime_source, encoding="utf-8")
+        except OSError as error:
+            raise BrowserError("runtime fontconfig could not be written") from error
+
+        environment.pop("FONTCONFIG_PATH", None)
+        environment["FONTCONFIG_FILE"] = str(runtime_path)
 
     async def _configure_virtual_media(self) -> None:
         """Install file-backed getUserMedia streams before page navigation."""

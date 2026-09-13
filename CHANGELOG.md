@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.6.10] 2026-09-13
+
+### Fixed
+
+- Resolve Camoufox's bundled Linux fonts through a valid absolute fontconfig
+  file. Generic `sans-serif`, `serif`, and `monospace` families now map to their
+  distinct bundled families instead of collapsing to one fallback metric.
+- Persist the complete generated fingerprint after Camoufox fills its font,
+  WebGL, and noise properties. WebGL now reuses one saved renderer cohort and
+  removes mobile-only ASTC and ETC texture extensions from desktop profiles.
+  This fixes the consistency failures reported in issue #9 without changing
+  the HTTP, MCP, or script action contracts.
+- Wait until ffmpeg creates the temporary MP4 before reporting that screen
+  recording started. This prevents short recordings from failing on a busy host
+  before ffmpeg has opened its output file.
+
 ## [2.6.9] 2026-09-01
 
 ### Fixed

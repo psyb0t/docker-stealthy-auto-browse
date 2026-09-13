@@ -138,6 +138,14 @@ docker run -d \
 
 This is how you maintain a logged-in session without re-authenticating every time the container restarts.
 
+The persisted properties include the generated font list, renderer cohort, and
+fingerprint noise seeds. Existing profiles created by older images keep their
+cookies and navigator identity. On their first start with this fix, any missing
+graphical properties are assigned and saved. Later starts reuse them. The image
+also resolves Camoufox's bundled Linux font aliases through an absolute runtime
+fontconfig path, so `sans-serif`, `serif`, and `monospace` do not collapse to a
+single fallback family.
+
 ## Browser Extensions
 
 Pre-installed in every container:

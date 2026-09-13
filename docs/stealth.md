@@ -8,7 +8,9 @@ This container takes a completely different approach:
 
 - **Camoufox** (custom Firefox fork) instead of Chromium — there is no CDP to detect because Firefox doesn't use it
 - **PyAutoGUI** for mouse and keyboard — input happens at the OS level, not through the browser's automation API. The browser genuinely doesn't know it's being automated. No JavaScript in the world can tell the difference between PyAutoGUI and a real human
-- **Real fingerprints** via browserforge — no spoofing means no inconsistencies between the main context and web workers (a common detection vector)
+- **Native fingerprint injection** generated through browserforge and applied
+  by Camoufox. The generated properties persist with the profile, and Linux
+  font aliases plus WebGL renderer capabilities stay in one coherent cohort.
 - Everything packaged in a single Docker container — one command to run
 
 ## Two Input Modes
@@ -39,7 +41,9 @@ These use Playwright's DOM automation to find elements by **CSS selector or XPat
 
 ## Bot Detection Test Results
 
-Tested against major bot detection services:
+Observed against major bot detection services. Results can change with the
+service version, network exit, timezone, browser build, and tested flow. Run
+your own check against the exact setup you plan to use.
 
 | Service                                                                | Result   | What They Check                                                         |
 | ---------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------- |
@@ -60,7 +64,10 @@ Tested against major bot detection services:
 Most stealth tools try to **hide** automation signals. This container **doesn't have them in the first place**:
 
 - **No CDP** — Firefox doesn't have Chrome DevTools Protocol. There's nothing to hide because it doesn't exist.
-- **No fingerprint spoofing** — The fingerprint is generated once and applied consistently. Main context matches web workers (a common detection vector for spoofers).
+- **Native fingerprint injection**. Camoufox applies the generated fingerprint
+  below the page JavaScript layer. The persisted configuration keeps the main
+  context, workers, bundled Linux font aliases, and WebGL cohort aligned across
+  restarts.
 - **`navigator.webdriver` is `false`** — Not patched to return false, it's genuinely false because Camoufox doesn't set it.
 - **Real input events** — PyAutoGUI generates OS-level mouse and keyboard events. No DOM event injection for the browser to detect.
 

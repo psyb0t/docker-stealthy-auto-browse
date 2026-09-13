@@ -98,6 +98,7 @@ test_persistent_profile_resolution() {
     local name2="${CONTAINER_NAME}-persist-2"
     local profile_dir="$TESTDATA_DIR/persist-userdata"
     local tmpdir="$TESTDATA_DIR/persist-screenshots"
+    local fingerprint_payload='{"action":"eval","expression":"(() => { const c = document.createElement(\"canvas\"); const x = c.getContext(\"2d\"); const widths = {}; for (const family of [\"sans-serif\",\"serif\",\"monospace\"]) { x.font = \"32px \" + family; widths[family] = x.measureText(\"mmmmmmmmmmlliWWWWWWWWWW0123456789\").width; } const g = document.createElement(\"canvas\").getContext(\"webgl\"); const d = g.getExtension(\"WEBGL_debug_renderer_info\"); return {userAgent:navigator.userAgent,platform:navigator.platform,widths:widths,webgl:{vendor:g.getParameter(d.UNMASKED_VENDOR_WEBGL),renderer:g.getParameter(d.UNMASKED_RENDERER_WEBGL),extensions:g.getSupportedExtensions()}}; })()"}'
     mkdir -p "$profile_dir" "$tmpdir"
 
     # --- Phase 1: generate profile at 800x800 ---
@@ -124,13 +125,19 @@ test_persistent_profile_resolution() {
     # Verify 800x800 via JS
     post_to "$base" "{\"action\": \"goto\", \"url\": \"$TEST_PAGE\"}" >/dev/null
     sleep 1
-    local resp js_w js_h
+    local resp js_w js_h phase1_fingerprint phase2_fingerprint
     resp=$(post_to "$base" '{"action": "eval", "expression": "screen.width"}')
     js_w=$(echo "$resp" | json_get "['data']['result']")
     resp=$(post_to "$base" '{"action": "eval", "expression": "screen.height"}')
     js_h=$(echo "$resp" | json_get "['data']['result']")
     assert_eq "$js_w" "800" "persistent_profile_resolution: phase 1 JS screen.width" || { stop_extra_container "$name1"; return 1; }
     assert_eq "$js_h" "800" "persistent_profile_resolution: phase 1 JS screen.height" || { stop_extra_container "$name1"; return 1; }
+    phase1_fingerprint=$(post_to "$base" "$fingerprint_payload" | jq -cS '.data.result')
+    if [ -z "$phase1_fingerprint" ] || [ "$phase1_fingerprint" = "null" ]; then
+        echo "FAIL: persistent_profile_resolution: phase 1 fingerprint unavailable"
+        stop_extra_container "$name1"
+        return 1
+    fi
 
     # Desktop screenshot should be 800x800
     curl -sf "$base/screenshot/desktop" -o "$tmpdir/desktop_800x800.png"
@@ -162,6 +169,12 @@ test_persistent_profile_resolution() {
     js_h=$(echo "$resp" | json_get "['data']['result']")
     assert_eq "$js_w" "1920" "persistent_profile_resolution: phase 2 JS screen.width" || { stop_extra_container "$name2"; return 1; }
     assert_eq "$js_h" "1080" "persistent_profile_resolution: phase 2 JS screen.height" || { stop_extra_container "$name2"; return 1; }
+    phase2_fingerprint=$(post_to "$base" "$fingerprint_payload" | jq -cS '.data.result')
+    assert_eq "$phase2_fingerprint" "$phase1_fingerprint" \
+        "persistent_profile_resolution: fingerprint surface after restart" || {
+        stop_extra_container "$name2"
+        return 1
+    }
 
     # Desktop screenshot should be 1920x1080
     curl -sf "$base/screenshot/desktop" -o "$tmpdir/desktop_1920x1080.png"

@@ -1,0 +1,32 @@
+name: Fingerprint Consistency
+on_error: stop
+steps:
+  - action: goto
+    url: ${env.TEST_URL}
+    wait_until: domcontentloaded
+  - action: eval
+    expression: >-
+      (() => {
+        const sample = "mmmmmmmmmmlliWWWWWWWWWW0123456789";
+        const fontCanvas = document.createElement("canvas");
+        const fontContext = fontCanvas.getContext("2d");
+        const measure = family => {
+          fontContext.font = `32px ${family}`;
+          return fontContext.measureText(sample).width;
+        };
+        const gl = document.createElement("canvas").getContext("webgl");
+        const rendererInfo = gl.getExtension("WEBGL_debug_renderer_info");
+        return {
+          widths: {
+            sans: measure("sans-serif"),
+            serif: measure("serif"),
+            mono: measure("monospace"),
+          },
+          webgl: {
+            vendor: gl.getParameter(rendererInfo.UNMASKED_VENDOR_WEBGL),
+            renderer: gl.getParameter(rendererInfo.UNMASKED_RENDERER_WEBGL),
+            extensions: gl.getSupportedExtensions(),
+          },
+        };
+      })()
+    output_id: fingerprint

@@ -35,6 +35,9 @@ _VALID_MODES = {"window", "viewport", "desktop"}
 DEFAULT_FPS = 15
 DEFAULT_PRESET = "ultrafast"
 DEFAULT_CRF = 28
+_FFMPEG_STARTUP_TIMEOUT_SECONDS = 10.0
+_FFMPEG_STARTUP_POLL_SECONDS = 0.05
+_FFMPEG_SHUTDOWN_TIMEOUT_SECONDS = 5
 
 # Sanitization: slugs must be filesystem-safe. Strict allowlist.
 _SLUG_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$")
@@ -118,6 +121,74 @@ def cleanup_orphan_tmp_files(max_age_s: int = 3600) -> int:
         except OSError as e:
             log.warning("recorder: failed to remove orphan %s: %s", name, e)
     return removed
+
+
+def _read_ffmpeg_stderr(proc: subprocess.Popen[bytes]) -> str:
+    if proc.stderr is None:
+        return ""
+    return (proc.stderr.read() or b"").decode("utf-8", "replace").strip()
+
+
+def _remove_tmp_file(path: str) -> None:
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        log.warning(
+            "recorder tmp file cleanup failed",
+            extra={
+                "path": path,
+                "reason": "tmp_file_cleanup_failed",
+                "error": str(error),
+            },
+        )
+
+
+def _terminate_ffmpeg(proc: subprocess.Popen[bytes]) -> None:
+    try:
+        proc.send_signal(signal.SIGINT)
+    except ProcessLookupError:
+        return
+    try:
+        proc.wait(timeout=_FFMPEG_SHUTDOWN_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=_FFMPEG_SHUTDOWN_TIMEOUT_SECONDS)
+
+
+def _wait_for_ffmpeg_output(
+    proc: subprocess.Popen[bytes],
+    tmp_path: str,
+) -> None:
+    deadline = time.monotonic() + _FFMPEG_STARTUP_TIMEOUT_SECONDS
+    while True:
+        returncode = proc.poll()
+        if returncode is not None:
+            stderr = _read_ffmpeg_stderr(proc)
+            _remove_tmp_file(tmp_path)
+            raise RecorderError(
+                f"ffmpeg exited before recording started (rc={returncode}): "
+                f"{stderr}"
+            )
+
+        try:
+            if os.path.getsize(tmp_path) > 0:
+                return
+        except FileNotFoundError:
+            pass
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            _terminate_ffmpeg(proc)
+            stderr = _read_ffmpeg_stderr(proc)
+            _remove_tmp_file(tmp_path)
+            detail = f": {stderr}" if stderr else ""
+            raise RecorderError(
+                "ffmpeg did not create recording output within "
+                f"{_FFMPEG_STARTUP_TIMEOUT_SECONDS:g} seconds{detail}"
+            )
+        time.sleep(min(_FFMPEG_STARTUP_POLL_SECONDS, remaining))
 
 
 class Recorder:
@@ -231,16 +302,7 @@ class Recorder:
         except (OSError, FileNotFoundError) as e:
             raise RecorderError(f"failed to spawn ffmpeg: {e}") from e
 
-        # Give ffmpeg a beat to fail fast on bad input (missing X11, etc).
-        time.sleep(0.2)
-        if proc.poll() is not None:
-            err = b""
-            if proc.stderr is not None:
-                err = proc.stderr.read() or b""
-            raise RecorderError(
-                f"ffmpeg exited immediately (rc={proc.returncode}): "
-                f"{err.decode('utf-8', 'replace').strip()}"
-            )
+        _wait_for_ffmpeg_output(proc, tmp_path)
 
         self._proc = proc
         self._tmp_path = tmp_path

@@ -7,7 +7,9 @@
 
 Stealth browser automation that actually works. Runs Camoufox (custom Firefox) in Docker with zero Chrome DevTools Protocol exposure, real OS-level mouse and keyboard input via PyAutoGUI, and a JSON HTTP API + MCP server to control it all remotely. Watch it live via noVNC. Run a single instance or spin up a cluster behind HAProxy with Redis cookie sync, request queuing, and sticky sessions. Drive it with curl, pipe YAML scripts through stdin, send multi-step scripts via the API, use page loaders to auto-handle popups and paywalls, or connect AI agents directly via MCP. Optional Bearer token auth via `AUTH_TOKEN`.
 
-Passes Cloudflare, CreepJS, BrowserScan, Pixelscan, and every other bot detector we've thrown at it. While Chromium-based tools are getting caught by the first line of defense, this thing walks through the front door unnoticed.
+The image avoids Chromium CDP signals and keeps its generated Linux font and
+WebGL surfaces internally consistent. Detection results still depend on the
+site, network exit, timezone, browser build, and test date.
 
 ## Table of Contents
 
@@ -268,7 +270,11 @@ make sec
 
 ## Bot Detection Results
 
-| Service                                                                | Result   | What They Check                                                         |
+These are observed results, not a promise that every version of each service
+will return the same result. Test the exact image, proxy, timezone, and target
+flow you plan to use.
+
+| Service                                                                | Observed result | What They Check                                                         |
 | ---------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------- |
 | [CreepJS](https://abrahamjuliot.github.io/creepjs/)                    | **Pass** | Canvas/WebGL fingerprint consistency, lies detection, worker comparison |
 | [BrowserScan](https://www.browserscan.net/bot-detection)               | **Pass** | WebDriver flag, CDP signals, navigator properties                       |
