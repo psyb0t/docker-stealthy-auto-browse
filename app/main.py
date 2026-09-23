@@ -128,6 +128,7 @@ _DIALOG_BUTTONS: dict[str, list[str]] = {
 
 # Tab management
 _active_page: Any = None
+_page_heal_lock = asyncio.Lock()
 
 # Download tracking
 _last_download: dict | None = None
@@ -346,28 +347,60 @@ async def _focus_active_tab(index: int, page: Any) -> None:
                 )
 
 
-async def get_active_page() -> Any:
-    """Get the currently active page, relaunching browser if it died."""
+async def _relaunch_for_empty_pool() -> Any:
+    """Relaunch the browser after its last tab closed and return the new page.
+
+    Closing the last tab (via close_tab or the site's own window.close())
+    leaves Camoufox running with no window, and the health probe still
+    passes. Each tab is its own OS window, so with none left Firefox refuses
+    new_page ("window is null") and only a relaunch recovers.
+    """
+    global _active_page
+    log.warning(
+        "no open tabs, relaunching the browser",
+        extra={"reason": "empty_page_pool"},
+    )
+    if not await browser.relaunch():
+        return None
+    page = await browser._get_page()
+    _setup_page_handlers(page)
+    _active_page = page
+    await _focus_active_tab(len(browser._context.pages) - 1, page)
+    return page
+
+
+async def get_active_page(open_if_empty: bool = True) -> Any:
+    """Get the currently active page, relaunching browser if it died.
+
+    When the browser is alive but every tab is closed, it is relaunched
+    unless open_if_empty is False, which read-only callers such as list_tabs
+    use to report the real pool. The screenshot and state routes run outside
+    _request_lock, so _page_heal_lock keeps concurrent callers from each
+    starting a relaunch.
+    """
     global _active_page
     if not browser:
         return None
-    # Heal a dead/crashed Camoufox before reading the context. Without this,
-    # the cached _active_page survives across browser deaths and every
-    # subsequent action fails with "Connection closed while reading from
-    # the driver" until the container is manually restarted.
-    if not await browser.ensure_healthy():
-        return None
-    if not browser._context:
-        return None
-    pages = browser._context.pages
-    if not pages:
-        _active_page = None
-        return None
-    # The cached _active_page may belong to the previous (dead) context.
-    # Drop it if it's not in the current page list.
-    if _active_page is None or _active_page not in pages:
-        _active_page = pages[-1]
-    return _active_page
+    async with _page_heal_lock:
+        # Heal a dead/crashed Camoufox before reading the context. Without
+        # this, the cached _active_page survives across browser deaths and
+        # every subsequent action fails with "Connection closed while reading
+        # from the driver" until the container is manually restarted.
+        if not await browser.ensure_healthy():
+            return None
+        if not browser._context:
+            return None
+        pages = browser._context.pages
+        if not pages:
+            _active_page = None
+            if not open_if_empty:
+                return None
+            return await _relaunch_for_empty_pool()
+        # The cached _active_page may belong to the previous (dead) context.
+        # Drop it if it's not in the current page list.
+        if _active_page is None or _active_page not in pages:
+            _active_page = pages[-1]
+        return _active_page
 
 
 def _navigation_number(
@@ -705,7 +738,7 @@ async def dispatch_action(cmd: dict) -> dict:
     if action == "list_tabs":
         pages = browser._context.pages if browser and browser._context else []
         tabs = []
-        active = await get_active_page()
+        active = await get_active_page(open_if_empty=False)
         for i, p in enumerate(pages):
             tabs.append({"index": i, "url": p.url, "active": p is active})
         return make_response(True, {"tabs": tabs, "count": len(tabs)})
@@ -713,15 +746,22 @@ async def dispatch_action(cmd: dict) -> dict:
     if action == "new_tab":
         if not browser or not browser._context:
             return make_response(False, error="No browser context")
-        new_page = await browser._context.new_page()
-        _setup_page_handlers(new_page)
-        _active_page = new_page
-        # Foreground the new tab's window so it's what Xvfb renders
-        # (screenshots, recordings, VNC). See Browser.focus_tab_window —
-        # Firefox opens each page as its own OS window and bring_to_front()
-        # doesn't raise it. The new page is always the last one; it's still
-        # blank here (navigation happens below) so the focus click is safe.
-        await _focus_active_tab(len(browser._context.pages) - 1, new_page)
+        if browser._context.pages:
+            new_page = await browser._context.new_page()
+            _setup_page_handlers(new_page)
+            _active_page = new_page
+            # Foreground the new tab's window so it's what Xvfb renders
+            # (screenshots, recordings, VNC). See Browser.focus_tab_window.
+            # Firefox opens each page as its own OS window and bring_to_front()
+            # doesn't raise it. The new page is always the last one; it's still
+            # blank here (navigation happens below) so the focus click is safe.
+            await _focus_active_tab(len(browser._context.pages) - 1, new_page)
+        else:
+            # With no window left Firefox refuses new_page, so the relaunch in
+            # get_active_page opens, sets up, and focuses the tab instead.
+            new_page = await get_active_page()
+            if new_page is None:
+                return make_response(False, error="No active page")
         tab_url: str | None = cmd.get("url")
         if tab_url:
             await _navigate(

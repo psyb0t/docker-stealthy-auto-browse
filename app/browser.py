@@ -1082,6 +1082,14 @@ class Browser:
         # Crashes are usually OOM (Facebook etc. + accumulated persistent
         # profile state), but they can also be Firefox segfaults / asserts.
         _log_browser_postmortem()
+        return await self.relaunch()
+
+    async def relaunch(self) -> bool:
+        """Tear the browser down and start it again on the same profile.
+
+        Returns False if the new launch failed. Cookies and storage survive
+        because the context is persistent on disk.
+        """
         try:
             await self.stop()
         except Exception as e:

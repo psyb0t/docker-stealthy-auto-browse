@@ -97,6 +97,11 @@ MAIN_TESTS=(
     test_recording_slug_collision
     # test_recovery.sh
     test_recovery_camoufox_crash
+    test_recovery_last_tab_closed
+    test_recovery_list_tabs_does_not_open_tab
+    test_recovery_many_tabs_closed
+    test_recovery_new_tab_at_zero_tabs
+    test_recovery_concurrent_requests_open_one_tab
 )
 
 # --- CLI ---

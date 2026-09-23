@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.6.12] 2026-09-23
+
+### Fixed
+
+- Recover after the last tab closes. Every action that needed a page used to
+  fail with `No active page`, and `GET /screenshot/browser` returned 503, until
+  the container restarted. The next action that needs a page, including
+  `new_tab`, now relaunches the browser on the same profile and continues on
+  the fresh tab. Cookies and storage survive the relaunch. Reported in issue
+  #8.
+- Serialize that recovery so screenshots and actions that arrive together
+  trigger one relaunch instead of tearing each other down.
+- `list_tabs` reports an empty tab list as `count: 0` and does not relaunch the
+  browser.
+
 ## [2.6.11] 2026-09-13
 
 ### Fixed

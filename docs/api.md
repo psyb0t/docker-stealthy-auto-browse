@@ -216,6 +216,8 @@ Use these instead of `sleep` — they wait for **actual page state**, not arbitr
 
 Firefox opens each tab as its own OS window, so `new_tab` / `switch_tab` / `close_tab` also **foreground** the target tab's window — the display, screenshots, recordings, and VNC follow the active tab — and transfer OS-level keyboard focus into its content so `send_key` / `system_type` reach the switched tab. Foregrounding uses a brief off-screen mouse gesture that renders no context menu (clean in recordings).
 
+Closing the last tab leaves Firefox with no window, and Firefox cannot open a tab from that state. `list_tabs` then reports `count: 0`. The next action that needs a page, including `new_tab` and `GET /screenshot/browser`, relaunches the browser on the same profile and runs on the fresh tab. The relaunch takes a few seconds. Cookies and storage survive it, but the closed page's state does not.
+
 ### Dialog Handling
 
 Browsers have modal dialogs (alert, confirm, prompt). By default, dialogs are **auto-accepted** (clicks OK). Use `handle_dialog` to dismiss or provide prompt text.
