@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.7.0] 2026-10-08
+
+### Added
+
+- `set_color_scheme` action. It makes every open tab, and every tab opened
+  later, report `dark`, `light`, or `no-preference` for
+  `prefers-color-scheme`, so sites that follow the system theme switch to it
+  for screenshots and recordings. `default` turns it off. It takes effect at
+  once, survives a browser relaunch, and changes page content only, not the
+  browser toolbar. Firefox has no `no-preference` media value, so pages see
+  `light` for it. Available through the HTTP API, script mode, and the MCP
+  `browser_action` tool.
+
 ## [2.6.12] 2026-09-23
 
 ### Fixed

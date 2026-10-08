@@ -83,6 +83,8 @@ MAIN_TESTS=(
     test_switch_tab_keyboard
     test_switch_tab_no_link_activation
     test_close_tab
+    # test_color_scheme.sh
+    test_color_scheme
     # test_uploads.sh
     test_upload_file
     # test_waits.sh

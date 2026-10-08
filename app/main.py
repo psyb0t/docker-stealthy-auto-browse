@@ -31,7 +31,7 @@ from typing import Any
 
 import uvicorn
 import yaml
-from browser import Browser, BrowserConfig, BrowserError
+from browser import COLOR_SCHEME_DEFAULT, COLOR_SCHEMES, Browser, BrowserConfig, BrowserError
 from fastapi import FastAPI, Request
 from PIL import Image
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -749,6 +749,9 @@ async def dispatch_action(cmd: dict) -> dict:
         if browser._context.pages:
             new_page = await browser._context.new_page()
             _setup_page_handlers(new_page)
+            # Applied here as well as by the context `page` handler, so the
+            # tab is already in the scheme when it navigates below.
+            await browser.apply_color_scheme(new_page)
             _active_page = new_page
             # Foreground the new tab's window so it's what Xvfb renders
             # (screenshots, recordings, VNC). See Browser.focus_tab_window.
@@ -1097,6 +1100,15 @@ async def dispatch_action(cmd: dict) -> dict:
     if action == "get_resolution":
         result = system.get_resolution()
         return make_response(True, result)
+
+    if action == "set_color_scheme":
+        assert browser is not None
+        try:
+            pages = await browser.set_color_scheme(cmd.get("scheme", ""))
+        except ValueError:
+            allowed = ", ".join((*COLOR_SCHEMES, COLOR_SCHEME_DEFAULT))
+            return make_response(False, error=f"scheme must be one of: {allowed}")
+        return make_response(True, {"scheme": browser.color_scheme, "pages": pages})
 
     if action == "system_type":
         text = cmd.get("text", "")

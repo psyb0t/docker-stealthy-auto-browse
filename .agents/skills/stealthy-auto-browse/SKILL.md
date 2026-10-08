@@ -355,6 +355,7 @@ Capture `console.log`, `console.error`, `console.warn`, etc. Each entry has `typ
 ```json
 {"action": "calibrate"}
 {"action": "get_resolution"}
+{"action": "set_color_scheme", "scheme": "dark"}
 {"action": "enter_fullscreen"}
 {"action": "exit_fullscreen"}
 ```

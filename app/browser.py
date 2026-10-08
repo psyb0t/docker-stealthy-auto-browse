@@ -35,6 +35,13 @@ DEFAULT_USER_DATA_DIR = "/userdata"
 # Persisted browser properties file (stores Camoufox config, not raw fingerprint)
 BROWSER_PROPS_FILE = Path(DEFAULT_USER_DATA_DIR) / "stealthy-auto-browse-props.json"
 
+# prefers-color-scheme values pages can emulate. COLOR_SCHEME_DEFAULT turns
+# emulation off and pages see the browser's own value again.
+COLOR_SCHEMES = ("dark", "light", "no-preference")
+COLOR_SCHEME_DEFAULT = "default"
+# Playwright's emulate_media value that clears color-scheme emulation.
+_PLAYWRIGHT_CLEAR_EMULATION = "null"
+
 _CAMOUFOX_TARGET_OS = "lin"
 _CAMOUFOX_FONTCONFIG_RELATIVE_PATHS = (
     Path("fontconfig/linux/fonts.conf"),
@@ -787,6 +794,46 @@ class Browser:
             _VIRTUAL_MEDIA_MICROPHONE: self.config.virtual_microphone_file,
         }
         self._virtual_media_revision = 0
+        # Emulated prefers-color-scheme, or None for the browser's own value.
+        # Kept here so it survives a relaunch and reaches pages opened later.
+        self._color_scheme: str | None = None
+
+    @property
+    def color_scheme(self) -> str:
+        """The emulated prefers-color-scheme, or COLOR_SCHEME_DEFAULT."""
+        return self._color_scheme or COLOR_SCHEME_DEFAULT
+
+    async def set_color_scheme(self, scheme: str) -> int:
+        """Emulate prefers-color-scheme on every open page and every page
+        opened later. COLOR_SCHEME_DEFAULT turns emulation off. Returns the
+        number of open pages it was applied to."""
+        if scheme != COLOR_SCHEME_DEFAULT and scheme not in COLOR_SCHEMES:
+            raise ValueError(f"unknown color scheme: {scheme}")
+        self._color_scheme = None if scheme == COLOR_SCHEME_DEFAULT else scheme
+        if self._context is None:
+            return 0
+        pages = list(self._context.pages)
+        for page in pages:
+            await self.apply_color_scheme(page)
+        return len(pages)
+
+    async def apply_color_scheme(self, page: Any) -> None:
+        """Apply the current color scheme to one page."""
+        await page.emulate_media(
+            color_scheme=self._color_scheme or _PLAYWRIGHT_CLEAR_EMULATION
+        )
+
+    def _on_new_page_color_scheme(self, page: Any) -> None:
+        """Context `page` handler: give pages a site opens the same scheme."""
+        if self._color_scheme is None:
+            return
+        asyncio.ensure_future(self._apply_color_scheme_logged(page))
+
+    async def _apply_color_scheme_logged(self, page: Any) -> None:
+        try:
+            await self.apply_color_scheme(page)
+        except Exception as error:  # a page closed before it was set up is not fatal
+            log.warning("browser: could not apply color scheme to a new page: %s", error)
 
     @property
     def state(self) -> BrowserState:
@@ -1405,6 +1452,10 @@ class Browser:
             self._browser = self._context
             await self._configure_virtual_media()
             await self._warm_up_canvas_contexts()
+            self._context.on("page", self._on_new_page_color_scheme)
+            if self._color_scheme is not None:
+                for open_page in self._context.pages:
+                    await self.apply_color_scheme(open_page)
 
             # Crash diagnostics — Playwright fires these events when the
             # browser / page processes die. Without them the only signal is

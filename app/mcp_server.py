@@ -322,6 +322,9 @@ async def run_script(
     DISPLAY:
         calibrate: Detect browser window offset for system_click coordinates.
         get_resolution: Get current display resolution.
+        set_color_scheme: Make every open and future tab report a color scheme.
+            - scheme (str, required): "dark", "light", "no-preference", or
+              "default" to turn emulation off.
         enter_fullscreen: Enter browser fullscreen mode.
         exit_fullscreen: Exit browser fullscreen mode.
 
@@ -602,7 +605,8 @@ if not _cluster_mode:
         challenge detection (detect_challenge),
         network logging (enable_network_log, get_network_log, etc.),
         console logging (enable_console_log, get_console_log, etc.),
-        display (calibrate, get_resolution, enter_fullscreen, exit_fullscreen),
+        display (calibrate, get_resolution, set_color_scheme, enter_fullscreen,
+        exit_fullscreen),
         recording (start_recording, stop_recording, recording_status),
         scrolling (scroll_to_bottom, scroll_to_bottom_humanized),
         navigation (refresh), wait (wait_for_url, wait_for_network_idle),
