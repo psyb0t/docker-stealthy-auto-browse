@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.7.1] 2026-10-08
+
+### Fixed
+
+- Update the `new_tab` navigation unit test for the color scheme step that
+  `new_tab` now runs. The 2.7.0 pipeline failed on this test before it
+  published the image, so 2.7.1 is the first published release with
+  `set_color_scheme`.
+
 ## [2.7.0] 2026-10-08
 
 ### Added

@@ -200,7 +200,10 @@ async def test_new_tab_uses_explicit_navigation_controls() -> None:
         new_page=AsyncMock(return_value=new_page),
         pages=[new_page],
     )
-    fake_browser = SimpleNamespace(_context=context)
+    fake_browser = SimpleNamespace(
+        _context=context,
+        apply_color_scheme=AsyncMock(),
+    )
     with (
         patch.object(main, "browser", fake_browser),
         patch.object(main, "_setup_page_handlers"),
@@ -217,6 +220,7 @@ async def test_new_tab_uses_explicit_navigation_controls() -> None:
         )
 
     assert result["success"]
+    fake_browser.apply_color_scheme.assert_awaited_once_with(new_page)
     assert new_page.goto_calls == [
         (
             "https://example.com/",
