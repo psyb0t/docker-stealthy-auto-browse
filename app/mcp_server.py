@@ -3,7 +3,7 @@
 Exposes browser actions as MCP tools so AI agents can drive the browser
 over the Model Context Protocol. Mounted at /mcp on the main HTTP server.
 
-When NUM_REPLICAS > 1 (cluster mode), only run_script is exposed to guarantee
+When NUM_REPLICAS > 1 (cluster mode), the server exposes only run_script so
 all steps execute on the same browser instance behind the load balancer.
 """
 
@@ -28,14 +28,14 @@ _cluster_mode = _num_replicas > 1
 _INSTRUCTIONS_SINGLE = (
     "Stealth browser automation in Docker. Camoufox (custom Firefox) with "
     "zero Chrome DevTools Protocol exposure and real OS-level mouse/keyboard "
-    "input via PyAutoGUI — undetectable by bot detection. "
+    "input via PyAutoGUI, undetectable by bot detection. "
     "Passes Cloudflare, CreepJS, BrowserScan, Pixelscan, and all major bot detectors. "
-    "READING PAGE CONTENT: always use get_text() or get_html() first — they are fast and "
-    "token-efficient. Only take a screenshot() when the page content cannot be understood "
+    "READING PAGE CONTENT: always use get_text() or get_html() first. They are fast and "
+    "token-efficient. Only take a screenshot() when you cannot understand the page content "
     "from text alone (e.g. visual layout, images, canvas). "
-    "SCREENSHOTS: always pass whLargest=512 unless fine detail is required — "
-    "full-resolution screenshots waste tokens and provide no extra information for most tasks. "
-    "CLICKING: always use click() with a CSS selector first — it is fast and reliable. "
+    "SCREENSHOTS: always pass whLargest=512 unless you need fine detail. "
+    "Full-resolution screenshots waste tokens and provide no extra information for most tasks. "
+    "CLICKING: always use click() with a CSS selector first. It is fast and reliable. "
     "Only use system_click() as a last resort when the site detects DOM event injection, "
     "and only after calling calibrate() to ensure correct coordinate mapping. "
     "Use get_interactive_elements to find selectors and coordinates. "
@@ -44,7 +44,7 @@ _INSTRUCTIONS_SINGLE = (
 
 _INSTRUCTIONS_CLUSTER = (
     "Stealth browser automation cluster. Multiple browser replicas behind a load balancer. "
-    "IMPORTANT: only run_script is available — all steps execute atomically on ONE browser "
+    "IMPORTANT: only run_script is available. All steps execute atomically on ONE browser "
     "instance. This guarantees state consistency (navigation, cookies, page content) across "
     "steps. Build your workflow as a list of steps in a single run_script call. "
     "See the run_script tool documentation for all available actions and their parameters."
@@ -96,7 +96,7 @@ def _text_result(result: dict) -> str:
 
 
 # =========================================================================
-# run_script — always registered (the ONLY tool in cluster mode)
+# run_script: always registered (the ONLY tool in cluster mode)
 # =========================================================================
 
 
@@ -182,21 +182,32 @@ async def run_script(
             - activate (bool): Activate the uploaded source. Default false.
         get_interactive_elements: Find all interactive elements (buttons, links, inputs).
             - visible_only (bool): Only viewport-visible elements. Default true.
-            Returns: list of elements with x, y, width, height, text, selector.
+            Returns: list of elements with x, y (centre), w, h, text, selector.
+              Pass x, y, w, h to system_click.
         eval: Execute JavaScript and return result.
             - expression (str, required): JS expression to evaluate.
 
     CLICKING (prefer click over system_click):
         click: Click element by CSS selector or XPath. Fast and reliable.
             - selector (str, required): CSS selector or "xpath=..." expression.
-        system_click: Click at viewport coordinates using OS-level mouse. Undetectable
-            but requires calibrate first.
-            - x (int, required): Viewport X coordinate.
-            - y (int, required): Viewport Y coordinate.
-            - duration (float): Mouse movement time in seconds.
-        mouse_click: Click at absolute screen coordinates (or current position).
-            - x (int): Screen X coordinate.
-            - y (int): Screen Y coordinate.
+        system_click: Move like a human to viewport coordinates, then click with a
+            human press and hold. Requires calibrate first.
+            - x (int, required): Viewport X coordinate of the target centre.
+            - y (int, required): Viewport Y coordinate of the target centre.
+            - w (int): Target width (from get_interactive_elements). The click
+              lands at a human offset inside the target, never dead centre.
+            - h (int): Target height.
+            - duration (float): Scale the movement to this many seconds.
+            - speed (float): Speed multiplier, 0.1-10 (2 = twice as fast).
+            - curvature (float): Main stroke bend multiplier, 0-5 (0 = straight).
+            - tremor (float): Hand tremor in px, 0-5 (default 0.35).
+            - click_hold (float): Median button hold in seconds, 0.01-5.
+            - click_delay (float): Median pause before pressing, 0-10 s.
+        mouse_click: Click at the current pointer position, or move to viewport
+            coordinates first when x and y are given.
+            - x (int): Viewport X coordinate.
+            - y (int): Viewport Y coordinate.
+            - w (int), h (int), and the system_click tuning options.
 
     TEXT INPUT:
         fill: Set input field value instantly (clears first, no keystrokes).
@@ -206,28 +217,58 @@ async def run_script(
             - selector (str, required): CSS selector of input element.
             - text (str, required): Text to type.
             - delay (float): Delay between keys in seconds. Default 0.05.
-        system_type: Type with real OS-level keystrokes (undetectable).
-            - text (str, required): Text to type.
-            - interval (float): Average delay between keys. Default 0.08.
+        system_type: Type with real OS-level keystrokes and human timing (key
+            holds, overlapping keys, Shift before capitals).
+            - text (str, required): Text to type. Non-ASCII characters work.
+            - interval (float): Median gap between key presses in seconds.
+              Default: the session's typist speed.
+            - typos (bool): Make and correct occasional typos. Default false.
+              Refused on password, email, number, maxlength and similar
+              fields (see typos_disabled_reason in the response). Fails if a
+              page script leaves the field different from the text.
+              Response: typed_len, typos, typos_disabled_reason.
+            - typo_rate (float): Typos per letter, 0-0.2 (default 0.02).
+            - key_hold (float): Median key hold in seconds, 0.01-2.
+            - rollover (float): Chance of keeping a key overlap when the next
+              key comes before the last is released, 0-1.
         send_key: Send keyboard key or combo.
             - key (str, required): Key name or combo, e.g. "enter", "ctrl+a",
               "ctrl+shift+t", "tab", "escape", "backspace".
+            - key_hold (float): Median key hold in seconds, 0.01-2.
+            - instant (bool): Press and release at once with no human
+              timing. Faster, but easy for a page to spot. Default false.
 
     MOUSE:
         mouse_move: Move mouse to viewport coordinates (human-like movement).
             - x (int, required): Viewport X coordinate.
             - y (int, required): Viewport Y coordinate.
-            - duration (float): Movement time in seconds.
-        scroll: Scroll using mouse wheel.
-            - amount (int): Scroll amount. Negative=down, positive=up. Default -3.
+            - w (int), h (int): Target size; the pointer lands inside it.
+            - duration (float): Scale the movement to this many seconds.
+            - speed, curvature, tremor: as for system_click.
+        scroll: Scroll using the mouse wheel, one notch at a time with human
+            rhythm.
+            - amount (int): Wheel notches, non-zero. Negative=down, positive=up.
+              Default -3.
             - x (int): X coordinate to move to before scrolling.
             - y (int): Y coordinate to move to before scrolling.
+            - notch_gap (float): Median seconds between notches, 0.015-5.
         scroll_to_bottom: Scroll to page bottom programmatically.
             - delay (float): Delay between scroll steps in seconds. Default 0.4.
-        scroll_to_bottom_humanized: Scroll to bottom with randomized mouse wheel.
-            - min_clicks (int): Min wheel clicks per step. Default 2.
-            - max_clicks (int): Max wheel clicks per step. Default 6.
-            - delay (float): Base delay between steps. Default 0.5.
+        scroll_to_bottom_humanized: Scroll to bottom with mouse wheel gestures,
+            reading pauses, idle pointer drift and occasional scroll-backs.
+            - min_clicks (int): Min wheel notches per gesture, 1-50. Default 2.
+            - max_clicks (int): Max wheel notches per gesture, 1-50. Default 6.
+            - delay (float): Median reading pause between gestures. Default 0.5.
+            - max_gestures (int): Stop after this many gestures, 1-10000.
+              Default 500.
+            - return_to_top (bool): Go back to the top with the Home key (wheel
+              flicks when a text field has focus).
+              Default true.
+            - notch_gap (float): Median seconds between notches, 0.015-5.
+            - scroll_back (float): Chance per gesture of scrolling back up a
+              little, 0-1. Default 0.06.
+            - drift (float): Chance per pause of drifting the pointer, 0-1.
+              Default 0.4.
 
     SCREENSHOTS:
         save_screenshot: Capture screenshot (prefer get_text/get_html instead).
@@ -328,7 +369,7 @@ async def run_script(
         enter_fullscreen: Enter browser fullscreen mode.
         exit_fullscreen: Exit browser fullscreen mode.
 
-    RECORDING (ffmpeg x11grab — captures Xvfb to /recordings/<slug>.mp4 with mouse cursor):
+    RECORDING (ffmpeg x11grab captures Xvfb to /recordings/<slug>.mp4 with mouse cursor):
         start_recording: Begin a recording. Requires /recordings volume mount.
             One active recording per container; second start while active errors.
             - mode (str): "window" (default, full Camoufox window incl. chrome),
@@ -351,7 +392,7 @@ async def run_script(
 
 
 # =========================================================================
-# Individual tools — only registered in single-instance mode
+# Individual tools: only registered in single-instance mode
 # =========================================================================
 
 if not _cluster_mode:
@@ -437,10 +478,10 @@ if not _cluster_mode:
     ) -> ToolResult:
         """Take a screenshot of the browser viewport or full desktop.
 
-        LAST RESORT — prefer get_text() or get_html() instead. Screenshots cost
-        significantly more tokens and are only needed when visual layout or images
-        matter. When you do take a screenshot, always use whLargest=512 unless you
-        specifically need fine detail — full resolution is wasteful.
+        LAST RESORT. Prefer get_text() or get_html() instead. Screenshots cost
+        many more tokens and only help when visual layout or images matter.
+        When you do take a screenshot, always use whLargest=512 unless you
+        specifically need fine detail. Full resolution is wasteful.
 
         Args:
             screenshot_type: "browser" for page viewport, "desktop" for full virtual screen.
@@ -462,48 +503,129 @@ if not _cluster_mode:
         return ToolResult(content=[TextContent(type="text", text=_text_result(result))])
 
     @mcp.tool
-    async def system_click(x: int, y: int, duration: float | None = None) -> str:
+    async def system_click(
+        x: int,
+        y: int,
+        w: int | None = None,
+        h: int | None = None,
+        duration: float | None = None,
+        speed: float | None = None,
+        curvature: float | None = None,
+        tremor: float | None = None,
+        click_hold: float | None = None,
+        click_delay: float | None = None,
+    ) -> str:
         """Click at viewport coordinates using real OS-level mouse movement.
 
-        PREFER click() with a CSS selector instead — it is faster and more reliable.
-        Only use system_click when: (1) the site detects DOM event injection and
+        PREFER click() with a CSS selector instead. It is faster and more reliable.
+        Only use system_click when (1) the site detects DOM event injection and
         blocks it, or (2) you have already called calibrate and confirmed the window
         offset is correct. Without calibration the coordinates will be wrong and
         the click will land in the wrong place.
 
         Args:
-            x: Viewport X coordinate (from get_interactive_elements).
-            y: Viewport Y coordinate (from get_interactive_elements).
-            duration: Mouse movement time in seconds (random 0.2-0.6 if omitted).
+            x: Viewport X coordinate of the target centre (from
+                get_interactive_elements).
+            y: Viewport Y coordinate of the target centre.
+            w: Target width from get_interactive_elements. The click lands at a
+                human offset inside the target instead of dead centre.
+            h: Target height from get_interactive_elements.
+            duration: Scale the movement to this many seconds (human timing
+                from Fitts's law if omitted).
+            speed: Movement speed multiplier (0.1-10, 2 = twice as fast).
+            curvature: Main stroke bend multiplier (0-5, 0 = straight).
+            tremor: Hand tremor amplitude in px (0-5, default 0.35).
+            click_hold: Median seconds the button is held (0.01-5).
+            click_delay: Median seconds between arriving and pressing (0-10).
         """
-        return _text_result(await _call("system_click", x=x, y=y, duration=duration))
+        return _text_result(
+            await _call(
+                "system_click",
+                x=x,
+                y=y,
+                w=w,
+                h=h,
+                duration=duration,
+                speed=speed,
+                curvature=curvature,
+                tremor=tremor,
+                click_hold=click_hold,
+                click_delay=click_delay,
+            )
+        )
 
     @mcp.tool
-    async def system_type(text: str, interval: float = 0.08) -> str:
+    async def system_type(
+        text: str,
+        interval: float | None = None,
+        typos: bool = False,
+        typo_rate: float | None = None,
+        key_hold: float | None = None,
+        rollover: float | None = None,
+    ) -> str:
         """Type text with real OS-level keystrokes (undetectable).
 
-        Each keystroke has a randomized delay to mimic human typing.
+        Holds and releases keys with human timing: rhythm that depends on
+        the key pair, overlapping keys for fast typists, and Shift pressed
+        before capitals. Also types characters outside the US layout.
         You must focus an input field first (e.g. with system_click).
 
         Args:
             text: The text to type.
-            interval: Average delay between keystrokes in seconds.
+            interval: Median gap between key presses in seconds. Defaults to
+                the session's typist speed.
+            typos: Make and correct occasional typos. Refused on password,
+                email, number, maxlength and similar fields (see
+                typos_disabled_reason). Fails if a page script leaves the
+                field different from the text.
+            typo_rate: Typos per letter (0-0.2, default 0.02 when typos is on).
+            key_hold: Median seconds each key is held (0.01-2).
+            rollover: Chance of keeping a key overlap when the next key comes
+                before the last is released (0-1).
         """
-        return _text_result(await _call("system_type", text=text, interval=interval))
+        return _text_result(
+            await _call(
+                "system_type",
+                text=text,
+                interval=interval,
+                typos=typos or bool(typo_rate),
+                typo_rate=typo_rate,
+                key_hold=key_hold,
+                rollover=rollover,
+            )
+        )
 
     @mcp.tool
-    async def send_key(key: str) -> str:
+    async def send_key(
+        key: str,
+        key_hold: float | None = None,
+        instant: bool = False,
+    ) -> str:
         """Send a keyboard key or combo.
 
         Examples: "enter", "tab", "escape", "backspace", "ctrl+a", "ctrl+shift+t".
 
         Args:
             key: Key name or combo using PyAutoGUI key names.
+            key_hold: Median seconds the key is held (0.01-2).
+            instant: Press and release at once with no human timing. Faster,
+                but easy for a page to spot.
         """
-        return _text_result(await _call("send_key", key=key))
+        return _text_result(
+            await _call("send_key", key=key, key_hold=key_hold, instant=instant)
+        )
 
     @mcp.tool
-    async def mouse_move(x: int, y: int, duration: float | None = None) -> str:
+    async def mouse_move(
+        x: int,
+        y: int,
+        w: int | None = None,
+        h: int | None = None,
+        duration: float | None = None,
+        speed: float | None = None,
+        curvature: float | None = None,
+        tremor: float | None = None,
+    ) -> str:
         """Move the mouse to viewport coordinates with human-like movement (no click).
 
         Use to hover over elements (trigger dropdowns, tooltips).
@@ -511,28 +633,52 @@ if not _cluster_mode:
         Args:
             x: Viewport X coordinate.
             y: Viewport Y coordinate.
-            duration: Movement time in seconds.
+            w: Target width; the pointer lands inside the target.
+            h: Target height.
+            duration: Scale the movement to this many seconds.
+            speed: Movement speed multiplier (0.1-10).
+            curvature: Main stroke bend multiplier (0-5, 0 = straight).
+            tremor: Hand tremor amplitude in px (0-5).
         """
-        return _text_result(await _call("mouse_move", x=x, y=y, duration=duration))
+        return _text_result(
+            await _call(
+                "mouse_move",
+                x=x,
+                y=y,
+                w=w,
+                h=h,
+                duration=duration,
+                speed=speed,
+                curvature=curvature,
+                tremor=tremor,
+            )
+        )
 
     @mcp.tool
     async def scroll(
-        amount: int = -3, x: int | None = None, y: int | None = None
+        amount: int = -3,
+        x: int | None = None,
+        y: int | None = None,
+        notch_gap: float | None = None,
     ) -> str:
         """Scroll using the mouse wheel.
 
         Args:
-            amount: Scroll amount. Negative = scroll down, positive = scroll up.
+            amount: Wheel notches, non-zero. Negative = down, positive = up.
             x: Optional X coordinate to move mouse to before scrolling.
             y: Optional Y coordinate to move mouse to before scrolling.
+            notch_gap: Median seconds between wheel notches (0.015-5).
+                Default: human flick/controlled rhythm.
         """
-        return _text_result(await _call("scroll", amount=amount, x=x, y=y))
+        return _text_result(
+            await _call("scroll", amount=amount, x=x, y=y, notch_gap=notch_gap)
+        )
 
     @mcp.tool
     async def click(selector: str) -> str:
         """Click an element by CSS selector or XPath. PREFER THIS over system_click.
 
-        Reliable, fast, and works for the vast majority of sites. Only fall back to
+        Reliable, fast, and works on most sites. Only fall back to
         system_click if the site explicitly detects and blocks DOM event injection.
         XPath example: "xpath=//button[@id='submit']".
 

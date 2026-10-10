@@ -90,6 +90,8 @@ steps:
   # - action: system_click
   #   x: 500
   #   y: 300
+  #   w: 120            # target size from get_interactive_elements
+  #   h: 40
   # - action: mouse_move
   #   x: 500
   #   y: 300
@@ -99,7 +101,7 @@ steps:
   #   y: 300
   # - action: system_type
   #   text: "hello world"
-  #   interval: 0.08
+  #   typos: true       # optional, always corrected
   # - action: send_key
   #   key: enter
   # - action: scroll

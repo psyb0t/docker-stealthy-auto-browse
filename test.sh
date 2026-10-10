@@ -139,7 +139,16 @@ _ts() {
 }
 
 # Heavy tests that must run alone (not parallel with others)
-HEAVY_TESTS=(test_mcp_cluster_mode test_cluster)
+# Humanized input tests judge timing, so they run alone on a quiet machine.
+HEAVY_TESTS=(
+    test_mcp_cluster_mode
+    test_cluster
+    test_humanized_overrides
+    test_humanized_mouse
+    test_humanized_typing
+    test_humanized_input_off_event_loop
+    test_humanized_scroll
+)
 
 # Classify requested tests into main vs extra vs heavy
 MAIN_TO_RUN=()

@@ -1,10 +1,10 @@
-# Page Loaders (URL-Triggered Automation)
+# Page loaders (URL-triggered automation)
 
 Page loaders are like **Greasemonkey/Tampermonkey userscripts** but for the HTTP API. You define a set of actions that automatically run whenever the browser navigates to a matching URL. Instead of manually sending a sequence of commands every time you visit a site, you write it once as a YAML file and the container handles it.
 
-This is useful for things like: removing cookie popups, dismissing overlays, waiting for dynamic content, cleaning up pages before scraping, or any repetitive setup you'd otherwise do manually every time.
+Use them to remove cookie popups, dismiss overlays, wait for dynamic content, clean up pages before scraping, or handle any repetitive setup you'd otherwise do manually every time.
 
-## How They Work
+## How they work
 
 1. You create YAML files that define URL patterns and a list of steps.
 2. Mount those files into the container at `/loaders`.
@@ -22,7 +22,7 @@ docker run -d -p 8080:8080 -p 5900:5900 \
 
 Set `LOADERS_DIR` to use a different path inside the container.
 
-## Loader YAML Format
+## Loader YAML format
 
 ```yaml
 name: Human-readable name for this loader
@@ -41,7 +41,7 @@ steps:
     timeout: 10
 ```
 
-## Match Rules
+## Match rules
 
 All match fields are **optional**, but at least one is required. If you specify multiple fields, **all** of them must match for the loader to trigger:
 
@@ -62,7 +62,7 @@ steps:
     expression: "console.log('Loaded:', '${url}')"
 ```
 
-## Practical Example: Clean Scraping
+## Practical example: clean scraping
 
 Say you're scraping a news site that has cookie popups, newsletter modals, and lazy-loaded content. Without a loader, you'd send 5+ commands after every `goto`. With a loader:
 
@@ -101,7 +101,7 @@ steps:
 
 Now when you `goto` any URL on `news-site.com`, all of this happens automatically.
 
-## Response When a Loader Triggers
+## Response when a loader triggers
 
 Your response includes `"loader"` so you know it fired:
 

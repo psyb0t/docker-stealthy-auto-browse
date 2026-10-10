@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Input Probe</title>
+<style>
+  body { margin: 0; font: 16px/1.5 sans-serif; }
+  #targets { position: relative; height: 560px; }
+  #targets button { position: absolute; }
+  #fields { padding: 20px; display: grid; gap: 10px; max-width: 520px; }
+  #fields input, #fields textarea { font: inherit; }
+  #reading { padding: 20px; max-width: 760px; }
+</style>
+</head>
+<body>
+<div id="targets">
+  <button id="target-0" style="left: 80px; top: 60px; width: 120px; height: 40px;">A</button>
+  <button id="target-1" style="left: 620px; top: 90px; width: 64px; height: 28px;">B</button>
+  <button id="target-2" style="left: 1100px; top: 40px; width: 200px; height: 60px;">C</button>
+  <button id="target-3" style="left: 300px; top: 300px; width: 24px; height: 24px;">D</button>
+  <button id="target-4" style="left: 900px; top: 360px; width: 300px; height: 50px;">E</button>
+  <button id="target-5" style="left: 1500px; top: 220px; width: 90px; height: 90px;">F</button>
+  <button id="target-6" style="left: 140px; top: 460px; width: 160px; height: 36px;">G</button>
+  <button id="target-7" style="left: 1300px; top: 470px; width: 48px; height: 48px;">H</button>
+</div>
+<div id="fields">
+  <input id="text-input" type="text" autocomplete="off">
+  <textarea id="textarea" rows="4"></textarea>
+  <input id="password" type="password" autocomplete="off">
+  <input id="maxlen" type="text" maxlength="200" autocomplete="off">
+</div>
+<div id="reading"></div>
+<script>
+(() => {
+  const MAX_EVENTS = 200000;
+  const PARAGRAPHS = 60;
+  const reading = document.getElementById('reading');
+  for (let i = 0; i < PARAGRAPHS; i++) {
+    const p = document.createElement('p');
+    p.textContent = `Paragraph ${i + 1}. ` + 'Reading text keeps the page tall enough to scroll through. '.repeat(8);
+    reading.appendChild(p);
+  }
+
+  const events = [];
+  let rawUpdates = 0;
+  let collector = null;
+
+  const rectOf = (el) => {
+    if (!el || !el.getBoundingClientRect) return null;
+    const r = el.getBoundingClientRect();
+    return { l: r.left, t: r.top, w: r.width, h: r.height };
+  };
+  const push = (e, extra) => {
+    if (events.length >= MAX_EVENTS) return;
+    events.push(Object.assign({
+      type: e.type,
+      t: Math.round(e.timeStamp * 1000) / 1000,
+      trusted: e.isTrusted,
+    }, extra));
+  };
+  const pointer = (e) => ({ x: e.clientX, y: e.clientY, sx: e.screenX, sy: e.screenY });
+  const opts = { capture: true, passive: true };
+
+  document.addEventListener('mousemove', (e) => push(e, pointer(e)), opts);
+  document.addEventListener('pointermove', (e) => push(e, {
+    co: typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents().length : null,
+  }), opts);
+  document.addEventListener('pointerrawupdate', () => { rawUpdates++; }, opts);
+  for (const type of ['mousedown', 'mouseup', 'click']) {
+    document.addEventListener(type, (e) => push(e, Object.assign(pointer(e), {
+      b: e.button, id: e.target.id || null, rect: rectOf(e.target),
+    })), opts);
+  }
+  document.addEventListener('wheel', (e) => push(e, Object.assign(pointer(e), {
+    dY: e.deltaY, dMode: e.deltaMode, wY: typeof e.wheelDeltaY === 'number' ? e.wheelDeltaY : null,
+  })), opts);
+  for (const type of ['keydown', 'keyup']) {
+    document.addEventListener(type, (e) => push(e, {
+      key: e.key, code: e.code, rep: e.repeat, shift: e.shiftKey, id: e.target.id || null,
+    }), opts);
+  }
+  window.addEventListener('scroll', () => {
+    if (events.length >= MAX_EVENTS) return;
+    events.push({ type: 'scroll', t: Math.round(performance.now() * 1000) / 1000, trusted: true, scrollY: window.scrollY });
+  }, { passive: true });
+
+  window.__probe = {
+    ready: false,
+    harvest() {
+      return JSON.stringify({
+        events,
+        rawUpdates,
+        ma: collector ? collector.getData() : null,
+        viewport: { w: innerWidth, h: innerHeight },
+      });
+    },
+  };
+
+  // The motion-attestation collector is only available when the page is
+  // served by the input detector test container.
+  import('/ma/src/collector.js')
+    .then(({ createCollector }) => {
+      collector = createCollector({
+        minTime: 0,
+        limits: { mouse: 20000, clicks: 500, keys: 5000, scroll: 5000, events: 50000 },
+      });
+      collector.attach();
+    })
+    .catch(() => { collector = null; })
+    .finally(() => { window.__probe.ready = true; });
+})();
+</script>
+</body>
+</html>

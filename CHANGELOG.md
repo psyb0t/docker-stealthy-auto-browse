@@ -2,6 +2,38 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.0.0] 2026-10-10
+
+### Breaking
+
+- **The OS-level input actions validate their parameters and reject requests they used to accept.** `mouse_click` and `scroll` with only one of `x` and `y` now fail with `x and y must be given together` instead of ignoring the coordinate. `scroll` with an `amount` of 0 fails with `amount must be a non-zero integer`, and a fractional `amount` fails with `amount must be an integer` instead of being truncated. `mouse_move` and `system_click` without coordinates report `x is required` (or `y is required`) instead of `x,y required`. `scroll_to_bottom_humanized` requires `min_clicks` and `max_clicks` to be integers from 1 to 50 with `min_clicks` not above `max_clicks`. Numeric strings are still accepted. To migrate, send both coordinates or neither, send whole non-zero wheel amounts, and match on the new error strings if you parse them.
+- **Default OS-level input timing is slower and human-like.** `system_type` without `interval` types at a per-container typist speed (roughly 100-250 ms between keys) instead of a fixed 0.08 s, `send_key` holds each key about 100 ms, clicks hold the button about 100 ms, and `scroll` spaces wheel notches out. Pass `interval`, `key_hold`, `click_hold`, `notch_gap` or `send_key`'s `instant: true` to get faster input back.
+- **`scroll_to_bottom_humanized` stops after at most 500 gestures by default** (`max_gestures`, 1-10000) and returns to the top with the Home key instead of a script jump. It used to loop until the page stopped moving with no cap.
+
+### Changed
+
+- Rebuild the OS-level input actions (`system_click`, `mouse_click`, `mouse_move`, `system_type`, `send_key`, `scroll`, `scroll_to_bottom_humanized`) on models fitted to human motor data. The Playwright `click`, `type` and `fill` actions and the JS `scroll_to_bottom` are unchanged.
+- Mouse moves are overlapping sigma-lognormal strokes with Fitts's-law timing, an early speed peak, overshoot and correction on about a third of moves, and hand tremor, posted at a 125 Hz mouse rate. They replace the straight eased line with per-step noise.
+- Clicks pause before the press, hold the button about 100 ms instead of 0 ms, occasionally slip 1-2 px while pressed, and land at a scattered point inside the target instead of near its exact centre. Pass the target's `w` and `h` from `get_interactive_elements`.
+- `system_type` holds every key, overlaps keys for fast typists, never overlaps a key with itself, varies the rhythm by key pair and word position, and presses Shift with the opposite hand before capitals. Characters outside the US layout are typed instead of silently dropped. Without `interval`, typing speed comes from a per-container typist profile instead of a fixed 0.08 s.
+- `scroll` sends one wheel notch at a time with a flick or controlled rhythm instead of all notches at once. `scroll_to_bottom_humanized` adds reading pauses, pointer drift and occasional scroll-backs, and returns to the top with the Home key (or wheel flicks when a text field has focus) instead of a script jump. It stops after two gestures in a row move nothing, and after at most 500 gestures by default.
+- `send_key` holds keys and releases combos in reverse order. Pass `instant: true` for the previous press with no hold.
+- OS-level input runs in a worker thread, so `/health`, screenshots and MCP no longer stall while a long `system_type` or scroll plays.
+- When the X server stalls in the middle of a gesture, the rest of the input shifts back instead of going out in a burst.
+
+### Added
+
+- Per-request tuning for the OS-level actions. Pointer actions take `speed`, `curvature`, `tremor`, `click_hold` and `click_delay`. `system_type` takes `key_hold`, `rollover`, `typos` and `typo_rate`. `send_key` takes `key_hold`, or `instant: true` to skip human timing. Wheel actions take `notch_gap`, and `scroll_to_bottom_humanized` also takes `max_gestures`, `return_to_top`, `scroll_back` and `drift`. Out-of-range values are rejected. The MCP tools expose the same options.
+- Optional typos for `system_type` (`typos: true`). They are always corrected and only made in plain text fields. Password, email, maxlength and similar fields refuse them and the response gives a `typos_disabled_reason`.
+- `mouse_move`, `mouse_click` and `system_click` return `landed_at`.
+- Tests drive the browser against a probe page, check what the page observed against human data, and score the session with the open-source motion-attestation and Gaitcha bot detectors, fetched at pinned commits during the test run. A robotic control session must fail the same checks.
+
+### Fixed
+
+- `mouse_click` treated an `x` or `y` of 0 as missing.
+- `mouse_click` with coordinates jumped straight to the point. It now moves there first.
+- The MCP `run_script` reference called `mouse_click` coordinates screen coordinates. They are viewport coordinates.
+
 ## [2.7.1] 2026-10-08
 
 ### Fixed
@@ -166,7 +198,7 @@ All notable changes to this project are documented in this file.
   bounded, and a request cannot reserve more than 120 seconds of navigation
   time.
 
-## [2.5.2] — 2026-08-14
+## [2.5.2] 2026-08-14
 
 Documented running the browser through a private pr0xteus WireGuard/SOCKS5
 cell.
@@ -176,9 +208,9 @@ cell.
   pr0xteus's private Docker network, plus links from the README and agent setup
   reference.
 
-## [2.5.1] — 2026-08-01
+## [2.5.1] 2026-08-01
 
-CI plumbing only. No code in this repo changed — both commits in this release
+CI plumbing only. No code in this repo changed. Both commits in this release
 touch `.github/workflows/issue-pull.yml`.
 
 The pipeline split (building and publishing in `pipeline.yml`, everything that
@@ -191,17 +223,17 @@ and archive.org all shipped earlier. What this release adds:
 - Only the scheduled run is jittered; a manually triggered one starts
   immediately.
 
-Pull requests remain switched off on the mirrors — they are force-pushed from
-GitHub, so anything merged there would be destroyed by the next sync. Issues
-and forking stay enabled.
+Pull requests remain switched off on the mirrors. GitHub force-pushes to them,
+so the next sync would destroy anything merged there. Issues and forking stay
+enabled.
 
-## [2.5.0] — 2026-08-01
+## [2.5.0] 2026-08-01
 
 ### Added
 
 - **Challenge viewport handoff.** `detect_challenge` now accepts `scroll_into_view: true` through HTTP, MCP, script mode, and `run_script`. It brings the first rendered detected frame or widget into the viewport for VNC handoff without clicking, focusing, solving, submitting, or entering the challenge frame.
 
-## [2.4.0] — 2026-07-31
+## [2.4.0] 2026-07-31
 
 ### Added
 
@@ -209,19 +241,19 @@ and forking stay enabled.
 
 ### Security
 
-- Arkose resource evidence now redacts key-bearing path segments before it can be returned by an API, script, or MCP response.
+- Arkose resource evidence now redacts key-bearing path segments before an API, script, or MCP response can return it.
 
-## [2.3.0] — 2026-07-30
+## [2.3.0] 2026-07-30
 
 ### Added
 
-- **Bounded script control flow.** Script mode and `run_script` now support nested `if` branches plus `repeat` and `while` loops. Conditions cover CSS element state, visible text, URL globs, boolean JavaScript results, and prior named outputs; loop iteration, total loop work, condition timeout, and nesting are capped to keep submitted scripts finite.
+- **Bounded script control flow.** Script mode and `run_script` now support nested `if` branches plus `repeat` and `while` loops. Conditions cover CSS element state, visible text, URL globs, boolean JavaScript results, and prior named outputs. Caps on loop iteration, total loop work, condition timeout, and nesting keep submitted scripts finite.
 
 ### Changed
 
 - The HTTP API, MCP tool description, README, script-mode reference, and published agent skill now document script-control behavior and limits.
 
-## [2.2.0] — 2026-07-30
+## [2.2.0] 2026-07-30
 
 ### Added
 
@@ -233,12 +265,12 @@ and forking stay enabled.
 
 - The HTTP API, MCP descriptions, README, configuration guide, and published agent skill now document runtime source switching, writable-volume requirements for uploads, authentication, and static-mode compatibility.
 
-## [2.1.0] — 2026-07-29
+## [2.1.0] 2026-07-29
 
 ### Added
 
-- **File-backed virtual media.** Configure a video and/or audio file inside a mounted `/media` directory and pages receive camera/microphone tracks from those files through `navigator.mediaDevices.getUserMedia()`. Paths are startup-validated, including symlink resolution, to remain inside the configured media directory. Requests for an unconfigured kind fail rather than falling back to a native device.
-- **DOM inspection primitives.** `get_page_info`, `get_element`, `get_elements`, and `get_computed_style` provide scraper-style page and CSS data without requiring custom JavaScript. `get_virtual_media_state` reports configured virtual source types.
+- **File-backed virtual media.** Configure a video and/or audio file inside a mounted `/media` directory and pages receive camera/microphone tracks from those files through `navigator.mediaDevices.getUserMedia()`. Startup validation, including symlink resolution, keeps paths inside the configured media directory. Requests for an unconfigured kind fail rather than falling back to a native device.
+- **DOM inspection actions.** `get_page_info`, `get_element`, `get_elements`, and `get_computed_style` provide scraper-style page and CSS data without requiring custom JavaScript. `get_virtual_media_state` reports configured virtual source types.
 - Browser fixture coverage now visibly starts both virtual media tracks, verifies rendered camera pixels and a non-silent encoded microphone stream, and covers each single-source configuration.
 
 ### Changed
@@ -253,88 +285,88 @@ and forking stay enabled.
 - Default-user containers no longer recursively change ownership of the already-owned Camoufox home directory before startup.
 - Multi-browser integration tests now isolate their resource-heavy runs and clean up their exact temporary containers on every exit path.
 
-## [2.0.0] — 2026-07-29
+## [2.0.0] 2026-07-29
 
 ### Breaking
 
-- **Query-string authentication has been removed.** When `AUTH_TOKEN` is configured, authenticated endpoints now reject requests containing `?auth_token=<token>` with HTTP 401. Send the token only in the `Authorization: Bearer <token>` header for both the HTTP API and MCP endpoint.
+- **Removed query-string authentication.** When `AUTH_TOKEN` is configured, authenticated endpoints now reject requests containing `?auth_token=<token>` with HTTP 401. Send the token only in the `Authorization: Bearer <token>` header for both the HTTP API and MCP endpoint.
 
 ### Changed
 
 - Token comparison now uses a constant-time comparison.
 - Codex and OpenClaw plugin metadata now tracks the release version.
 
-## [1.4.7] — 2026-07-27
+## [1.4.7] 2026-07-27
 
 ### Fixed
 
-- **Codex install command was missing from the README.** The "Agent integrations" Codex subsection told readers to run `codex plugin marketplace add psyb0t/agents` and then stopped, never showing the actual install step. It now also shows `codex plugin add stealthy-auto-browse@psyb0t`. The surrounding prose was corrected to distinguish the two invocation forms: installed via the marketplace the skill invokes as `$stealthy-auto-browse:stealthy-auto-browse`, while Codex's automatic pickup of any repo's own `.agents/skills/` (no install needed) invokes as plain `$stealthy-auto-browse`.
+- **Codex install command was missing from the README.** The "Agent integrations" Codex subsection told readers to run `codex plugin marketplace add psyb0t/agents` and then stopped, never showing the actual install step. It now also shows `codex plugin add stealthy-auto-browse@psyb0t`. The surrounding prose now distinguishes the two invocation forms. Installed via the marketplace, the skill invokes as `$stealthy-auto-browse:stealthy-auto-browse`. Codex's automatic pickup of any repo's own `.agents/skills/` (no install needed) invokes as plain `$stealthy-auto-browse`.
 
-## [1.4.6] — 2026-07-27
+## [1.4.6] 2026-07-27
 
 ### Added
 
-- **Agent-integration manifests.** `.agents/.codex-plugin/plugin.json` and `.agents/.claude-plugin/plugin.json` make the existing skill and MCP-bridge plugin installable natively via `claude plugin install stealthy-auto-browse@psyb0t` and `codex plugin marketplace add psyb0t/agents`. A new README "Agent integrations" section documents install commands for Claude Code, Codex, and OpenClaw (including the `openclaw plugins install clawhub:@psyb0t/stealthy-auto-browse` MCP bridge). Metadata only — no code or behavior change.
+- **Agent-integration manifests.** `.agents/.codex-plugin/plugin.json` and `.agents/.claude-plugin/plugin.json` make the existing skill and MCP-bridge plugin installable natively via `claude plugin install stealthy-auto-browse@psyb0t` and `codex plugin marketplace add psyb0t/agents`. A new README "Agent integrations" section documents install commands for Claude Code, Codex, and OpenClaw (including the `openclaw plugins install clawhub:@psyb0t/stealthy-auto-browse` MCP bridge). Metadata only, no code or behavior change.
 
-## [1.4.5] — 2026-07-27
+## [1.4.5] 2026-07-27
 
 ### Added
 
 - Added a GitHub Actions CI status badge to the README.
 
-## [1.4.4] — 2026-07-27
+## [1.4.4] 2026-07-27
 
 ### Added
 
 - Added self-hosted version and license badges plus a Docker Hub pulls badge; wired a badges job into pipeline.yml.
 
-## [1.4.3] — 2026-07-26
+## [1.4.3] 2026-07-26
 
 ### Added
 
-- Added `server.json` — published to the official Model Context Protocol Registry (`registry.modelcontextprotocol.io`) as `io.github.psyb0t/stealthy-auto-browse`, pointing at the `psyb0t/stealthy-auto-browse` Docker image. Ownership is proven by an `io.modelcontextprotocol.server.name` LABEL on the image; publishing runs on tag pushes via GitHub OIDC (secretless). Also added a `glama.json` maintainer claim.
+- Added `server.json` and published it to the official Model Context Protocol Registry (`registry.modelcontextprotocol.io`) as `io.github.psyb0t/stealthy-auto-browse`, pointing at the `psyb0t/stealthy-auto-browse` Docker image. An `io.modelcontextprotocol.server.name` LABEL on the image proves ownership; publishing runs on tag pushes via GitHub OIDC (secretless). Also added a `glama.json` maintainer claim.
 
-## [1.4.2] — 2026-07-26
+## [1.4.2] 2026-07-26
 
 ### Added
 
-- **Third-party license notices.** `THIRD_PARTY.md` + `LICENSES/` documenting the image-baked Camoufox browser (MPL-2.0) and the bundled browser extensions — uBlock Origin (GPL-3.0), LocalCDN (MPL-2.0), ClearURLs (LGPL-3.0), Consent-O-Matic (MIT). The project's own code stays WTFPL. Documentation only, no behavior change.
+- **Third-party license notices.** `THIRD_PARTY.md` + `LICENSES/` documenting the image-baked Camoufox browser (MPL-2.0) and the bundled browser extensions: uBlock Origin (GPL-3.0), LocalCDN (MPL-2.0), ClearURLs (LGPL-3.0), Consent-O-Matic (MIT). The project's own code stays WTFPL. Documentation only, no behavior change.
 
-## [1.4.1] — 2026-07-26
+## [1.4.1] 2026-07-26
 
 ### Changed
 
-- **Hardened the skill docs with explicit destructive-operation guardrails and auth/exfil warnings.** `SKILL.md` gained a "Security & safety" section (right after the intro) summarizing authorized-target scope, the power of the data-capture actions (`get_text`, `get_html`, `get_interactive_elements`, `eval`, screenshots), the dialog auto-accept default, and the `AUTH_TOKEN`-unset no-auth risk. The "Page Inspection" and "Dialogs" sections each gained an inline callout at the point where the behavior is documented — dialogs now spell out that an agent should disable/scope auto-accept before driving stateful sites. Documentation only; no action, endpoint, or default behavior changed.
+- **Hardened the skill docs with explicit destructive-operation guardrails and auth/exfil warnings.** `SKILL.md` gained a "Security & safety" section (right after the intro) summarizing authorized-target scope, the power of the data-capture actions (`get_text`, `get_html`, `get_interactive_elements`, `eval`, screenshots), the dialog auto-accept default, and the `AUTH_TOKEN`-unset no-auth risk. The "Page Inspection" and "Dialogs" sections each gained an inline callout at the point where the behavior is documented. The "Dialogs" section now spells out that an agent should disable/scope auto-accept before driving stateful sites. Documentation only; no action, endpoint, or default behavior changed.
 
-## [1.4.0] — 2026-07-25
+## [1.4.0] 2026-07-25
 
 ### Added
 
-- **`@psyb0t/stealthy-auto-browse` code plugin** (`.agents/plugins/stealthy-auto-browse/`) — a stdio↔HTTP MCP bridge (`mcp-remote`) to the container's `/mcp` endpoint, so an OpenClaw/MCP agent can drive the stealth browser as a tool. MIT-licensed. CI now publishes the plugin alongside the skill via the reusable `clawhub-publish.yml`.
+- **`@psyb0t/stealthy-auto-browse` code plugin** (`.agents/plugins/stealthy-auto-browse/`), a stdio↔HTTP MCP bridge (`mcp-remote`) to the container's `/mcp` endpoint, so an OpenClaw/MCP agent can drive the stealth browser as a tool. MIT-licensed. CI now publishes the plugin alongside the skill via the reusable `clawhub-publish.yml`.
 
 ### Changed
 
 - Skill: minor accuracy fixes to `SKILL.md` / `references/setup.md`.
 
-## [1.3.8] — 2026-07-24
+## [1.3.8] 2026-07-24
 
 ### Changed
 
-- **Trimmed the published ClawHub skill to clear the security review.** ClawHub's scanner rated the skill "suspicious", the decisive concern being the bundled `scripts/websearch.py` Google/Bing/Brave scraper — flagged as expanding the skill "beyond owned or authorized QA targets" past its defensive-testing purpose. Fix: excluded `scripts/` from the published skill via a new `.agents/skills/stealthy-auto-browse/.clawhubignore` (the script stays in the repo for local use, just isn't shipped as part of the ClawHub artifact), removed its section from `SKILL.md`, and made the auto-dialog-accept and URL-triggered-loader warnings prominent (both were flagged as under-emphasized user-control risks). The stealth-browser core was already accepted by the reviewer as expected for authorized/defensive testing, so no functionality changed.
+- **Trimmed the published ClawHub skill to clear the security review.** ClawHub's scanner rated the skill "suspicious", the decisive concern being the bundled `scripts/websearch.py` Google/Bing/Brave scraper, flagged as expanding the skill "beyond owned or authorized QA targets" past its defensive-testing purpose. The fix excluded `scripts/` from the published skill via a new `.agents/skills/stealthy-auto-browse/.clawhubignore` (the script stays in the repo for local use, just isn't shipped as part of the ClawHub artifact), removed its section from `SKILL.md`, and made the auto-dialog-accept and URL-triggered-loader warnings prominent (both were flagged as under-emphasized user-control risks). The stealth-browser core was already accepted by the reviewer as expected for authorized/defensive testing, so no functionality changed.
 
-## [1.3.7] — 2026-07-24
+## [1.3.7] 2026-07-24
 
 ### Changed
 
-- **Pinned the base image `python:3.12-slim-bookworm` by digest** (`@sha256:d50fb7…`). Tags are mutable; a digest is content-addressed, so the build can't silently shift under a re-tagged base — same supply-chain hygiene as the pinned `camoufox==0.4.11` / `playwright==1.53.0`. Re-resolve on a conscious base bump with `docker buildx imagetools inspect python:3.12-slim-bookworm --format '{{.Manifest.Digest}}'`.
+- **Pinned the base image `python:3.12-slim-bookworm` by digest** (`@sha256:d50fb7…`). Tags are mutable; a digest is content-addressed, so the build can't silently shift under a re-tagged base. This is the same supply-chain hygiene as the pinned `camoufox==0.4.11` / `playwright==1.53.0`. Re-resolve on a conscious base bump with `docker buildx imagetools inspect python:3.12-slim-bookworm --format '{{.Manifest.Digest}}'`.
 
-## [1.3.6] — 2026-07-24
+## [1.3.6] 2026-07-24
 
 ### Fixed
 
-- **Docker build no longer breaks on camoufox drift.** `camoufox[geoip]` was unpinned, so a fresh build pulled whatever was newest — camoufox 0.5.x reshaped the browser's on-disk `distribution/` layout (no default `policies.json`), and `install_extensions.py` crashed mid-build with `FileNotFoundError: .../distribution/policies.json`. Two-part fix: (1) pinned `camoufox[geoip]==0.4.11` in the `Dockerfile` — the Firefox 135 build that the already-pinned `playwright==1.53.0` is matched to (bump both in lockstep); (2) `install_extensions.py` now creates `policies.json` (starting from `{"policies": {}}`) when the browser build didn't ship a default one, instead of assuming it exists.
+- **Docker build no longer breaks on camoufox drift.** `camoufox[geoip]` was unpinned, so a fresh build pulled whatever was newest, and camoufox 0.5.x reshaped the browser's on-disk `distribution/` layout (no default `policies.json`), and `install_extensions.py` crashed mid-build with `FileNotFoundError: .../distribution/policies.json`. Two-part fix: (1) pinned `camoufox[geoip]==0.4.11` in the `Dockerfile`, the Firefox 135 build that matches the already-pinned `playwright==1.53.0` (bump both in lockstep); (2) `install_extensions.py` now creates `policies.json` (starting from `{"policies": {}}`) when the browser build didn't ship a default one, instead of assuming it exists.
 
-## [1.3.5] — 2026-07-24
+## [1.3.5] 2026-07-24
 
 ### Added
 
@@ -344,56 +376,56 @@ and forking stay enabled.
 ### Changed
 
 - **Renamed the skill directory `.agents/.skills/` → `.agents/skills/`** (drops the leading dot on the `skills` dir). `.dockerignore` now excludes `.agents` (instead of the old `.skills`) so the skill tree stays out of the image.
-- **`pipeline.yml`: the Grype image scan no longer fails the run** (`scan_fail_build: false`) — camoufox/Go carry known-unfixable upstream criticals, so findings are reported to the repo **Security → Code scanning** tab (via the reusable workflow's SARIF upload; the job grants `security-events: write`) instead of blocking. This is also what lets the ClawHub publish job depend on the build succeeding.
+- **`pipeline.yml`: the Grype image scan no longer fails the run** (`scan_fail_build: false`). camoufox/Go carry known-unfixable upstream criticals, so the scan reports findings to the repo **Security → Code scanning** tab (via the reusable workflow's SARIF upload; the job grants `security-events: write`) instead of blocking. This is also what lets the ClawHub publish job depend on the build succeeding.
 
-## [1.3.4] — 2026-07-04
+## [1.3.4] 2026-07-04
 
 ### Fixed
 
-- **Switching tabs no longer navigates the page.** The tab focus gesture in `Browser.focus_tab_window()` (`app/browser.py`) clicks the content at screen (5, 200) to transfer OS keyboard focus into the page. After the browser chrome offset, that point lands on the top-left of page content — exactly where site logos and nav links live — so on some pages the click activated a link and navigated the tab (e.g. a top-left `<a href="/">` logo reset a single-page app back to its home view). The previous mitigation (a small left "drag" — moved mouseup) did not help: Firefox dispatches the DOM `click` to the nearest common ancestor of mousedown/mouseup regardless of a few pixels of movement. Fix: before the focus click, the tab handlers in `app/main.py` inject a full-viewport transparent `position:fixed` overlay at maximum `z-index` (`2147483647`) so the click lands on that inert div instead of any link/button, then remove it immediately — keyboard focus still transfers, nothing on the page is activated. The gesture is now a plain `xdotool click 1` and the old drag + `getSelection().removeAllRanges()` selection-cleanup path is gone.
-- **New-tab windows are resized to fill the screen so screen recording follows the active tab pixel-for-pixel.** Playwright's Firefox backend opens each tab as its own OS window; windows created after startup came up slightly smaller than the display (e.g. 1918×1055 on a 1920×1080 screen), so raising a new tab left a thin strip of the previous window visible at the bottom edge — which the fixed-region `ffmpeg` x11grab recorder captured. `focus_tab_window()` now moves the raised window to 0,0 and sizes it to `xdotool getdisplaygeometry` before focusing, matching the launch window's full-screen geometry.
+- **Switching tabs no longer navigates the page.** The tab focus gesture in `Browser.focus_tab_window()` (`app/browser.py`) clicks the content at screen (5, 200) to transfer OS keyboard focus into the page. After the browser chrome offset, that point lands on the top-left of page content, exactly where site logos and nav links live, so on some pages the click activated a link and navigated the tab (e.g. a top-left `<a href="/">` logo reset a single-page app back to its home view). The previous mitigation (a small left "drag", a moved mouseup) did not help, because Firefox dispatches the DOM `click` to the nearest common ancestor of mousedown/mouseup regardless of a few pixels of movement. Now, before the focus click, the tab handlers in `app/main.py` inject a full-viewport transparent `position:fixed` overlay at maximum `z-index` (`2147483647`) so the click lands on that inert div instead of any link/button, then remove it immediately. Keyboard focus still transfers and nothing on the page activates. The gesture is now a plain `xdotool click 1` and the old drag + `getSelection().removeAllRanges()` selection-cleanup path is gone.
+- **New-tab windows are resized to fill the screen so screen recording follows the active tab pixel-for-pixel.** Playwright's Firefox backend opens each tab as its own OS window; windows created after startup came up slightly smaller than the display (e.g. 1918×1055 on a 1920×1080 screen), so raising a new tab left a thin strip of the previous window visible at the bottom edge, which the fixed-region `ffmpeg` x11grab recorder captured. `focus_tab_window()` now moves the raised window to 0,0 and sizes it to `xdotool getdisplaygeometry` before focusing, matching the launch window's full-screen geometry.
 
 ### Added
 
-- Regression test `test_switch_tab_no_link_activation` in `tests/test_tabs.sh` (and registered in `test.sh`): switches to a tab whose page is a full-viewport link with an `onclick` marker and asserts the focus click does not fire it (the overlay absorbs the click) while keyboard input still reaches the content (`send_key pagedown` scrolls the page).
+- Regression test `test_switch_tab_no_link_activation` in `tests/test_tabs.sh` (and registered in `test.sh`). It switches to a tab whose page is a full-viewport link with an `onclick` marker and asserts the focus click does not fire it (the overlay absorbs the click) while keyboard input still reaches the content (`send_key pagedown` scrolls the page).
 
-## [1.3.3] — 2026-07-04
+## [1.3.3] 2026-07-04
 
 ### Fixed
 
-- **Screen recording now works at any `XVFB_RESOLUTION`, not just 1920×1080.** `entrypoint.sh` started Xvfb with a fixed `-screen 0 1920x1080` framebuffer and then used `xrandr` to switch to the requested resolution. But `xrandr` can only select modes that fit inside the initial framebuffer allocation — it cannot grow it — so at a larger/taller size (e.g. `1920x1920`) the reported mode changed while the real root framebuffer stayed 1920×1080. Viewport recording then computed its capture area from `XVFB_RESOLUTION` and `ffmpeg` x11grab tried to capture outside the actual screen, failing with `Capture area … outside the screen size 1920x1080` and producing no file. Fix: allocate the framebuffer at the requested size up front (`Xvfb :99 -screen 0 "${XVFB_RESOLUTION}x${XVFB_DEPTH}"`) and drop the xrandr resize step. Recording now succeeds at square/tall resolutions.
+- **Screen recording now works at any `XVFB_RESOLUTION`, not just 1920×1080.** `entrypoint.sh` started Xvfb with a fixed `-screen 0 1920x1080` framebuffer and then used `xrandr` to switch to the requested resolution. But `xrandr` can only select modes that fit inside the initial framebuffer allocation and cannot grow it, so at a larger/taller size (e.g. `1920x1920`) the reported mode changed while the real root framebuffer stayed 1920×1080. Viewport recording then computed its capture area from `XVFB_RESOLUTION` and `ffmpeg` x11grab tried to capture outside the actual screen, failing with `Capture area … outside the screen size 1920x1080` and producing no file. The fix allocates the framebuffer at the requested size up front (`Xvfb :99 -screen 0 "${XVFB_RESOLUTION}x${XVFB_DEPTH}"`) and drops the xrandr resize step. Recording now succeeds at square/tall resolutions.
 
 ### Changed
 
-- `XVFB_RESOLUTION` no longer has a 1920×1080 cap — the framebuffer is allocated to match, so any width/height works (larger = more memory, slower software rendering, but no hard limit). Docs updated accordingly.
+- `XVFB_RESOLUTION` no longer has a 1920×1080 cap. Xvfb allocates the framebuffer to match, so any width/height works (larger = more memory, slower software rendering, but no hard limit). Updated the docs to match.
 
-## [1.3.2] — 2026-07-04
-
-### Fixed
-
-- **Pinned Playwright to 1.53.0 to stop driver crash-loops on many sites (reddit.com, anything throwing uncaught page errors).** `camoufox` 0.4.11 declares an unpinned `playwright` dependency, so a fresh image build pulled the newest Playwright (1.61.0). Playwright ≥ 1.60 is incompatible with Camoufox's custom Firefox 135 build: its driver throws on certain protocol events (an uncaught page error with no source location deref's `pageError.location.url`; WebSocket-open events hit similar asserts), which kills the driver's Node process — the Python side then sees "Connection closed while reading from the driver" and relaunches into a crash-loop. Reproduces reliably on reddit.com and any page with CSP/cross-origin script errors. Pinning `playwright==1.53.0` in the `Dockerfile` (a pre-1.60 release matching the Camoufox 0.4.11 / Firefox 135 protocol) fixes the entire class of crashes at the source. Refs: daijro/camoufox#617, microsoft/playwright#39767. Bump the pin in lockstep with any future `camoufox` upgrade.
-
-## [1.3.1] — 2026-07-03
+## [1.3.2] 2026-07-04
 
 ### Fixed
 
-- **`switch_tab` / `new_tab` / `close_tab` now foreground the target tab and focus its content.** Playwright's Firefox backend opens each tab as a separate OS window and `page.bring_to_front()` is a no-op there, so previously these actions only moved an internal pointer for where subsequent commands landed — the display (screenshots, recordings, VNC) kept showing whatever tab was last on top, and OS-level keyboard input (`send_key` / `system_type`) never reached the switched tab. New `Browser.focus_tab_window()` (in `app/browser.py`) raises the correct window with `xdotool windowactivate` (matching page-creation order to X window-ID order) and transfers keyboard focus into the page content. Wired into all three tab actions in `app/main.py`; `get_active_page()` is now async and heals a dead browser before use.
-- **Content focus uses a menu-free mouse gesture.** The focus transfer is a left-button press → 6px move → release rather than a click: the moved release fires no `click` event (so no link/button under the cursor is activated) and the left button renders no context menu (previously a right-click was used, which flashed the native menu on every tab switch — ugly in recordings). Any stray drag-selection is cleared via `getSelection().removeAllRanges()` in `app/main.py`.
+- **Pinned Playwright to 1.53.0 to stop driver crash-loops on many sites (reddit.com, anything throwing uncaught page errors).** `camoufox` 0.4.11 declares an unpinned `playwright` dependency, so a fresh image build pulled the newest Playwright (1.61.0). Playwright ≥ 1.60 is incompatible with Camoufox's custom Firefox 135 build: its driver throws on certain protocol events (an uncaught page error with no source location deref's `pageError.location.url`; WebSocket-open events hit similar asserts), which kills the driver's Node process. The Python side then sees "Connection closed while reading from the driver" and relaunches into a crash-loop. Reproduces reliably on reddit.com and any page with CSP/cross-origin script errors. Pinning `playwright==1.53.0` in the `Dockerfile` (a pre-1.60 release matching the Camoufox 0.4.11 / Firefox 135 protocol) fixes the entire class of crashes at the source. Refs: daijro/camoufox#617, microsoft/playwright#39767. Bump the pin in lockstep with any future `camoufox` upgrade.
+
+## [1.3.1] 2026-07-03
+
+### Fixed
+
+- **`switch_tab` / `new_tab` / `close_tab` now foreground the target tab and focus its content.** Playwright's Firefox backend opens each tab as a separate OS window and `page.bring_to_front()` is a no-op there, so previously these actions only moved an internal pointer for where subsequent commands landed. The display (screenshots, recordings, VNC) kept showing whatever tab was last on top, and OS-level keyboard input (`send_key` / `system_type`) never reached the switched tab. New `Browser.focus_tab_window()` (in `app/browser.py`) raises the correct window with `xdotool windowactivate` (matching page-creation order to X window-ID order) and transfers keyboard focus into the page content. Wired into all three tab actions in `app/main.py`; `get_active_page()` is now async and heals a dead browser before use.
+- **Content focus uses a menu-free mouse gesture.** The focus transfer is a left-button press → 6px move → release rather than a click. The moved release fires no `click` event (so no link/button under the cursor activates) and the left button renders no context menu (the previous right-click flashed the native menu on every tab switch, which looked ugly in recordings). `app/main.py` clears any stray drag-selection via `getSelection().removeAllRanges()`.
 
 ### Added
 
 - Regression tests `test_switch_tab_foreground` (asserts the desktop pixels follow the switched tab via screenshot sampling) and `test_switch_tab_keyboard` (asserts `send_key` reaches switched-tab content) in `tests/test_tabs.sh`.
 
-## [1.3.0] — 2026-06-21
+## [1.3.0] 2026-06-21
 
 ### Fixed
 
-- **Auto-recovery from Camoufox crashes.** Reported by @shadowjig: after 3 executions of an n8n workflow hitting Facebook, every subsequent `goto` returned `Page.goto: Connection closed while reading from the driver` until the container was manually restarted. Root cause: `app/browser.py:_get_page` cached `self._page` forever — when Camoufox died mid-session (OOM was the usual culprit), the cached Page reference pointed at a dead Playwright Page object and the python app had no recovery path. Fix: `Browser.is_healthy()` round-trips to the driver (`context.cookies()`) on every page acquisition; if the probe fails, `Browser.ensure_healthy()` tears down + relaunches `launch_persistent_context` (persistent profile survives intact). Both `_get_page()` and the top-level `main.get_active_page()` now route through `ensure_healthy()`. Cold-restart cost: ~4–5s for the request that triggered recovery; subsequent requests run at full speed. New regression test (`tests/test_recovery.sh::test_recovery_camoufox_crash`) simulates the crash via `pkill -9 -f camoufox-bin` and asserts the next request succeeds.
+- **Auto-recovery from Camoufox crashes.** Reported by @shadowjig: after 3 executions of an n8n workflow hitting Facebook, every subsequent `goto` returned `Page.goto: Connection closed while reading from the driver` until the container was manually restarted. The root cause was that `app/browser.py:_get_page` cached `self._page` forever. When Camoufox died mid-session (OOM was the usual culprit), the cached Page reference pointed at a dead Playwright Page object and the python app had no recovery path. Now `Browser.is_healthy()` round-trips to the driver (`context.cookies()`) on every page acquisition; if the probe fails, `Browser.ensure_healthy()` tears down + relaunches `launch_persistent_context` (persistent profile survives intact). Both `_get_page()` and the top-level `main.get_active_page()` now route through `ensure_healthy()`. A cold restart costs ~4-5s for the request that triggered recovery; subsequent requests run at full speed. New regression test (`tests/test_recovery.sh::test_recovery_camoufox_crash`) simulates the crash via `pkill -9 -f camoufox-bin` and asserts the next request succeeds.
 
 ### Added
 
 - **Crash postmortem logging.** When the health probe trips and `ensure_healthy` decides to relaunch, the new `_log_browser_postmortem()` writes structured diagnostics at WARNING so the operator doesn't have to guess what killed Camoufox: `pgrep` inventory of remaining `camoufox-bin` processes, last 200 lines of `dmesg` grepped for OOM / camoufox / firefox kills, `/proc/meminfo` snapshot (MemTotal / MemAvailable / SwapFree), `/proc/loadavg`. For the typical Facebook + persistent-profile OOM case, the dmesg block surfaces `Killed process N (camoufox-bin) total-vm:…` so the answer is in the log rather than the operator's head.
-- **Playwright lifecycle handlers** registered at launch — `context.on("close")` and `page.on("crash")` — so the death event lands in the log as soon as Playwright sees it, not when the next request fails.
+- **Playwright lifecycle handlers** registered at launch (`context.on("close")` and `page.on("crash")`), so the death event lands in the log as soon as Playwright sees it, not when the next request fails.
 - **Structured JSON logging overhaul.** `app/logger.py` rewritten:
   - ISO 8601 UTC timestamps with microsecond precision (`"time": "2026-06-21T22:41:13.499770Z"`)
   - Nested `source.{function, file, line}` instead of the previous flat `module:func:line` string
@@ -409,57 +441,57 @@ and forking stay enabled.
 ### Changed
 
 - `main.get_active_page()` is now `async` and calls `await browser.ensure_healthy()` before reading the page list. All call sites in `main.py` updated to `await` it.
-- A handful of f-string log calls converted to structured form (`extra={...}`) so the redactor can do its job: `dialog received`, `download`, `invalid request JSON`, `log_request`/`log_response`. The rest of the codebase still has f-string log calls — flagged as a follow-up pass; not a behavior change today.
+- A handful of f-string log calls converted to structured form (`extra={...}`) so the redactor can do its job: `dialog received`, `download`, `invalid request JSON`, `log_request`/`log_response`. The rest of the codebase still has f-string log calls, flagged for a follow-up pass. Not a behavior change today.
 
-## [1.2.0] — 2026-06-20
+## [1.2.0] 2026-06-20
 
 ### Added
 
-- **`show_cursor` parameter on `start_recording`** (default `true`). Controls ffmpeg's `-draw_mouse` flag. Set `false` to record without the OS-level mouse cursor sprite — useful for visual-regression captures or any case where cursor pixels add noise. Default `true` preserves v1.1.x behavior. The flag round-trips: `start_recording` echoes `show_cursor` in its descriptor so callers can confirm what ffmpeg actually got.
-- `test_recording_hide_cursor` in `tests/test_recording.sh` — exercises `show_cursor: false` end-to-end (start → stop → MP4 validity) and asserts the descriptor echoes the requested value; also asserts the default-omitted case reports `True`.
-- `test_recording_viewport_uses_calibration` registered in `tests/test_recording.sh`'s `ALL_TESTS+=` block (was already in `test.sh` but missing from the file's own list — extra-container runs would have skipped it).
+- **`show_cursor` parameter on `start_recording`** (default `true`). Controls ffmpeg's `-draw_mouse` flag. Set `false` to record without the OS-level mouse cursor sprite, for visual-regression captures or any case where cursor pixels add noise. Default `true` preserves v1.1.x behavior. The flag round-trips. `start_recording` echoes `show_cursor` in its descriptor so callers can confirm what ffmpeg actually got.
+- `test_recording_hide_cursor` in `tests/test_recording.sh` exercises `show_cursor: false` end-to-end (start → stop → MP4 validity) and asserts the descriptor echoes the requested value; also asserts the default-omitted case reports `True`.
+- `test_recording_viewport_uses_calibration` registered in `tests/test_recording.sh`'s `ALL_TESTS+=` block (it was already in `test.sh` but missing from the file's own list, so extra-container runs would have skipped it).
 
 ### Changed
 
 - `docs/api.md` `start_recording` row gained the `show_cursor` parameter.
 - `app/mcp_server.py` `run_script` docstring's RECORDING section documents `show_cursor` so MCP clients see it in the tool schema.
 
-## [1.1.1] — 2026-06-20
+## [1.1.1] 2026-06-20
 
 ### Fixed
 
-- **Doc sync gaps from v1.1.0.** `README.md` had no mention of screen recording — added TOC entry, ffmpeg row in the "What's Inside" table, and a "Screen Recording" section with quick-start + curl example. `docs/script-mode.md` gained an "Example: Record a Flow" showing `start_recording` / `stop_recording` as YAML steps with the `/recordings` mount. `docs/cluster-mode.md` got a paragraph in the script-only-mode section spelling out that `start_recording` and `stop_recording` must live in the same `run_script` call so both hit the same sticky-routed instance. `docs/api.md` viewport-mode wording corrected — it previously said "crops the ~81px chrome strip" (the v1.0.x hardcoded behavior) but now uses the calibrated `mozInnerScreenX/Y` offset.
+- **Doc sync gaps from v1.1.0.** `README.md` had no mention of screen recording. Added a TOC entry, ffmpeg row in the "What's Inside" table, and a "Screen Recording" section with quick-start + curl example. `docs/script-mode.md` gained an "Example: Record a Flow" showing `start_recording` / `stop_recording` as YAML steps with the `/recordings` mount. `docs/cluster-mode.md` got a paragraph in the script-only-mode section spelling out that `start_recording` and `stop_recording` must live in the same `run_script` call so both hit the same sticky-routed instance. Corrected the `docs/api.md` viewport-mode wording. It previously said "crops the ~81px chrome strip" (the v1.0.x hardcoded behavior) but now uses the calibrated `mozInnerScreenX/Y` offset.
 
-## [1.1.0] — 2026-06-20
+## [1.1.0] 2026-06-20
 
 ### Added
 
 - **Screen recording subsystem** (`app/recorder.py`). ffmpeg `x11grab` against Xvfb (DISPLAY=:99) writes to `/recordings/<slug>.mp4`. Mouse cursor included (`-draw_mouse 1`, XFixes). Three modes:
-  - `window` (default) — full Camoufox window incl. chrome
-  - `viewport` — crops chrome using the calibrated `window_offset` (mozInnerScreenX/Y), so this mode tracks browser layout instead of a hardcoded chrome height
-  - `desktop` — entire Xvfb screen
+  - `window` (default): full Camoufox window incl. chrome
+  - `viewport`: crops chrome using the calibrated `window_offset` (mozInnerScreenX/Y), so this mode tracks browser layout instead of a hardcoded chrome height
+  - `desktop`: entire Xvfb screen
 - New API actions: `start_recording {mode, fps}`, `stop_recording {slug}`, `recording_status`. One active recording at a time per container. `slug` is provided at stop time so the caller names the file after the run, not before. Slug allowlist `[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}` (no path traversal). Filename collision auto-renames to `<slug>-2.mp4`, `<slug>-3.mp4`, etc.
-- `/recordings` mount required and validated at `start_recording` time — fails fast if missing or not writable. `Dockerfile` creates the dir; `entrypoint.sh` chowns it alongside `/userdata` and `/loaders`.
-- Crash safety: a SIGINT-then-wait shutdown finalizes the MP4 cleanly. Orphan tmp files (`/recordings/.tmp-*.mp4`) older than 1h are swept at app startup.
+- `start_recording` requires the `/recordings` mount, validates it at call time, and fails fast if it is missing or not writable. `Dockerfile` creates the dir; `entrypoint.sh` chowns it alongside `/userdata` and `/loaders`.
+- Crash safety: a SIGINT-then-wait shutdown finalizes the MP4 cleanly. App startup sweeps orphan tmp files (`/recordings/.tmp-*.mp4`) older than 1h.
 - 6 regression tests in `tests/test_recording.sh`: basic record + ftyp magic + size check, stop-without-start error, double-start error, bad-slug rejection (path traversal), viewport mode uses calibrated offset (verified via `capture_size`), slug-collision rename to `-2`.
 - MCP tool docstrings updated: `run_script` now documents the RECORDING action group; `browser_action`'s "useful for" list mentions recording.
-- New entry `.demo-recordings/` added to `.gitignore`.
+- Added `.demo-recordings/` to `.gitignore`.
 
 ### Fixed
 
-- **`get_window_offset_js` silent swallow** (`app/main.py:249`). Previously `except Exception: return {"x": 0, "y": 0}` — failure was indistinguishable from a valid `(0, 0)` result on a fullscreen window, so a broken calibrate silently produced wrong coordinates for every subsequent `system_click`. Now logs a warning on exception AND validates the JS result shape (must be a dict with numeric x/y), logs a warning and falls back to `(0, 0)` if Firefox returns anything unexpected (e.g. a future Camoufox version that spoofs `mozInnerScreen*`). Per `rules/05-error-handling.md` "never silently swallow".
+- **`get_window_offset_js` silent swallow** (`app/main.py:249`). Previously `except Exception: return {"x": 0, "y": 0}`, so a failure was indistinguishable from a valid `(0, 0)` result on a fullscreen window, so a broken calibrate silently produced wrong coordinates for every subsequent `system_click`. Now logs a warning on exception AND validates the JS result shape (must be a dict with numeric x/y), logs a warning and falls back to `(0, 0)` if Firefox returns anything unexpected (e.g. a future Camoufox version that spoofs `mozInnerScreen*`). Per `rules/05-error-handling.md` "never silently swallow".
 
-## [1.0.1] — 2026-06-10
+## [1.0.1] 2026-06-10
 
 ### Fixed
 
-- **`send_key` regression introduced in v0.22.5 / v1.0.0**: PageDown (and every other key sent via `send_key`) silently did nothing because the Openbox WM added in v0.22.5 changed how Firefox got initial X keyboard focus — a freshly mapped Camoufox window gave focus to the chrome (URL bar) instead of the content widget, so PyAutoGUI keystrokes never reached the page. Fix: at browser launch, after the xdotool window resize, issue a one-time `xdotool mousemove 5 200 && xdotool click 1` to transfer Firefox's internal focus to the content widget. The focus persists across `goto`, `new_tab`, and `switch_tab`, so `send_key` works for the lifetime of the container as before. Reported by @shadowjig.
+- **`send_key` regression introduced in v0.22.5 / v1.0.0**: PageDown (and every other key sent via `send_key`) silently did nothing because the Openbox WM added in v0.22.5 changed how Firefox got initial X keyboard focus. A freshly mapped Camoufox window gave focus to the chrome (URL bar) instead of the content widget, so PyAutoGUI keystrokes never reached the page. Now, at browser launch, after the xdotool window resize, the app issues a one-time `xdotool mousemove 5 200 && xdotool click 1` to transfer Firefox's internal focus to the content widget. The focus persists across `goto`, `new_tab`, and `switch_tab`, so `send_key` works for the lifetime of the container as before. Reported by @shadowjig.
 
 ### Added
 
-- `test_send_key_pagedown` regression test in `tests/test_input.sh` — sends `pagedown` via `send_key` and verifies both that the document-level `keydown` listener captured `PageDown` and that `window.scrollY` advanced.
+- `test_send_key_pagedown` regression test in `tests/test_input.sh` sends `pagedown` via `send_key` and verifies both that the document-level `keydown` listener captured `PageDown` and that `window.scrollY` advanced.
 
-## [1.0.0] — 2026-04-20
+## [1.0.0] 2026-04-20
 
 ### BREAKING
 
@@ -467,7 +499,7 @@ and forking stay enabled.
 
 ### Changed
 
-- **MCP server**: Only `run_script` tool exposed in cluster mode, with a comprehensive description documenting every available action and its parameters so LLMs know what steps to use.
+- **MCP server**: Only `run_script` tool exposed in cluster mode, with a description documenting every available action and its parameters so LLMs know what steps to use.
 - **HTTP API**: Actions not in `{run_script, ping, sleep}` return an error with guidance in cluster mode. `run_script` internally dispatches all actions with no restriction inside scripts.
 - **docker-compose.cluster.yml**: Passes `NUM_REPLICAS` env var to browser containers.
 
@@ -477,80 +509,80 @@ and forking stay enabled.
 - MCP test for nonexistent tool error handling.
 - Exact MCP tool count assertion (17 tools in single-instance mode).
 
-## [0.22.5] — 2026-04-20
+## [0.22.5] 2026-04-20
 
 ### Added
 
-- **Openbox window manager** — lightweight WM that adds title bars and resize handles to popup windows (OAuth dialogs, etc.) that would otherwise be too small to interact with. Zero stealth impact.
+- **Openbox window manager**, a lightweight WM that adds title bars and resize handles to popup windows (OAuth dialogs, etc.) that would otherwise be too small to interact with. Zero stealth impact.
 - Parallel test runner for faster CI.
 
 ### Fixed
 
 - Cluster test stability improvements.
 
-## [0.22.4] — 2026-04-19
+## [0.22.4] 2026-04-19
 
 ### Fixed
 
 - Pin Debian Bookworm base image for reproducible builds.
 - Re-enable BrowserScan test (last in suite).
 
-## [0.22.3] — 2026-04-19
+## [0.22.3] 2026-04-19
 
 ### Fixed
 
 - Various bug fixes and stability improvements.
 
-## [0.22.2] — 2026-04-19
+## [0.22.2] 2026-04-19
 
 ### Fixed
 
 - Various bug fixes and stability improvements.
 
-## [0.22.1] — 2026-04-19
+## [0.22.1] 2026-04-19
 
 ### Fixed
 
 - Various bug fixes and stability improvements.
 
-## [0.22.0] — 2026-04-18
+## [0.22.0] 2026-04-18
 
 ### Added
 
-- **PUID/PGID support** — run the container as a custom user via `PUID` and `PGID` environment variables.
+- **PUID/PGID support**: run the container as a custom user via `PUID` and `PGID` environment variables.
 
-## [0.21.1] — 2026-04-17
+## [0.21.1] 2026-04-17
 
 ### Fixed
 
 - Restrict `/__queue/status` endpoint to private networks only.
 
-## [0.21.0] — 2026-04-17
+## [0.21.0] 2026-04-17
 
 ### Changed
 
 - Improved LLM-facing documentation and action descriptions.
 
-## [0.20.0] — 2026-04-17
+## [0.20.0] 2026-04-17
 
 ### Changed
 
 - **Rename `MAX_CONCURRENT` to `NUM_REPLICAS`** for clarity.
 - Inline HAProxy config directly in docker-compose instead of separate file.
 
-## [0.19.0] — 2026-04-16
+## [0.19.0] 2026-04-16
 
 ### Added
 
 - **Centralized JSON logger** with source file, function name, and line number in every log entry.
 
-## [0.18.1] — 2026-04-16
+## [0.18.1] 2026-04-16
 
 ### Fixed
 
 - MCP backend: remove `maxconn 1` from HAProxy to allow concurrent SSE + POST connections.
 
-## [0.18.0] — 2026-04-16
+## [0.18.0] 2026-04-16
 
 ### Changed
 
@@ -559,82 +591,82 @@ and forking stay enabled.
 - HAProxy MCP routing support.
 - Cluster MCP integration test.
 
-## [0.17.2] — 2026-04-15
+## [0.17.2] 2026-04-15
 
 ### Fixed
 
 - Documentation: add `AUTH_TOKEN`, `run_script`, request serialization details. Fix hardcoded counts.
 
-## [0.17.1] — 2026-04-15
+## [0.17.1] 2026-04-15
 
 ### Fixed
 
 - Skill docs: `run_script`, `auth_token` query param, request serialization.
 
-## [0.17.0] — 2026-04-15
+## [0.17.0] 2026-04-15
 
 ### Added
 
-- **`run_script` API** — execute multi-step scripts in a single request. Steps run atomically on one browser instance.
-- **Request serialization** — concurrent requests are automatically queued in single-instance mode.
-- **`AUTH_TOKEN` authentication** — Bearer token auth on all endpoints (except `/health`). Supports header and query param.
+- **`run_script` API**: execute multi-step scripts in a single request. Steps run atomically on one browser instance.
+- **Request serialization**: the server queues concurrent requests automatically in single-instance mode.
+- **`AUTH_TOKEN` authentication**: Bearer token auth on all endpoints (except `/health`). Supports header and query param.
 
 ### Changed
 
 - Test suite refactored for `run_script` and auth coverage.
 
-## [0.16.0] — 2026-04-14
+## [0.16.0] 2026-04-14
 
 ### Added
 
-- **MCP server** — Model Context Protocol server at `/mcp` using Streamable HTTP transport. AI agents can drive the browser directly over MCP.
-- **Memory limits** — container resource constraints.
-- **Redis persistence** — Redis data survives container restarts.
+- **MCP server**: Model Context Protocol server at `/mcp` using Streamable HTTP transport. AI agents can drive the browser directly over MCP.
+- **Memory limits**: container resource constraints.
+- **Redis persistence**: Redis data survives container restarts.
 - 500-request stress test.
 
-## [0.15.0] — 2026-04-13
+## [0.15.0] 2026-04-13
 
 ### Added
 
-- **Cluster mode** — run multiple browser instances behind HAProxy with request queuing, sticky sessions, and Redis cookie sync. Configurable via `NUM_REPLICAS` (originally `MAX_CONCURRENT`).
+- **Cluster mode**: run multiple browser instances behind HAProxy with request queuing, sticky sessions, and Redis cookie sync. Configurable via `NUM_REPLICAS` (originally `MAX_CONCURRENT`).
 - Documentation for cluster mode.
 
-## [0.14.0] — 2026-04-12
+## [0.14.0] 2026-04-12
 
 ### Added
 
-- **Console log capture** — `enable_console_log`, `disable_console_log`, `get_console_log`, `clear_console_log`.
-- **`getclear` actions** — atomic get-and-clear for both console and network logs.
+- **Console log capture**: `enable_console_log`, `disable_console_log`, `get_console_log`, `clear_console_log`.
+- **`getclear` actions**: atomic get-and-clear for both console and network logs.
 
-## [0.13.0] — 2026-04-11
+## [0.13.0] 2026-04-11
 
 ### Added
 
-- **Configurable listen host/port** — `HTTP_LISTEN_HOST`, `HTTP_LISTEN_PORT`, `VNC_LISTEN_HOST`, `VNC_LISTEN_PORT` environment variables.
+- **Configurable listen host/port**: `HTTP_LISTEN_HOST`, `HTTP_LISTEN_PORT`, `VNC_LISTEN_HOST`, `VNC_LISTEN_PORT` environment variables.
 
 ### Changed
 
 - Restructure skill documentation.
 - Remove `INSTRUCTIONS.md` (consolidated into skill docs).
 
-## [0.12.0] — 2026-04-10
+## [0.12.0] 2026-04-10
 
 ### Added
 
-- **`referer` param on `goto`** — set a custom Referer header when navigating.
+- **`referer` param on `goto`**: set a custom Referer header when navigating.
 
-## [0.11.0] — 2026-04-09
+## [0.11.0] 2026-04-09
 
 ### Added
 
-- **Script execution mode** — pipe YAML scripts via stdin, get JSON results on stdout. No HTTP server. For CI, cron jobs, one-shot scraping.
+- **Script execution mode**: pipe YAML scripts via stdin, get JSON results on stdout. No HTTP server. For CI, cron jobs, one-shot scraping.
 
 ### Changed
 
 - Move skills to `.skills/` directory.
 - Remove URL argument (use `goto` action instead).
 
-## [0.10.0] — 2026-04-08
+## [0.10.0] 2026-04-08
 
 ### Added
 
@@ -642,19 +674,19 @@ and forking stay enabled.
 
 ### Removed
 
-- `back`/`forward` actions — Camoufox persistent context doesn't support browser history (`page.goto()` doesn't create history entries).
+- `back`/`forward` actions. Camoufox persistent context doesn't support browser history (`page.goto()` doesn't create history entries).
 
 ### Fixed
 
 - Documentation accuracy: dialog handling, XVFB_RESOLUTION limits, loader `last_result` format, `get_interactive_elements` fields, scroll action categorization, login flow example wording, `handle_dialog` tips.
 
-## [0.9.1] — 2026-04-07
+## [0.9.1] 2026-04-07
 
 ### Changed
 
 - Page loaders now live-reload when YAML files change (no container restart needed).
 
-## [0.9.0] — 2026-04-06
+## [0.9.0] 2026-04-06
 
 ### Added
 
@@ -670,68 +702,68 @@ and forking stay enabled.
 - **XPath selectors**: `xpath=` prefix on all element actions.
 - Modular test suite (50 tests across 13 files).
 
-## [0.8.0] — 2026-04-05
+## [0.8.0] 2026-04-05
 
 ### Added
 
 - Screenshot resize query params: `?width=`, `?height=`, `?whLargest=`.
 
-## [0.7.1] — 2026-04-04
+## [0.7.1] 2026-04-04
 
 ### Fixed
 
 - Calibration reliability improvements.
 - Better test coverage.
 
-## [0.7.0] — 2026-04-04
+## [0.7.0] 2026-04-04
 
 ### Changed
 
 - Remove runtime resolution setter (use `XVFB_RESOLUTION` env var instead).
 
-## [0.6.0] — 2026-04-03
+## [0.6.0] 2026-04-03
 
 ### Fixed
 
 - Fingerprint injection now uses Camoufox C++ level spoofing instead of JS injection.
 
-## [0.5.0] — 2026-04-02
+## [0.5.0] 2026-04-02
 
 ### Added
 
 - **Dynamic resolution control** with mobile viewport support.
 
-## [0.4.0] — 2026-04-01
+## [0.4.0] 2026-04-01
 
 ### Added
 
 - Page loaders (Greasemonkey-style URL-triggered action sequences).
 
-## [0.3.0] — 2026-03-31
+## [0.3.0] 2026-03-31
 
 ### Added
 
-- **`send_key` action** — send keyboard shortcuts and special keys via PyAutoGUI.
+- **`send_key` action**: send keyboard shortcuts and special keys via PyAutoGUI.
 
-## [0.2.1] — 2026-03-30
+## [0.2.1] 2026-03-30
 
 ### Fixed
 
 - Various bug fixes.
 
-## [0.2.0] — 2026-03-29
+## [0.2.0] 2026-03-29
 
 ### Changed
 
-- Full stealth overhaul — passes all major bot detectors.
+- Full stealth overhaul. Passes all major bot detectors.
 
-## [0.0.2] — 2026-03-28
+## [0.0.2] 2026-03-28
 
 ### Fixed
 
 - Early bug fixes and improvements.
 
-## [0.0.1] — 2026-03-27
+## [0.0.1] 2026-03-27
 
 ### Added
 

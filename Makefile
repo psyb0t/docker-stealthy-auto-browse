@@ -93,6 +93,7 @@ test-unit: dev-image ## Run in-process Python unit tests.
 	$(DEV_RUN) python tests/test_addon_exclusion.py
 	$(DEV_RUN) python tests/test_fingerprint_config.py
 	$(DEV_RUN) python tests/test_recorder.py
+	$(DEV_RUN) python tests/test_human_input.py
 
 sec: dev-image ## Write security findings to sec.sarif for GitHub Security.
 	$(DEV_RUN_WRITE) bash scripts/sec.sh

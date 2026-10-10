@@ -21,7 +21,6 @@ import hmac
 import io
 import math
 import os
-import random
 import subprocess
 import sys
 import tempfile
@@ -39,6 +38,7 @@ from recorder import Recorder, RecorderError, cleanup_orphan_tmp_files
 from challenge_detector import detect_challenges
 from script_runner import ScriptValidationError, load_script, run_script, validate_script
 from starlette.responses import JSONResponse, PlainTextResponse, Response
+import input_actions
 from system import System
 
 from loaders import find_loader, load_loaders, substitute_url
@@ -1019,37 +1019,12 @@ async def dispatch_action(cmd: dict) -> dict:
         await asyncio.sleep(0.5)
         return make_response(True, {"clicked": selector})
 
-    if action == "mouse_move":
-        x, y = cmd.get("x"), cmd.get("y")
-        if x is None or y is None:
-            return make_response(False, error="x,y required")
-        system.move_mouse(int(x), int(y), cmd.get("duration"))
-        return make_response(True, {"moved_to": {"x": x, "y": y}})
-
-    if action == "mouse_click":
-        x, y = cmd.get("x"), cmd.get("y")
-        system.click(int(x) if x else None, int(y) if y else None)
-        if x is None or y is None:
-            return make_response(True, {"clicked_at": "current"})
-        return make_response(True, {"clicked_at": {"x": x, "y": y}})
-
-    if action == "system_click":
-        x, y = cmd.get("x"), cmd.get("y")
-        if x is None or y is None:
-            return make_response(False, error="x,y required")
-        system.move_mouse(int(x), int(y), cmd.get("duration"))
-        system.click()
-        return make_response(True, {"system_clicked": {"x": x, "y": y}})
-
-    if action == "scroll":
-        amount = cmd.get("amount", -3)
-        x, y = cmd.get("x"), cmd.get("y")
-        system.scroll(
-            int(amount),
-            int(x) if x is not None else None,
-            int(y) if y is not None else None,
-        )
-        return make_response(True, {"scrolled": amount})
+    if action in input_actions.ACTIONS:
+        try:
+            data = await input_actions.ACTIONS[action](cmd, page, system)
+        except input_actions.InputActionError as e:
+            return make_response(False, error=str(e))
+        return make_response(True, data)
 
     if action == "scroll_to_bottom":
         delay = cmd.get("delay", 0.4)
@@ -1064,22 +1039,6 @@ async def dispatch_action(cmd: dict) -> dict:
             window.scrollTo(0, 0);
         }})()""")
         return make_response(True, {"scrolled": "bottom"})
-
-    if action == "scroll_to_bottom_humanized":
-        min_clicks = int(cmd.get("min_clicks", 2))
-        max_clicks = int(cmd.get("max_clicks", 6))
-        delay = float(cmd.get("delay", 0.5))
-        while True:
-            prev = await page.evaluate("window.scrollY")
-            clicks = random.randint(min_clicks, max_clicks)
-            system.scroll(-clicks)
-            jittered = delay * random.uniform(0.7, 1.3)
-            await asyncio.sleep(jittered)
-            curr = await page.evaluate("window.scrollY")
-            if curr == prev:
-                break
-        await page.evaluate("window.scrollTo(0, 0)")
-        return make_response(True, {"scrolled": "bottom_humanized"})
 
     if action == "calibrate":
         system.window_offset = await get_window_offset_js(page)
@@ -1109,21 +1068,6 @@ async def dispatch_action(cmd: dict) -> dict:
             allowed = ", ".join((*COLOR_SCHEMES, COLOR_SCHEME_DEFAULT))
             return make_response(False, error=f"scheme must be one of: {allowed}")
         return make_response(True, {"scheme": browser.color_scheme, "pages": pages})
-
-    if action == "system_type":
-        text = cmd.get("text", "")
-        interval = cmd.get("interval", 0.08)
-        if not text:
-            return make_response(False, error="No text")
-        system.system_type(text, interval)
-        return make_response(True, {"typed_len": len(text)})
-
-    if action == "send_key":
-        key = cmd.get("key", "")
-        if not key:
-            return make_response(False, error="No key")
-        system.send_key(key)
-        return make_response(True, {"send_key": key})
 
     if action == "fill":
         selector, value = cmd.get("selector", ""), cmd.get("value", "")
