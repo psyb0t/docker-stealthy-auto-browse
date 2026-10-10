@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.0.2] 2026-10-10
+
+### Changed
+
+- Documentation only. The README's agent integrations section names [peen](https://github.com/psyb0t/peen) as an example of an agent that reads `.agents/skills/`.
+
 ## [3.0.1] 2026-10-10
 
 ### Fixed
