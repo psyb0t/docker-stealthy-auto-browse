@@ -520,44 +520,13 @@ async def _navigate(
 
 
 async def get_window_offset_js(page) -> dict:
-    """Get browser content area offset from screen origin.
+    """Get the browser content area offset from the screen origin.
 
-    Uses Firefox's mozInnerScreenX/Y which report the real screen position
-    of the viewport. These are NOT spoofed by Camoufox (unlike outerHeight/
-    innerHeight which are fingerprint-spoofed and give wrong offsets).
-
-    On failure (page closed, JS context destroyed, mozInnerScreen missing
-    on a future Firefox), logs a warning and returns (0, 0). The caller
-    has no way to distinguish "valid (0,0) on a fullscreen window" from
-    "calibrate failed" — the log line is the only signal.
+    Falls back to (0, 0) when the offset cannot be read; the warning logged
+    by input_actions.read_window_offset is the only signal of that.
     """
-    try:
-        result = await page.evaluate("""() => ({
-                x: Math.round(window.mozInnerScreenX),
-                y: Math.round(window.mozInnerScreenY)
-            })""")
-    except Exception as e:
-        log.warning(
-            "calibrate failed (mozInnerScreen unreachable): %s — "
-            "returning (0, 0); coordinate translation will be wrong "
-            "until calibrate succeeds",
-            e,
-        )
-        return {"x": 0, "y": 0}
-
-    # Defensive sanity check — non-numeric / None means Firefox returned
-    # something unexpected (Camoufox change, future Firefox version). Treat
-    # the same as an exception: log loudly, fall back to (0, 0).
-    x = result.get("x") if isinstance(result, dict) else None
-    y = result.get("y") if isinstance(result, dict) else None
-    if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
-        log.warning(
-            "calibrate returned non-numeric offset %r — falling back to "
-            "(0, 0); coordinate translation will be wrong",
-            result,
-        )
-        return {"x": 0, "y": 0}
-    return {"x": int(x), "y": int(y)}
+    offset = await input_actions.read_window_offset(page)
+    return offset if offset is not None else {"x": 0, "y": 0}
 
 
 def make_response(
@@ -601,21 +570,16 @@ async def dispatch_action(cmd: dict) -> dict:
         mode = cmd.get("mode", "window")
         fps = int(cmd.get("fps", 15))
         show_cursor = bool(cmd.get("show_cursor", True))
-        # viewport mode crops to the page content area — use the calibrated
-        # window_offset rather than a hardcoded chrome height. window/desktop
-        # capture from (0, 0) so they include the full browser frame.
+        # viewport mode crops to the page content area at its current screen
+        # position, re-measured now because fullscreen and tab windows move
+        # it. window/desktop capture from (0, 0) to include the browser frame.
         if mode == "viewport":
+            active = await get_active_page()
+            fresh = await input_actions.read_window_offset(active) if active else None
+            if fresh is not None:
+                system.window_offset = fresh
             offset_x = int(system.window_offset.get("x", 0))
             offset_y = int(system.window_offset.get("y", 0))
-            if offset_x == 0 and offset_y == 0:
-                # Re-calibrate on demand if it's never been done OR returned
-                # zero (likely a failed calibrate that got swallowed).
-                active = await get_active_page()
-                if active is not None:
-                    fresh = await get_window_offset_js(active)
-                    system.window_offset = fresh
-                    offset_x = int(fresh.get("x", 0))
-                    offset_y = int(fresh.get("y", 0))
         else:
             offset_x = 0
             offset_y = 0

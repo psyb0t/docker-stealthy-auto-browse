@@ -116,10 +116,10 @@ Uses Playwright's DOM events. Faster, uses CSS selectors/XPath, distinguishable 
 
 - **Clicking:** always try `click` with a CSS selector first. It is fast and reliable.
   Only fall back to `system_click` if your authorized test target requires OS-level input.
-  `system_click` requires `calibrate` first or coordinates will be wrong.
+  It re-measures the window position itself, so no `calibrate` call is needed.
 - **Typing:** `fill` for inputs (fast). `system_type` only when the test target requires OS-level input.
 - **No detection layer in scope?** Playwright input (`click`, `fill`) is fine.
-- **Testing OS-input behavior of your own detection stack?** System input + `calibrate` first.
+- **Testing OS-input behavior of your own detection stack?** Use system input.
 
 ## Typical workflow
 
@@ -245,7 +245,7 @@ Captures actual rendered pixels (ffmpeg `x11grab` against the Xvfb display) incl
 {"action": "stop_recording", "slug": "my-flow"}
 ```
 
-`mode`: `"window"` (default, full Camoufox window incl. chrome), `"viewport"` (crops chrome using the calibrated `window_offset`, lazy-recalibrates if unset), `"desktop"` (entire Xvfb screen). `fps`: 1-60, default 15. `show_cursor`: bool, default `true`. Set `false` to record without the OS-level cursor sprite.
+`mode`: `"window"` (default, full Camoufox window incl. chrome), `"viewport"` (crops chrome using the page position measured at start), `"desktop"` (entire Xvfb screen). `fps`: 1-60, default 15. `show_cursor`: bool, default `true`. Set `false` to record without the OS-level cursor sprite.
 
 `start_recording` returns `recording_id`, `tmp_path`, `show_cursor`, `capture_size`. `stop_recording` finalizes and renames the tmp file to `/recordings/<slug>.mp4`. `slug` must match `[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}` (no path traversal); `stop_recording` saves a colliding slug as `<slug>-2.mp4`, etc. Returns `path`, `duration_s`, `size_bytes`. `recording_status` returns `{"active": true, "recording_id", "mode", "started_at", "elapsed_s", "tmp_path"}` when recording, `{"active": false}` otherwise.
 
@@ -260,8 +260,6 @@ Encoder: H.264 (`libx264`), `-preset ultrafast`, `-crf 28`, `yuv420p`, tuned for
     {"action": "stop_recording", "slug": "example-page"}
 ]}
 ```
-
-`calibrate` after `enter_fullscreen`/`exit_fullscreen` or any chrome-state change so a following `viewport` recording crops at the right line.
 
 ### Wait conditions
 
@@ -368,7 +366,7 @@ Capture `console.log`, `console.error`, `console.warn`, etc. Each entry has `typ
 {"action": "exit_fullscreen"}
 ```
 
-Call `calibrate` after fullscreen changes.
+`calibrate` returns the current `window_offset`. OS-level pointer actions and `viewport` recordings measure it themselves, so you never have to call it.
 
 ### Multi-step scripts
 
@@ -564,9 +562,7 @@ Persistent profiles let cookies, sessions, and fingerprints survive restarts. Us
 1. **Read text, not pixels.** Always try `get_text` or `get_html` first; screenshots are last resort
 2. **Screenshots: use `whLargest=512`.** Full resolution wastes tokens; fine detail is rarely needed
 3. **Prefer `click` with CSS selector.** It is reliable and fast; use `system_click` only when scope requires OS-level input
-4. **`calibrate` before `system_click`.** Without it, coordinates are wrong and clicks miss
-5. **Always `get_interactive_elements` before clicking.** It gets both selectors and coordinates
-6. **Match TZ to IP location.** A timezone mismatch is a fingerprint inconsistency that breaks realistic test scenarios
-7. **Wait conditions over sleep:** `wait_for_element`, `wait_for_text`, `wait_for_url`
-8. **`handle_dialog` before the trigger.** Otherwise the browser auto-accepts dialogs
-9. **`calibrate` after fullscreen.** Coordinate mapping shifts
+4. **Always `get_interactive_elements` before clicking.** It gets both selectors and coordinates
+5. **Match TZ to IP location.** A timezone mismatch is a fingerprint inconsistency that breaks realistic test scenarios
+6. **Wait conditions over sleep:** `wait_for_element`, `wait_for_text`, `wait_for_url`
+7. **`handle_dialog` before the trigger.** Otherwise the browser auto-accepts dialogs

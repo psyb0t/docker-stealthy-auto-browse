@@ -95,6 +95,7 @@ MAIN_TESTS=(
     test_recording_double_start
     test_recording_bad_slug
     test_recording_viewport_uses_calibration
+    test_recording_viewport_follows_fullscreen
     test_recording_hide_cursor
     test_recording_slug_collision
     # test_recovery.sh

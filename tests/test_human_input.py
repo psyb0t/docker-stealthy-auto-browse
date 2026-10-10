@@ -715,8 +715,20 @@ class _FakeHandle:
 
 
 class _FakePage:
-    def __init__(self, handle: _FakeHandle | None = None) -> None:
+    """Page whose evaluate() answers the window offset read."""
+
+    def __init__(
+        self,
+        handle: _FakeHandle | None = None,
+        offset: object = None,
+    ) -> None:
         self.handle = handle
+        self.offset = offset if offset is not None else {"x": 0, "y": 0}
+
+    async def evaluate(self, script: str) -> object:
+        if isinstance(self.offset, Exception):
+            raise self.offset
+        return self.offset
 
     async def evaluate_handle(self, script: str) -> _FakeHandle:
         assert self.handle is not None
@@ -899,6 +911,7 @@ class _OverrideSystem:
         self.mouse_profile = human_mouse.MouseProfile(1.2, 0.1)
         self.typing_profile = human_keyboard.TypingProfile(0.16, 0.57, 0.1, 0.7)
         self.rng = random.Random(_SEED)
+        self.window_offset = {"x": 0, "y": 0}
         self.calls: list[tuple] = []
 
     def move_mouse(self, *args: object) -> tuple[int, int]:
@@ -932,17 +945,19 @@ def test_actions_pass_overrides_through() -> None:
                 "click_hold": 0.3,
                 "click_delay": 0.8,
             },
-            None,
+            _FakePage(),
             fake,
         )
     )
     profile = fake.calls[-1][-1]
     assert profile == human_mouse.MouseProfile(2.4, 0.3, 0.5, 0.0, 0.8)
 
-    asyncio.run(input_actions.mouse_move({"x": 5, "y": 5}, None, fake))
+    asyncio.run(input_actions.mouse_move({"x": 5, "y": 5}, _FakePage(), fake))
     assert fake.calls[-1][-1] is None
 
-    asyncio.run(input_actions.scroll({"amount": -4, "notch_gap": 0.2}, None, fake))
+    asyncio.run(
+        input_actions.scroll({"amount": -4, "notch_gap": 0.2}, _FakePage(), fake)
+    )
     assert fake.calls[-1] == ("scroll", -4, None, None, 0.2)
 
     asyncio.run(input_actions.send_key({"key": "tab", "key_hold": 0.4}, None, fake))
@@ -1060,15 +1075,64 @@ def test_click_at_zero_coordinates_moves_there() -> None:
     calls: list[tuple] = []
 
     class ClickSystem:
+        window_offset = {"x": 0, "y": 0}
+
         def click(self, *args: object) -> tuple[int, int]:
             calls.append(args)
             return (1, 1)
 
     result = asyncio.run(
-        input_actions.mouse_click({"x": 0, "y": "0"}, None, ClickSystem())
+        input_actions.mouse_click({"x": 0, "y": "0"}, _FakePage(), ClickSystem())
     )
     assert calls[0][:2] == (0.0, 0.0)
     assert result == {"clicked_at": {"x": 0, "y": "0"}, "landed_at": {"x": 1, "y": 1}}
+
+
+def test_pointer_actions_remeasure_the_window_offset() -> None:
+    moved = {"x": 0, "y": 0}
+
+    class OffsetSystem(_OverrideSystem):
+        def click(self, *args: object) -> tuple[int, int]:
+            self.calls.append(("click", dict(self.window_offset)))
+            return (1, 1)
+
+        def move_mouse(self, *args: object) -> tuple[int, int]:
+            self.calls.append(("move", dict(self.window_offset)))
+            return (1, 1)
+
+        def scroll(self, *args: object) -> None:
+            self.calls.append(("scroll", dict(self.window_offset)))
+
+    cases = [
+        (input_actions.system_click, {"x": 5, "y": 5}),
+        (input_actions.mouse_click, {}),
+        (input_actions.mouse_move, {"x": 5, "y": 5}),
+        (input_actions.scroll, {"amount": -2, "x": 5, "y": 5}),
+    ]
+    for handler, cmd in cases:
+        fake = OffsetSystem()
+        fake.window_offset = {"x": 0, "y": 80}
+        asyncio.run(handler(cmd, _FakePage(offset=moved), fake))
+        assert fake.calls[-1][1] == moved, (handler.__name__, fake.calls)
+
+
+def test_unreadable_offset_keeps_the_last_good_one() -> None:
+    last_good = {"x": 12, "y": 90}
+    unreadable = [
+        input_actions.PlaywrightError("Target page closed"),
+        {"x": None, "y": None},
+        "not a dict",
+    ]
+    for answer in unreadable:
+        fake = _OverrideSystem()
+        fake.window_offset = dict(last_good)
+        asyncio.run(
+            input_actions.system_click({"x": 5, "y": 5}, _FakePage(offset=answer), fake)
+        )
+        assert fake.window_offset == last_good, answer
+
+    page = _FakePage(offset={"x": 3.6, "y": 120.2})
+    assert asyncio.run(input_actions.read_window_offset(page)) == {"x": 3, "y": 120}
 
 
 def main_test() -> None:

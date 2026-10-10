@@ -158,6 +158,38 @@ test_recording_viewport_uses_calibration() {
         "viewport recording: height = xvfb_h - calibrated_y (= $expected_h)"
 }
 
+# Regression: viewport recording reused the offset from the last calibrate,
+# so after fullscreen it cropped off the top of the page.
+test_recording_viewport_follows_fullscreen() {
+    docker exec "$CONTAINER_NAME" bash -c 'rm -f /recordings/*.mp4' 2>/dev/null
+
+    local resp cw ch xvfb_w xvfb_h fs
+    post '{"action": "calibrate"}' >/dev/null
+    post '{"action": "enter_fullscreen"}' >/dev/null
+    sleep 1.5
+    fs=$(post '{"action": "eval", "expression": "!!document.fullscreenElement"}' | json_get "['data']['result']")
+    assert_eq "$fs" "True" "viewport recording: page is fullscreen" || return 1
+
+    resp=$(post '{"action": "get_resolution"}')
+    xvfb_w=$(echo "$resp" | json_get "['data']['width']")
+    xvfb_h=$(echo "$resp" | json_get "['data']['height']")
+
+    resp=$(post '{"action": "start_recording", "mode": "viewport", "fps": 5}')
+    cw=$(echo "$resp" | json_get "['data']['capture_size']['width']")
+    ch=$(echo "$resp" | json_get "['data']['capture_size']['height']")
+    sleep 0.5
+    post '{"action": "stop_recording", "slug": "viewport-fullscreen"}' >/dev/null
+    post '{"action": "exit_fullscreen"}' >/dev/null
+
+    # In fullscreen the page covers the whole screen, so nothing is cropped
+    # (libx264 needs even sizes, so an odd screen size rounds down by 1).
+    [ $((xvfb_w % 2)) -ne 0 ] && xvfb_w=$((xvfb_w - 1))
+    [ $((xvfb_h % 2)) -ne 0 ] && xvfb_h=$((xvfb_h - 1))
+    assert_eq "$cw" "$xvfb_w" "viewport recording after fullscreen: full width" || return 1
+    assert_eq "$ch" "$xvfb_h" "viewport recording after fullscreen: full height" || return 1
+    echo "  OK: viewport recording follows fullscreen without calibrate"
+}
+
 test_recording_hide_cursor() {
     # show_cursor=false must propagate to ffmpeg (-draw_mouse 0). We can't
     # easily verify "no cursor pixels" without pixel sampling, so we verify:
@@ -214,6 +246,7 @@ ALL_TESTS+=(
     test_recording_double_start
     test_recording_bad_slug
     test_recording_viewport_uses_calibration
+    test_recording_viewport_follows_fullscreen
     test_recording_hide_cursor
     test_recording_slug_collision
 )

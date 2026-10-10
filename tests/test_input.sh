@@ -209,6 +209,66 @@ test_click() {
     assert_eq "$val" "clicked" "click: XPath selector"
 }
 
+# --- system_click after the browser window moves, with no calibrate ---
+
+readonly STALE_OFFSET_BROWSER="stealthy-auto-browse-test-stale-offset"
+readonly STALE_OFFSET_SETTLE_SECONDS=1.5
+readonly STALE_OFFSET_API_WAIT_ATTEMPTS=90
+
+# _click_submit_without_calibrate <api> <label>: read the submit button's
+# current viewport box, system_click it, and check the page saw the click.
+_click_submit_without_calibrate() {
+    local api="$1" label="$2" rect cx cy w h resp val
+    post_to "$api" '{"action": "eval", "expression": "document.getElementById(\"click-result\").innerHTML = \"\""}' >/dev/null
+    rect=$(post_to "$api" '{"action": "eval", "expression": "(() => { const r = document.getElementById(\"submit-btn\").getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2, r.width, r.height].join(\" \"); })()"}' |
+        json_get "['data']['result']")
+    read -r cx cy w h <<<"$rect"
+    resp=$(post_to "$api" "{\"action\": \"system_click\", \"x\": $cx, \"y\": $cy, \"w\": $w, \"h\": $h}")
+    assert_success "$resp" "system_click after $label" >/dev/null || return 1
+    sleep 0.5
+    val=$(post_to "$api" '{"action": "eval", "expression": "document.getElementById(\"btn-clicked\") ? \"clicked\" : \"missed\""}' |
+        json_get "['data']['result']")
+    assert_eq "$val" "clicked" "system_click lands after $label without calibrate" || return 1
+    echo "  OK: system_click lands after $label without calibrate"
+}
+
+# Regression: the screen offset was only measured at startup and on
+# calibrate, so system_click missed after fullscreen or a new tab window
+# until the caller remembered to calibrate again.
+test_system_click_follows_window_moves() {
+    local ip api
+    ip=$(start_extra_container "$STALE_OFFSET_BROWSER")
+    api="http://$ip:8080"
+    if ! wait_for_api "$api" "$STALE_OFFSET_API_WAIT_ATTEMPTS"; then
+        echo "FAIL: stale offset: API not ready"
+        return 1
+    fi
+    assert_success "$(post_to "$api" "{\"action\": \"goto\", \"url\": \"$TEST_PAGE\"}")" "goto" >/dev/null || return 1
+    _click_submit_without_calibrate "$api" "page load" || return 1
+
+    post_to "$api" '{"action": "enter_fullscreen"}' >/dev/null
+    sleep "$STALE_OFFSET_SETTLE_SECONDS"
+    _click_submit_without_calibrate "$api" "entering fullscreen" || return 1
+
+    post_to "$api" '{"action": "exit_fullscreen"}' >/dev/null
+    sleep "$STALE_OFFSET_SETTLE_SECONDS"
+    _click_submit_without_calibrate "$api" "leaving fullscreen" || return 1
+
+    post_to "$api" "{\"action\": \"new_tab\", \"url\": \"$TEST_PAGE\"}" >/dev/null
+    sleep "$STALE_OFFSET_SETTLE_SECONDS"
+    _click_submit_without_calibrate "$api" "opening a new tab" || return 1
+
+    # Closing every tab makes the next action relaunch the browser window.
+    post_to "$api" '{"action": "close_tab", "index": 1}' >/dev/null
+    post_to "$api" '{"action": "close_tab", "index": 0}' >/dev/null
+    assert_success "$(post_to "$api" "{\"action\": \"goto\", \"url\": \"$TEST_PAGE\"}")" "goto after relaunch" >/dev/null || return 1
+    sleep "$STALE_OFFSET_SETTLE_SECONDS"
+    _click_submit_without_calibrate "$api" "a browser relaunch" || return 1
+
+    stop_extra_container "$STALE_OFFSET_BROWSER"
+    echo "OK: system_click follows window moves without calibrate"
+}
+
 ALL_TESTS+=(
     test_mouse_move
     test_mouse_click
@@ -220,4 +280,5 @@ ALL_TESTS+=(
     test_fullscreen
     test_selector_input
     test_click
+    test_system_click_follows_window_moves
 )

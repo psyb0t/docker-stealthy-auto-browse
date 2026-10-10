@@ -19,6 +19,7 @@ import human_scroll
 from human_keyboard import TypingProfile
 from human_mouse import MouseProfile
 from logger import get_logger
+from playwright.async_api import Error as PlaywrightError
 from system import InputError, System
 
 log = get_logger(__name__)
@@ -117,6 +118,12 @@ _FIELD_STATE_JS = """el => {
 }"""
 _FIELD_VALUE_JS = "el => (typeof el.value === 'string' ? el.value : null)"
 _VIEWPORT_JS = "() => ({w: window.innerWidth, h: window.innerHeight})"
+# mozInnerScreenX/Y report where the viewport really sits on screen.
+# Camoufox spoofs outerHeight/innerHeight, so those cannot be used.
+_WINDOW_OFFSET_JS = """() => ({
+    x: Math.round(window.mozInnerScreenX),
+    y: Math.round(window.mozInnerScreenY)
+})"""
 _SCROLL_Y_JS = "() => window.scrollY"
 _EDITABLE_FOCUSED_JS = """() => {
     const el = document.activeElement;
@@ -217,10 +224,44 @@ def _mouse_profile(cmd: dict, system: System) -> MouseProfile | None:
     return dataclasses.replace(system.mouse_profile, **overrides)
 
 
+async def read_window_offset(page: Any) -> dict | None:
+    """Screen position of the page viewport, or None if it cannot be read."""
+    try:
+        result = await page.evaluate(_WINDOW_OFFSET_JS)
+    except PlaywrightError as e:
+        log.warning("window offset unreadable", extra={"error": str(e)})
+        return None
+    x = result.get("x") if isinstance(result, dict) else None
+    y = result.get("y") if isinstance(result, dict) else None
+    if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
+        log.warning("window offset not numeric", extra={"result": repr(result)})
+        return None
+    return {"x": int(x), "y": int(y)}
+
+
+async def _refresh_window_offset(page: Any, system: System) -> None:
+    """Re-measure where the page sits on screen before moving the pointer.
+
+    Fullscreen, new tab windows and browser relaunches move the viewport,
+    so a stored offset goes stale. The last good offset is kept when the
+    page cannot be read.
+    """
+    offset = await read_window_offset(page)
+    if offset is None:
+        return
+    if offset != system.window_offset:
+        log.debug(
+            "window offset changed",
+            extra={"old": system.window_offset, "new": offset},
+        )
+    system.window_offset = offset
+
+
 async def mouse_move(cmd: dict, page: Any, system: System) -> dict:
     x, y = _xy(cmd, required=True)
     duration, width, height = _target(cmd)
     profile = _mouse_profile(cmd, system)
+    await _refresh_window_offset(page, system)
     landed = await asyncio.to_thread(
         system.move_mouse, x, y, duration, width, height, profile
     )
@@ -231,6 +272,7 @@ async def mouse_click(cmd: dict, page: Any, system: System) -> dict:
     x, y = _xy(cmd, required=False)
     duration, width, height = _target(cmd)
     profile = _mouse_profile(cmd, system)
+    await _refresh_window_offset(page, system)
     clicked = await asyncio.to_thread(
         system.click, x, y, duration, width, height, profile
     )
@@ -243,6 +285,7 @@ async def system_click(cmd: dict, page: Any, system: System) -> dict:
     x, y = _xy(cmd, required=True)
     duration, width, height = _target(cmd)
     profile = _mouse_profile(cmd, system)
+    await _refresh_window_offset(page, system)
     clicked = await asyncio.to_thread(
         system.click, x, y, duration, width, height, profile
     )
@@ -255,6 +298,8 @@ async def scroll(cmd: dict, page: Any, system: System) -> dict:
         raise InputActionError("amount must be a non-zero integer")
     x, y = _xy(cmd, required=False)
     notch_gap = _bounded(cmd, "notch_gap", _NOTCH_GAP_BOUNDS_S)
+    if x is not None:
+        await _refresh_window_offset(page, system)
     await asyncio.to_thread(system.scroll, amount, x, y, notch_gap)
     return {"scrolled": amount}
 
@@ -368,6 +413,7 @@ async def scroll_to_bottom_humanized(cmd: dict, page: Any, system: System) -> di
         drift_p = _SCROLL_DRIFT_P
 
     rng = system.rng
+    await _refresh_window_offset(page, system)
     bounds = await _pointer_into_viewport(page, system)
     gestures = scroll_backs = stalls = 0
     reached_bottom = False

@@ -36,8 +36,7 @@ _INSTRUCTIONS_SINGLE = (
     "SCREENSHOTS: always pass whLargest=512 unless you need fine detail. "
     "Full-resolution screenshots waste tokens and provide no extra information for most tasks. "
     "CLICKING: always use click() with a CSS selector first. It is fast and reliable. "
-    "Only use system_click() as a last resort when the site detects DOM event injection, "
-    "and only after calling calibrate() to ensure correct coordinate mapping. "
+    "Only use system_click() as a last resort when the site detects DOM event injection. "
     "Use get_interactive_elements to find selectors and coordinates. "
     "Use run_script to execute multi-step workflows atomically."
 )
@@ -191,7 +190,8 @@ async def run_script(
         click: Click element by CSS selector or XPath. Fast and reliable.
             - selector (str, required): CSS selector or "xpath=..." expression.
         system_click: Move like a human to viewport coordinates, then click with a
-            human press and hold. Requires calibrate first.
+            human press and hold. The window position is re-measured first, so
+            calibrate is not needed.
             - x (int, required): Viewport X coordinate of the target centre.
             - y (int, required): Viewport Y coordinate of the target centre.
             - w (int): Target width (from get_interactive_elements). The click
@@ -361,7 +361,8 @@ async def run_script(
         getclear_console_log: Get and clear in one call.
 
     DISPLAY:
-        calibrate: Detect browser window offset for system_click coordinates.
+        calibrate: Return the browser window offset used for OS-level pointer
+            coordinates. Optional: pointer actions re-measure it themselves.
         get_resolution: Get current display resolution.
         set_color_scheme: Make every open and future tab report a color scheme.
             - scheme (str, required): "dark", "light", "no-preference", or
@@ -373,7 +374,7 @@ async def run_script(
         start_recording: Begin a recording. Requires /recordings volume mount.
             One active recording per container; second start while active errors.
             - mode (str): "window" (default, full Camoufox window incl. chrome),
-              "viewport" (crops chrome using calibrated window_offset),
+              "viewport" (crops chrome at the page position measured at start),
               "desktop" (entire Xvfb screen).
             - fps (int): 1-60, default 15.
             - show_cursor (bool): True (default) draws the OS-level mouse cursor
@@ -518,10 +519,9 @@ if not _cluster_mode:
         """Click at viewport coordinates using real OS-level mouse movement.
 
         PREFER click() with a CSS selector instead. It is faster and more reliable.
-        Only use system_click when (1) the site detects DOM event injection and
-        blocks it, or (2) you have already called calibrate and confirmed the window
-        offset is correct. Without calibration the coordinates will be wrong and
-        the click will land in the wrong place.
+        Only use system_click when the site detects DOM event injection and
+        blocks it. The window position is re-measured before every move, so it
+        stays correct after fullscreen, new tabs and browser relaunches.
 
         Args:
             x: Viewport X coordinate of the target centre (from

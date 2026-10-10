@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.0.1] 2026-10-10
+
+### Fixed
+
+- `system_click`, `mouse_click`, `mouse_move`, `scroll` with coordinates and `scroll_to_bottom_humanized` missed their target after the page moved on screen (entering or leaving fullscreen, opening a tab window, a browser relaunch) until the caller called `calibrate` again. They now re-measure the window position before every move, so `calibrate` is never required. If the position cannot be read, they keep the last measured one instead of falling back to (0, 0).
+- `viewport` recordings reused the offset from the last `calibrate` and cropped off part of the page after fullscreen. They now measure the page position when the recording starts.
+- The docs, skill and MCP tool descriptions no longer tell callers to run `calibrate` before `system_click` or after fullscreen changes, and the README no longer lists `system_click` reliability as a known issue.
+
 ## [3.0.0] 2026-10-10
 
 ### Breaking

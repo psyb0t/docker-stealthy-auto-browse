@@ -193,7 +193,7 @@ Full docs: [docs/page-loaders.md](docs/page-loaders.md)
 
 ## Screen recording
 
-Record the browser as MP4 with mouse cursor visible. ffmpeg `x11grab` against Xvfb writes to a mounted `/recordings` volume. Three modes: `window` (full Camoufox window), `viewport` (chrome cropped using calibrated `mozInnerScreenX/Y`), `desktop` (entire Xvfb screen). You provide the slug at stop time, so you name the file after the run completes. Path-traversal-safe, collision-safe, crash-safe.
+Record the browser as MP4 with mouse cursor visible. ffmpeg `x11grab` against Xvfb writes to a mounted `/recordings` volume. Three modes: `window` (full Camoufox window), `viewport` (chrome cropped at the page position from `mozInnerScreenX/Y`, measured when recording starts), `desktop` (entire Xvfb screen). You provide the slug at stop time, so you name the file after the run completes. Path-traversal-safe, collision-safe, crash-safe.
 
 ```bash
 mkdir -p ./recordings
@@ -297,10 +297,6 @@ flow you plan to use.
 | [Fingerprint.com](https://fingerprint.com/demo/)                       | **Pass** | Identified as normal Firefox, no bot flags                              |
 
 Why it works: [docs/stealth.md](docs/stealth.md)
-
-## Known issues / TODO
-
-- **`system_click` reliability**: OS-level mouse clicks can land in the wrong place if the window offset is stale. Needs better coordinate mapping so it works reliably without manual `calibrate` calls.
 
 ## License
 

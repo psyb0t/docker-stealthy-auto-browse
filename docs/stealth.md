@@ -42,7 +42,6 @@ These use Playwright's DOM automation to find elements by **CSS selector or XPat
 
 - **Default:** use `click` with a CSS selector. It's fast, reliable, and works for most sites.
 - **Site explicitly detects and blocks DOM event injection?** Fall back to system input.
-- **Using `system_click`?** Call `calibrate` first. Without it the coordinates are offset and the click lands in the wrong place.
 - **Pass `w` and `h` with `system_click`.** `get_interactive_elements` returns them; with them the click lands at a human offset inside the element instead of near its centre.
 - **Filling forms on a protected site?** `fill` first; if blocked, `system_click` to focus then `system_type`.
 - **Just scraping?** Playwright input (`click`, `fill`) is fine.
