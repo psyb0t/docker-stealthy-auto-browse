@@ -28,6 +28,10 @@ MAIN_TESTS=(
     # test_fingerprint.sh
     test_fingerprint_consistency
     test_liarjs_live_fingerprint_consistency
+    # test_live_behavior.sh (opt-in through make test-real)
+    test_live_deviceandbrowserinfo_behavior
+    test_live_fcaptcha_checkbox_behavior
+    test_live_fcaptcha_invisible_behavior
     test_get_interactive_elements
     test_get_resolution
     test_calibrate

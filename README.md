@@ -27,6 +27,7 @@ site, network exit, timezone, browser build, and test date.
 - [Configuration](#configuration)
 - [Development](#development)
 - [Bot detection results](#bot-detection-results)
+- [Behavioral detection results](#behavioral-detection-results)
 - [License](#license)
 
 ## What's inside
@@ -99,9 +100,16 @@ Navigation uses app-owned controls, not a hidden browser-library timeout. Each a
 
 ## Two input modes
 
-There are two ways to interact with pages. **System input** uses PyAutoGUI to generate real OS-level mouse and keyboard events. The browser cannot tell these apart from a real human. **Playwright input** uses CSS selectors and DOM event injection. It's easier, but theoretically detectable by behavioral analysis. Use system input on any site with bot protection.
+There are two ways to interact with pages. **System input** uses PyAutoGUI to generate real OS-level mouse and keyboard events, so the page gets trusted events with no injection trail, timed like a person. **Playwright input** uses CSS selectors and DOM event injection. It's easier, but theoretically detectable by behavioral analysis. Use system input on any site with bot protection.
 
-System input is modeled on how people actually move and type, fitted to published human datasets: curved mouse paths with Fitts's-law timing and overshoot-and-correct, ~100 ms button holds on off-centre click points, key-pair-dependent typing rhythm with real key holds and Shift before capitals, optional self-correcting typos, and wheel gestures with reading pauses. The defaults look like one consistent person per container, and the main timings can be overridden per request. See [Humanized Input](docs/api.md#humanized-input).
+System input moves and types the way people do. The defaults are fitted to published human datasets (SapiMouse for mouse paths, Balabit for clicks, the Aalto keystroke study for typing):
+
+- **Mouse:** curved sigma-lognormal paths with Fitts's-law timing, a speed peak early in the move, overshoot and correction on about a third of moves, and hand tremor, sent at a 125 Hz mouse rate.
+- **Clicks:** a short pause before the press, a ~100 ms button hold, and a landing point scattered inside the target, never its dead centre.
+- **Typing:** a rhythm that depends on the key pair, a hold on every key, overlapping keys for fast typists, Shift before capitals, and optional typos that are always corrected.
+- **Scrolling:** wheel gestures sent one notch at a time, with reading pauses, pointer drift, and the occasional scroll back.
+
+Each container behaves like one consistent person, and every timing can be overridden per request. The model and options are in [Humanized input](docs/api.md#humanized-input). How it scores against behavioral detectors is in [Behavioral detection results](#behavioral-detection-results).
 
 Full breakdown and usage guide: [docs/stealth.md](docs/stealth.md)
 
@@ -271,9 +279,7 @@ make sec
 
 `make sec` writes `sec.sarif` for GitHub Security. It reports findings without blocking a release. Use `make help` for the complete command list.
 
-`make test-real` is an opt-in live check against [liarjs.dev](https://liarjs.dev/),
-so it requires outbound network access and does not run in the deterministic
-default suite.
+`make test-real` runs opt-in live checks against public sites, so it needs outbound network access and does not run in the deterministic default suite. It checks fingerprint consistency on [liarjs.dev](https://liarjs.dev/), and input behavior on the [deviceandbrowserinfo.com login test](https://deviceandbrowserinfo.com/are_you_a_bot_interactions) and the [FCaptcha demo](https://www.webdecoy.com/product/fcaptcha-demo) in checkbox and invisible modes. Each behavior check runs the same task with humanized input, Playwright DOM input, and raw PyAutoGUI on the same IP. The humanized run must pass, and both robotic runs must fail or score worse, which proves the service really scores behavior.
 
 ## Bot detection results
 
@@ -297,6 +303,21 @@ flow you plan to use.
 | [Fingerprint.com](https://fingerprint.com/demo/)                       | **Pass** | Identified as normal Firefox, no bot flags                              |
 
 Why it works: [docs/stealth.md](docs/stealth.md)
+
+## Behavioral detection results
+
+A clean fingerprint says what the browser is. Behavioral detectors watch what it does: how the pointer travels, how long keys and buttons stay down, how the wheel turns. Each check below runs the same task three ways from one container and one IP, so the fingerprint and network are identical and only the input differs.
+
+| Check                                                                                          | Humanized system input | Playwright DOM input | Raw PyAutoGUI |
+| ---------------------------------------------------------------------------------------------- | ---------------------- | -------------------- | ------------- |
+| [DeviceAndBrowserInfo login test](https://deviceandbrowserinfo.com/are_you_a_bot_interactions) | **human**              | bot                  | bot           |
+| [FCaptcha](https://www.webdecoy.com/product/fcaptcha-demo) checkbox                            | **verified**           | failed               | failed        |
+| [FCaptcha](https://www.webdecoy.com/product/fcaptcha-demo) invisible risk score (lower is better) | **0.06, allowed**   | 0.60, blocked        | 0.22, allowed |
+| [motion-attestation](https://github.com/libcaptcha/motion-attestation) and [Gaitcha](https://github.com/willybahuaud/gaitcha): mouse, typing, scroll | **pass** | not run | caught |
+
+Raw PyAutoGUI sends the same trusted OS-level events, but with straight instant moves and zero-length holds. Two of the three hosted checks flag it outright, and the third scores it almost four times riskier. Trusted events alone are not enough. The humanized timing is what passes.
+
+The hosted rows were observed with `make test-real`, which asserts this pattern on every run: the humanized run must pass, and both robotic runs must fail or score clearly worse. The offline detectors run on every `make test` against a local probe page, and each of those checks also plays a robotic session that must be caught. Like the fingerprint results, the hosted scores depend on the service version, network exit, and timezone.
 
 ## License
 

@@ -84,8 +84,12 @@ lint-fix: dev-image ## Apply safe Python lint fixes and formatting.
 test: dev-image ## Run the complete Docker-backed test suite.
 	$(DEV_RUN_DIND) bash test.sh $(TEST_ARGS)
 
-test-real: dev-image ## Run the opt-in live liarjs.dev fingerprint regression.
-	$(DEV_RUN_DIND) bash test.sh test_liarjs_live_fingerprint_consistency
+test-real: dev-image ## Run opt-in live fingerprint and bot-behavior checks against public sites.
+	$(DEV_RUN_DIND) bash test.sh \
+		test_liarjs_live_fingerprint_consistency \
+		test_live_deviceandbrowserinfo_behavior \
+		test_live_fcaptcha_checkbox_behavior \
+		test_live_fcaptcha_invisible_behavior
 
 test-unit: dev-image ## Run in-process Python unit tests.
 	$(DEV_RUN) python tests/test_navigation_options.py

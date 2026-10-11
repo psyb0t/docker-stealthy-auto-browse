@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.0.3] 2026-10-11
+
+### Added
+
+- `make test-real` scores the humanized input on hosted behavior detectors: the DeviceAndBrowserInfo login test and the FCaptcha demo in checkbox and invisible modes. Each check runs the same task with humanized system input, Playwright DOM input, and raw PyAutoGUI from one container and IP. The humanized run must pass, and both robotic runs must fail or score worse. The default suite still makes no third-party requests.
+
+### Changed
+
+- Documentation only. The README gains a "Behavioral detection results" section and `docs/stealth.md` a "Behavioral checks" section, each comparing humanized, Playwright, and raw PyAutoGUI input on the hosted and offline behavior detectors. The README lists what the humanized input models as one bullet per input type. Both files no longer claim that page JavaScript cannot tell raw OS-level input from a person, and the stealth guide's agent section points to `.agents/skills/` and the README install commands instead of a `.skills/` directory that no longer exists.
+
 ## [3.0.2] 2026-10-10
 
 ### Changed

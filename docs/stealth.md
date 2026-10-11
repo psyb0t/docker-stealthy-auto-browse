@@ -7,7 +7,7 @@ Every browser automation tool based on Chromium has the same fundamental problem
 This container takes a different approach:
 
 - **Camoufox** (custom Firefox fork) instead of Chromium. There is no CDP to detect because Firefox doesn't use it
-- **PyAutoGUI** for mouse and keyboard. Input happens at the OS level, not through the browser's automation API. The browser doesn't know it's being automated. No JavaScript in the world can tell the difference between PyAutoGUI and a real human
+- **PyAutoGUI** for mouse and keyboard. Input happens at the OS level, not through the browser's automation API, so the page receives trusted events with no injection trail. That leaves the behavior itself for a detector to judge, so every move, click, keystroke, and wheel notch is timed from human motor data
 - **Native fingerprint injection** generated through browserforge and applied
   by Camoufox. The generated properties persist with the profile, and Linux
   font aliases plus WebGL renderer capabilities stay in one coherent cohort.
@@ -28,7 +28,7 @@ These use PyAutoGUI to generate **real OS-level events**, timed from human motor
 - **Typing:** right-skewed key rhythm that depends on the key pair, real key holds, overlapping keys for fast typists, and Shift pressed before capitals. Optional typos are always corrected.
 - **Wheel:** multi-notch gestures sent one notch at a time with a flick or controlled rhythm, reading pauses, and occasional scroll-backs.
 
-Each container behaves like one consistent person. The main timings (speed, path bend, tremor, click and key holds, typing rhythm, typos, wheel spacing) can be tuned per request; see [Humanized Input](api.md#humanized-input). The test suite scores these sessions with open-source bot detectors (motion-attestation, Gaitcha) and checks that a robotic control session is caught by the same checks.
+Each container behaves like one consistent person. The main timings (speed, path bend, tremor, click and key holds, typing rhythm, typos, wheel spacing) can be tuned per request; see [Humanized Input](api.md#humanized-input). The test suite scores these sessions with open-source bot detectors (motion-attestation, Gaitcha) and checks that a robotic control session is caught by the same checks. `make test-real` repeats this against hosted behavior scorers; see [Behavioral checks](#behavioral-checks).
 
 System input uses **viewport coordinates** (x, y pixel positions). Get these from `get_interactive_elements`.
 
@@ -69,9 +69,22 @@ your own check against the exact setup you plan to use.
 
 The liarjs.dev result was observed with `TZ` matched to the network exit. Its
 remaining warnings were empty native media-device enumeration and the human
-challenge not being taken. Run `make test-real` for an opt-in live regression
-of the font, canvas, worker, and WebGL checks. The default suite uses local
-fixtures and does not depend on a third-party service.
+challenge not being taken.
+
+### Behavioral checks
+
+These detectors score how the input moves, not what the browser is. Each check runs the same task three ways from one container and one IP, so only the input differs.
+
+| Check                                                                                          | Humanized system input | Playwright DOM input | Raw PyAutoGUI |
+| ---------------------------------------------------------------------------------------------- | ---------------------- | -------------------- | ------------- |
+| [DeviceAndBrowserInfo login test](https://deviceandbrowserinfo.com/are_you_a_bot_interactions) | **human**              | bot                  | bot           |
+| [FCaptcha](https://www.webdecoy.com/product/fcaptcha-demo) checkbox                            | **verified**           | failed               | failed        |
+| [FCaptcha](https://www.webdecoy.com/product/fcaptcha-demo) invisible risk score (lower is better) | **0.06, allowed**   | 0.60, blocked        | 0.22, allowed |
+| [motion-attestation](https://github.com/libcaptcha/motion-attestation) and [Gaitcha](https://github.com/willybahuaud/gaitcha): mouse, typing, scroll | **pass** | not run | caught |
+
+Raw PyAutoGUI sends the same trusted OS-level events with straight instant moves and zero-length holds, and the hosted checks still flag it or score it riskier. The pass comes from the humanized timing, not from the events being trusted.
+
+`make test-real` runs the hosted checks above and the liarjs.dev font, canvas, worker, and WebGL checks. It asserts that the humanized run passes and both robotic runs fail or score clearly worse. The offline detectors run on every `make test` against a local probe page, and each check also plays a robotic session that must be caught. The default suite does not depend on a third-party service.
 
 ## Why it actually works
 
@@ -83,40 +96,14 @@ Most stealth tools try to **hide** automation signals. This container **doesn't 
   context, workers, bundled Linux font aliases, and WebGL cohort aligned across
   restarts.
 - **`navigator.webdriver` is `false`**. Nothing patches it to return false. It is false because Camoufox doesn't set it.
-- **Real input events**. PyAutoGUI generates OS-level mouse and keyboard events. No DOM event injection for the browser to detect.
+- **Real input events**. PyAutoGUI generates OS-level mouse and keyboard events. No DOM event injection for the browser to detect, and the timing follows human motor data instead of straight lines and fixed intervals.
 
 ## AI agent integration
 
-This project ships as a skill in `.skills/`. AI agents that support skills can pick it up and use the browser on demand. Start the container, set the env var, and the agent handles the rest.
+This project ships a skill in [`.agents/skills/`](../.agents/skills/stealthy-auto-browse) and an MCP server at `/mcp`. Agents that read `.agents/skills/` pick the skill up directly, and Claude Code, Codex, and OpenClaw can install it as a plugin. Install commands are in [Agent integrations](../README.md#agent-integrations).
+
+Point the agent at a running container:
 
 ```bash
 export STEALTHY_AUTO_BROWSE_URL=http://localhost:8080
-```
-
-### Claude Code
-
-The `.skills/` directory in this repo is all Claude Code needs. Clone/copy this repo (or just the `.skills/` dir) into your project and Claude Code will automatically discover the skill.
-
-For a ready-to-use Claude Code setup, check out [docker-claude-code](https://github.com/psyb0t/docker-claude-code).
-
-### OpenClaw / ClawHub
-
-```bash
-clawhub install psyb0t/stealthy-auto-browse
-```
-
-Configure in `~/.openclaw/openclaw.json`:
-
-```json
-{
-  "skills": {
-    "entries": {
-      "stealthy-auto-browse": {
-        "env": {
-          "STEALTHY_AUTO_BROWSE_URL": "http://localhost:8080"
-        }
-      }
-    }
-  }
-}
 ```
