@@ -11,6 +11,8 @@
 readonly IDENTITY_UPGRADE_FIXTURE="$SCRIPT_DIR/tests/fixtures/userdata-3.0/stealthy-auto-browse-props.json"
 readonly IDENTITY_PROPS_PATH="/userdata/stealthy-auto-browse-props.json"
 readonly IDENTITY_UPGRADE_READY_ATTEMPTS=90
+# A profile copied in by another user must still be writable by the browser.
+readonly IDENTITY_UPGRADE_FOREIGN_ID=1001
 
 # _identity_props <container> <python expression over the dict c>
 _identity_props() {
@@ -25,13 +27,19 @@ test_persisted_identity_upgrade() {
     docker rm -f "$name" >/dev/null 2>&1 || true
     docker create --name "$name" "$IMAGE_NAME:$TEST_TAG" >/dev/null
     EXTRA_CONTAINERS+=("$name")
-    docker cp "$IDENTITY_UPGRADE_FIXTURE" "$name:$IDENTITY_PROPS_PATH"
+    tar -C "$(dirname "$IDENTITY_UPGRADE_FIXTURE")" \
+        --owner="$IDENTITY_UPGRADE_FOREIGN_ID" --group="$IDENTITY_UPGRADE_FOREIGN_ID" \
+        -cf - "$(basename "$IDENTITY_UPGRADE_FIXTURE")" |
+        docker cp - "$name:$(dirname "$IDENTITY_PROPS_PATH")"
     docker start "$name" >/dev/null
     ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$name")
     base="http://${ip}:${INTERNAL_PORT}"
 
-    if ! wait_for_api "$base" "$IDENTITY_UPGRADE_READY_ATTEMPTS"; then
-        echo "FAIL: identity upgrade: API not ready with a 3.0.x identity"
+    # A container that exits frees its IP for another test container, so a
+    # ready API alone does not prove this one is up.
+    if ! wait_for_api "$base" "$IDENTITY_UPGRADE_READY_ATTEMPTS" ||
+        [ "$(docker inspect -f '{{.State.Running}}' "$name")" != "true" ]; then
+        echo "FAIL: identity upgrade: browser did not stay up with a 3.0.x identity owned by another user"
         docker logs "$name" 2>&1 | tail -30
         stop_extra_container "$name"
         return 1

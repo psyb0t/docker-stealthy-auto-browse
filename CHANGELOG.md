@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.1.1] 2026-10-12
+
+3.1.0 failed its CI run and was never published to Docker Hub, ClawHub, or the MCP registry. 3.1.1 is the first published release with the 3.1.0 changes below.
+
+### Fixed
+
+- The container exited at startup when a file inside `/userdata`, `/loaders`, or `/recordings` belonged to a different user than the browser, for example a saved profile copied in as root. The entrypoint only checked the directory's own owner, so the browser could not rewrite its saved identity. It now fixes ownership whenever any entry inside belongs to someone else.
+
 ## [3.1.0] 2026-10-11
 
 ### Changed

@@ -113,14 +113,22 @@ test_recovery_list_tabs_does_not_open_tab() {
 
 # Same recovery when several tabs were open and all of them were closed.
 test_recovery_many_tabs_closed() {
-    local resp count index
+    local resp count index baseline
+
+    # Count from what is open now. One CI run started with two tabs instead
+    # of one; the URLs are logged so a recurrence shows where it came from.
+    resp=$(post "$RECOVERY_LIST_TABS")
+    baseline=$(echo "$resp" | json_get "['data']['count']")
+    if [ "$baseline" != "1" ]; then
+        echo "  NOTE: recovery: started with $baseline tabs: $(echo "$resp" | json_get "['data']['tabs']")"
+    fi
 
     for ((index = 1; index <= RECOVERY_EXTRA_TABS; index++)); do
         resp=$(post "$RECOVERY_NEW_TAB")
         assert_success "$resp" "recovery: open extra tab $index" || return 1
     done
     count=$(post "$RECOVERY_LIST_TABS" | json_get "['data']['count']")
-    assert_eq "$count" "$((RECOVERY_EXTRA_TABS + 1))" "recovery: extra tabs open" || return 1
+    assert_eq "$count" "$((baseline + RECOVERY_EXTRA_TABS))" "recovery: extra tabs open" || return 1
 
     _recovery_close_all_tabs || return 1
 

@@ -9,8 +9,10 @@ _fix_perms() {
     for dir in /userdata /loaders /recordings; do
         [ -d "$dir" ] || continue
 
-        # Skip if already correct
-        if [ "$(stat -c '%u:%g' "$dir")" = "$TARGET_UID:$TARGET_GID" ]; then
+        # Skip only when nothing inside belongs to someone else. Checking the
+        # directory alone missed files copied in by another user, such as a
+        # saved profile, which the browser then could not rewrite.
+        if [ -z "$(find "$dir" \( ! -user "$TARGET_UID" -o ! -group "$TARGET_GID" \) -print -quit)" ]; then
             continue
         fi
 
