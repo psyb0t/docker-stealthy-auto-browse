@@ -179,7 +179,10 @@ def test_aim_point_avoids_dead_centre() -> None:
     for _ in range(5000):
         x, y = human_mouse.aim_point(500.0, 300.0, 120.0, 40.0, rng)
         dx, dy = x - 500.0, y - 300.0
-        assert abs(dx) >= 1.0 or abs(dy) >= 1.0
+        # 1.5 px planned, so a whole-pixel landing against a half-pixel
+        # centre is still at least 1 px away.
+        assert abs(dx) >= 1.5 or abs(dy) >= 1.5
+        assert abs(round(x) - 500.5) >= 1.0 or abs(round(y) - 300.5) >= 1.0
         # Inset 10% (min 2 px) from each edge.
         assert abs(dx) <= 48.0 and abs(dy) <= 18.0
         dxs.append(dx)
@@ -190,12 +193,27 @@ def test_aim_point_avoids_dead_centre() -> None:
 
 def test_aim_point_small_and_unknown_targets() -> None:
     rng = random.Random(_SEED)
-    cases = [(8.0, 8.0, 1.0), (11.0, 30.0, 1.0), (None, None, 6.0), (0.0, 0.0, 6.0)]
+    cases = [(8.0, 8.0, 2.0), (11.0, 30.0, 2.0), (None, None, 6.0), (0.0, 0.0, 6.0)]
     for width, height, limit in cases:
         for _ in range(300):
             x, y = human_mouse.aim_point(10.0, 10.0, width, height, rng)
-            assert (x, y) != (10.0, 10.0), (width, height)
+            assert max(abs(x - 10.0), abs(y - 10.0)) >= 1.5, (width, height)
             assert abs(x - 10.0) <= limit and abs(y - 10.0) <= limit, (width, height)
+
+
+# Each case: (planned slip, aim offset from centre, expected slip)
+_SLIP_CASES = [
+    ((2, 0), (-3.0, 4.0), (-2, 0)),
+    ((-1, 0), (3.0, 0.0), (1, 0)),
+    ((0, 2), (5.0, -1.5), (0, -2)),
+    ((0, -2), (0.0, 0.0), (0, -2)),
+    ((1, 0), (0.0, 7.0), (1, 0)),
+]
+
+
+def test_click_slip_moves_away_from_centre() -> None:
+    for slip, aim_offset, expected in _SLIP_CASES:
+        assert human_mouse.slip_away(slip, aim_offset) == expected, (slip, aim_offset)
 
 
 def test_click_timing_matches_balabit() -> None:

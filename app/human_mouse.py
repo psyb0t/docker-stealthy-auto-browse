@@ -95,7 +95,10 @@ _CLICK_INSET_MIN_PX = 2.0
 _CLICK_SMALL_BOX_PX = 12.0
 # Unknown target size: assume a small control so the aim stays on it.
 _CLICK_DEFAULT_BOX_PX = 16.0
-_CLICK_MIN_OFFSET_PX = 1.0
+# The pointer lands on a whole pixel and target centres often sit on a half
+# pixel, so the planned offset keeps 0.5 px of margin above 1 px.
+_CLICK_MIN_OFFSET_PX = 1.5
+_CLICK_SMALL_OFFSET_PX = 2
 _CLICK_MIN_LIMIT_PX = 1.5
 _CLICK_FALLBACK_OFFSET_PX = 1.5
 _CLICK_MAX_REDRAWS = 32
@@ -424,13 +427,17 @@ def aim_point(
     """Pick where inside a target box centred on (cx, cy) to land.
 
     Humans scatter around the centre and almost never hit it to the pixel,
-    which some detectors check. The result is never within 1 px of the
-    centre on both axes. Unknown sizes are treated as a small control.
+    which some detectors check. The result is at least 1.5 px from the
+    centre on one axis, so it stays off-centre after landing on a whole
+    pixel. Unknown sizes are treated as a small control.
     """
     w = width if width and width > 0 else _CLICK_DEFAULT_BOX_PX
     h = height if height and height > 0 else _CLICK_DEFAULT_BOX_PX
     if min(w, h) < _CLICK_SMALL_BOX_PX:
-        offsets = [(dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if dx or dy]
+        step = _CLICK_SMALL_OFFSET_PX
+        offsets = [
+            (dx, dy) for dx in (-step, 0, step) for dy in (-step, 0, step) if dx or dy
+        ]
         dx, dy = rng.choice(offsets)
         return (cx + dx, cy + dy)
 
@@ -497,6 +504,23 @@ def plan_click(rng: random.Random, profile: MouseProfile) -> ClickPlan:
     at = hold * rng.uniform(*_WOBBLE_AT_FRAC)
     wobble = (at, step, 0) if rng.random() < 0.5 else (at, 0, step)
     return ClickPlan(pre_press_s=pre, hold_s=hold, wobble=wobble)
+
+
+def slip_away(
+    slip: tuple[int, int],
+    aim_offset: tuple[float, float],
+) -> tuple[int, int]:
+    """Turn a press-and-hold slip away from the target centre.
+
+    The click event fires where the button is released, so a slip toward
+    the centre could undo the off-centre aim. On an axis with no aim offset
+    the slip keeps its own direction.
+    """
+    slip_x, slip_y = (
+        int(math.copysign(abs(step), offset)) if offset else step
+        for step, offset in zip(slip, aim_offset)
+    )
+    return (slip_x, slip_y)
 
 
 def plan_post_release(rng: random.Random) -> float:

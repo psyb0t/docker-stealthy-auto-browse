@@ -69,10 +69,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 156.0.1-beta.36 and requires Playwright < 1.63; Playwright 1.61+ needs
 # browser beta.30 or newer. After a bump, re-verify install_extensions.py
 # against the browser's distribution/ layout and run the full test suite.
-RUN pip install --no-cache-dir \
-    "camoufox[geoip]==0.5.8" \
-    "playwright==1.62.0" \
-    pyautogui fastapi uvicorn fastmcp Pillow pyyaml "redis[hiredis]"
+#
+# camoufox depends on indexed-zstd, which has no arm64 wheel, so arm64 builds
+# compile it. The compilers and zstd headers are added and purged in this one
+# layer so no compiler ships in the image. Only the packages this step added
+# are purged: autoremove would also take the GTK libraries the browser needs,
+# which the firefox-esr step above leaves marked as automatically installed.
+RUN dpkg-query -W -f='${Package}\n' | sort > /tmp/packages-before \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends gcc g++ libzstd-dev \
+    && dpkg-query -W -f='${Package}\n' | sort > /tmp/packages-after \
+    && pip install --no-cache-dir \
+        "camoufox[geoip]==0.5.8" \
+        "playwright==1.62.0" \
+        pyautogui fastapi uvicorn fastmcp Pillow pyyaml "redis[hiredis]" \
+    && apt-get purge -y $(comm -13 /tmp/packages-before /tmp/packages-after) \
+    && rm -rf /var/lib/apt/lists/* /tmp/packages-before /tmp/packages-after
 
 # camoufox installs fpgen's fingerprint model inside site-packages, checked
 # against the sha256 values camoufox pins. Install it as root here so the

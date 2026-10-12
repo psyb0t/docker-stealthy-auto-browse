@@ -73,6 +73,9 @@ class System:
         self._pyautogui = None
         self._window_offset = {"x": 0, "y": 0}
         self._rng = rng or random.Random()
+        # Where the last move landed relative to its target's centre; a click
+        # slip moves away from it.
+        self._aim_offset: tuple[float, float] = (0.0, 0.0)
         # One consistent "person" per process.
         self.mouse_profile = human_mouse.MouseProfile.sample(self._rng)
         self.typing_profile = human_keyboard.TypingProfile.sample(self._rng)
@@ -186,6 +189,7 @@ class System:
             return (round(x), round(y))
 
         aim_x, aim_y = human_mouse.aim_point(x, y, width, height, self._rng)
+        self._aim_offset = (aim_x - x, aim_y - y)
         screen_x, screen_y = self.screen_coords(aim_x, aim_y)
         start_x, start_y = (int(v) for v in self._pyautogui.position())
         path = human_mouse.plan_move(
@@ -237,6 +241,7 @@ class System:
             time.sleep(plan.hold_s)
         else:
             at, dx, dy = plan.wobble
+            dx, dy = human_mouse.slip_away((dx, dy), self._aim_offset)
             time.sleep(at)
             self._post_move(px + dx, py + dy)
             time.sleep(max(plan.hold_s - at, 0.0))

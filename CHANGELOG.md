@@ -2,9 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
-## [3.1.1] 2026-10-12
+## [3.1.2] 2026-10-12
 
-3.1.0 failed its CI run and was never published to Docker Hub, ClawHub, or the MCP registry. 3.1.1 is the first published release with the 3.1.0 changes below.
+3.1.0 and 3.1.1 failed CI and were never published to Docker Hub, ClawHub, or the MCP registry. 3.1.2 is the first published release with the 3.1.0 and 3.1.1 changes below.
+
+### Fixed
+
+- The arm64 image failed to build. camoufox 0.5.8 depends on `indexed-zstd`, which has no arm64 wheel, and the image had no compiler. The build now installs a compiler and the zstd headers for that one step and removes them in the same layer.
+- A humanized click could occasionally land within 1 px of the target's centre, which some detectors flag. The aim kept a 1 px offset before the pointer snapped to a whole pixel, and the occasional slip while the button is held could move it back toward the centre. The aim now keeps at least 1.5 px, and the slip always moves away from the centre.
+
+## [3.1.1] 2026-10-12
 
 ### Fixed
 
