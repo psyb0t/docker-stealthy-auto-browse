@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.1.3] 2026-10-12
+
+3.1.0, 3.1.1, and 3.1.2 failed CI and were never published to Docker Hub, ClawHub, or the MCP registry. 3.1.3 is the first published release with their changes below.
+
+### Fixed
+
+- The image build failed on CI runners. `camoufox fetch` lists browser releases through the unauthenticated GitHub API, which rate-limits shared runners, so the browser was never installed. The build now downloads the pinned browser archive by its release URL, checks it against the pinned sha256, and lays it out the way camoufox expects, with no API call.
+
 ## [3.1.2] 2026-10-12
 
 3.1.0 and 3.1.1 failed CI and were never published to Docker Hub, ClawHub, or the MCP registry. 3.1.2 is the first published release with the 3.1.0 and 3.1.1 changes below.

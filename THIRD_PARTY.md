@@ -2,14 +2,14 @@
 
 stealthy-auto-browse's own code (this repo) is [WTFPL](LICENSE)-licensed. The
 **published Docker image** bakes in a browser and browser extensions
-at build time (`Dockerfile`: `RUN python -m camoufox fetch` and
+at build time (`Dockerfile`: the pinned Camoufox release archive and
 `RUN python /scripts/install_extensions.py`) that ship under their own licenses.
 This file lists what the published image redistributes. It does not list dev-only
 dependencies or anything a user fetches themselves after the box is running.
 
 | Component | Kind | License (SPDX) | Source | Where it lives | Note |
 |---|---|---|---|---|---|
-| [Camoufox](https://github.com/daijro/camoufox) (custom Firefox browser binary) | fetched into image at build | `MPL-2.0` | https://github.com/daijro/camoufox | `Dockerfile` (`python -m camoufox fetch`) | The Camoufox browser is a Firefox fork; Firefox/Camoufox source is MPL-2.0. Full text: [`LICENSES/MPL-2.0.txt`](LICENSES/MPL-2.0.txt). The `camoufox` PyPI wrapper itself is MIT. |
+| [Camoufox](https://github.com/daijro/camoufox) (custom Firefox browser binary) | fetched into image at build | `MPL-2.0` | https://github.com/daijro/camoufox | `Dockerfile` (release archive, pinned sha256) | The Camoufox browser is a Firefox fork; Firefox/Camoufox source is MPL-2.0. Full text: [`LICENSES/MPL-2.0.txt`](LICENSES/MPL-2.0.txt). The `camoufox` PyPI wrapper itself is MIT. |
 | [uBlock Origin](https://github.com/gorhill/uBlock) | Firefox extension, installed at build | `GPL-3.0-only` | https://github.com/gorhill/uBlock | `scripts/install_extensions.py` (`.xpi` downloaded + installed into Camoufox) | Full text: [`LICENSES/GPL-3.0.txt`](LICENSES/GPL-3.0.txt). Corresponding source at the URL. |
 | [LocalCDN](https://codeberg.org/nobody/LocalCDN) | Firefox extension, installed at build | `MPL-2.0` | https://codeberg.org/nobody/LocalCDN | `scripts/install_extensions.py` | Full text: [`LICENSES/MPL-2.0.txt`](LICENSES/MPL-2.0.txt). |
 | [ClearURLs](https://github.com/ClearURLs/Addon) | Firefox extension, installed at build | `LGPL-3.0-only` | https://github.com/ClearURLs/Addon | `scripts/install_extensions.py` | Full text: [`LICENSES/LGPL-3.0.txt`](LICENSES/LGPL-3.0.txt). Corresponding source at the URL. |

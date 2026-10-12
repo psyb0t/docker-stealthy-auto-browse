@@ -101,20 +101,36 @@ RUN chown -R browser:browser /usr/local/lib/python3.12/site-packages/camoufox/
 # Switch to non-root user for the Camoufox archive and extensions
 USER browser
 
-# Install the browser build camoufox 0.5.8 pairs with. `camoufox fetch` checks
-# the download against the release's GitHub digest and records it in the
-# install's version.json; the build fails unless that digest is the one pinned
-# here, so a replaced release asset cannot slip into the image.
+# Install the browser build camoufox 0.5.8 pairs with, checked against the
+# sha256 pinned here. The archive is downloaded by its release URL and laid out
+# the way `camoufox fetch` would (browsers/official/<version>-<build>-<sha8>,
+# version.json, the active version in config.json, the 0.5 layout flag).
+# `camoufox fetch` itself is not used: it lists releases through the
+# unauthenticated GitHub API, which rate-limits shared CI runners.
 ARG TARGETARCH
+ARG CAMOUFOX_VERSION=156.0.1
+ARG CAMOUFOX_BUILD=beta.36
 RUN set -eux; \
     case "$TARGETARCH" in \
-        amd64) camoufox_sha='72637885ee67c93466ad377831c647192f8f08fb5c6fd9279de1320b49dd2b53' ;; \
-        arm64) camoufox_sha='8b5fd083721c807ee2a752265683482477105052fa0e21739388b527ae067c15' ;; \
+        amd64) camoufox_arch='x86_64'; camoufox_sha='72637885ee67c93466ad377831c647192f8f08fb5c6fd9279de1320b49dd2b53' ;; \
+        arm64) camoufox_arch='arm64'; camoufox_sha='8b5fd083721c807ee2a752265683482477105052fa0e21739388b527ae067c15' ;; \
         *) echo "unsupported Camoufox architecture: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
-    python -m camoufox fetch official/156.0.1-beta.36; \
-    installed_sha=$(python -c 'import json, pathlib, camoufox.pkgman as p; print(json.loads((pathlib.Path(p.camoufox_path(download_if_missing=False)) / "version.json").read_text()).get("sha256") or "")'); \
-    test "$installed_sha" = "$camoufox_sha"
+    release="${CAMOUFOX_VERSION}-${CAMOUFOX_BUILD}"; \
+    cache_dir=/home/browser/.cache/camoufox; \
+    install_rel="browsers/official/${release}-$(echo "$camoufox_sha" | cut -c1-8)"; \
+    wget -q -O /tmp/camoufox.zip \
+        "https://github.com/daijro/camoufox/releases/download/v${release}/camoufox-${release}-lin.${camoufox_arch}.zip"; \
+    echo "${camoufox_sha}  /tmp/camoufox.zip" | sha256sum -c -; \
+    mkdir -p "$cache_dir/$install_rel"; \
+    python -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' /tmp/camoufox.zip "$cache_dir/$install_rel"; \
+    rm /tmp/camoufox.zip; \
+    printf '{"version":"%s","build":"%s","prerelease":false,"sha256":"%s","interface":1}' \
+        "$CAMOUFOX_VERSION" "$CAMOUFOX_BUILD" "$camoufox_sha" > "$cache_dir/$install_rel/version.json"; \
+    printf '{"active_version":"%s"}' "$install_rel" > "$cache_dir/config.json"; \
+    touch "$cache_dir/.0.5_FLAG"; \
+    chmod -R 0755 "$cache_dir/$install_rel"; \
+    test "$(python -c 'from camoufox.pkgman import installed_verstr; print(installed_verstr())')" = "${CAMOUFOX_VERSION}-${CAMOUFOX_BUILD}"
 
 # Copy scripts and install extensions (writes to ~/.cache/camoufox)
 COPY --chown=browser:browser scripts/ /scripts/

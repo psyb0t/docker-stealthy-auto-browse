@@ -74,11 +74,12 @@ The `camoufox` Python package, Playwright, and the Camoufox browser build are **
 To bump:
 
 1. Read the new camoufox release: its paired browser (`browser-pin.json` in the wheel), its Playwright ceiling, and `PLAYWRIGHT_BROWSER_FLOORS` in `__version__.py`.
-2. Update all three pins and both architecture sha256 values (take them from the GitHub release asset digests). The build fails if the fetched archive's digest does not match.
+2. Update all three pins (`CAMOUFOX_VERSION`, `CAMOUFOX_BUILD` and the pip pins) and both architecture sha256 values (take them from the GitHub release asset digests). The build fails if the downloaded archive's digest does not match. The build installs the archive itself instead of running `camoufox fetch`, because that lists releases through the unauthenticated GitHub API and CI runners hit its rate limit. If camoufox changes its install layout (`browsers/official/<version>-<build>-<sha8>`, `version.json`, `config.json`, `.0.5_FLAG`), update that step.
 3. The fpgen fingerprint model installs as root in its own build step so site-packages stays read-only for the `browser` user. Keep it that way.
 4. Check every camoufox internal `app/browser.py` imports (`launch_options`, `get_env_vars`, `firefox_gpus`, `installed_verstr`, `Screen`, `DefaultAddons`). Camoufox renames and removes internals between minors.
 5. Check `scripts/install_extensions.py` against the new `distribution/` layout.
 6. Run the full `make test` and `make test-real`. Do not trust a passing build.
+7. Build arm64 too (`docker buildx build --platform linux/arm64 .` with QEMU registered). Some dependencies have no arm64 wheel and compile there; an amd64 build will not show it. Start the arm64 image and check the browser launches.
 
 ## Things that will bite you
 

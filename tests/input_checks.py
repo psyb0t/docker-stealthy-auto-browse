@@ -51,9 +51,11 @@ _STRAIGHTNESS_RANGE = (0.6, 0.995)
 _PERFECTLY_STRAIGHT = 0.995
 _PERFECTLY_STRAIGHT_MAX_SHARE = 0.5
 _MULTI_PEAK_MIN_SHARE = 0.2
-# Humans overshoot on ~35% of aimed moves; at 30 strokes a 5% floor keeps
-# false failures near 0.1% while a straight-line mover scores 0.
-_OVERSHOOT_MIN_SHARE = 0.05
+# The humanized session overshoots on about a quarter of its ~25 strokes
+# (measured 0.16-0.31 per run), and a straight-line mover overshoots on none.
+# Requiring at least one overshoot fails a human session about 0.1% of the
+# time; a share floor of 5% (two strokes) failed about 0.7% of runs.
+_OVERSHOOT_MIN_STROKES = 1
 _MOVE_GAP_MEDIAN_RANGE_MS = (4.0, 30.0)
 _GAITCHA_PASS_SCORE = 0.5
 _GAITCHA_MIN_PASS_SHARE = 0.75
@@ -241,7 +243,8 @@ def mouse_checks(harvest: dict) -> list[Check]:
         s["straightness"] > _PERFECTLY_STRAIGHT for s in strokes
     ) / len(strokes)
     multi_peak = sum(s["peaks"] >= 2 for s in strokes) / len(strokes)
-    overshoot = sum(s["overshoot"] for s in strokes) / len(strokes)
+    overshoots = sum(s["overshoot"] for s in strokes)
+    overshoot = overshoots / len(strokes)
     checks += [
         (
             "bell-shaped speed profile",
@@ -265,8 +268,8 @@ def mouse_checks(harvest: dict) -> list[Check]:
         ),
         (
             "overshoot and correct",
-            overshoot >= _OVERSHOOT_MIN_SHARE,
-            f"overshoot_share={overshoot:.2f}",
+            overshoots >= _OVERSHOOT_MIN_STROKES,
+            f"overshoot_share={overshoot:.2f} strokes={overshoots}",
         ),
     ]
     return checks
