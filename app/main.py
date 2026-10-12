@@ -30,7 +30,14 @@ from typing import Any
 
 import uvicorn
 import yaml
-from browser import COLOR_SCHEME_DEFAULT, COLOR_SCHEMES, Browser, BrowserConfig, BrowserError
+from browser import (
+    COLOR_SCHEME_DEFAULT,
+    COLOR_SCHEMES,
+    MAIN_WORLD_PREFIX,
+    Browser,
+    BrowserConfig,
+    BrowserError,
+)
 from fastapi import FastAPI, Request
 from PIL import Image
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -151,6 +158,12 @@ _NUM_REPLICAS = int(os.environ.get("NUM_REPLICAS", "1"))
 _CLUSTER_MODE = _NUM_REPLICAS > 1
 _CLUSTER_ALLOWED_ACTIONS = {"run_script", "ping", "sleep"}
 _NAVIGATION_INTERRUPTED_ERROR = "interrupted by another navigation"
+
+# Where the eval action runs. "page" sees the page's own JavaScript state;
+# "isolated" sees only the DOM, and page code cannot observe or hook it.
+EVAL_WORLD_PAGE = "page"
+EVAL_WORLD_ISOLATED = "isolated"
+EVAL_WORLDS = (EVAL_WORLD_PAGE, EVAL_WORLD_ISOLATED)
 
 NAVIGATION_TIMEOUT_DEFAULT_SECONDS = 30.0
 NAVIGATION_RETRY_COUNT_DEFAULT = 1
@@ -1008,16 +1021,19 @@ async def dispatch_action(cmd: dict) -> dict:
         system.window_offset = await get_window_offset_js(page)
         return make_response(True, {"window_offset": system.window_offset})
 
+    # Fullscreen is requested from the page's own world, as a page would.
     if action == "enter_fullscreen":
         is_fullscreen = await page.evaluate("!!document.fullscreenElement")
         if not is_fullscreen:
-            await page.evaluate("document.documentElement.requestFullscreen()")
+            await page.evaluate(
+                MAIN_WORLD_PREFIX + "document.documentElement.requestFullscreen()"
+            )
         return make_response(True, {"fullscreen": True, "changed": not is_fullscreen})
 
     if action == "exit_fullscreen":
         is_fullscreen = await page.evaluate("!!document.fullscreenElement")
         if is_fullscreen:
-            await page.evaluate("document.exitFullscreen()")
+            await page.evaluate(MAIN_WORLD_PREFIX + "document.exitFullscreen()")
         return make_response(True, {"fullscreen": False, "changed": is_fullscreen})
 
     if action == "get_resolution":
@@ -1047,6 +1063,14 @@ async def dispatch_action(cmd: dict) -> dict:
 
     if action == "eval":
         expr = cmd.get("expression", "")
+        world = cmd.get("world", EVAL_WORLD_PAGE)
+        if world not in EVAL_WORLDS:
+            return make_response(
+                False,
+                error=f"world must be one of: {', '.join(EVAL_WORLDS)}",
+            )
+        if world == EVAL_WORLD_PAGE:
+            expr = MAIN_WORLD_PREFIX + expr
         result = await page.evaluate(expr)
         return make_response(True, {"result": result})
 

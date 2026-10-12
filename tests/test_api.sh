@@ -377,16 +377,48 @@ test_calibrate() {
     assert_success "$resp" "calibrate" || return 1
     offset_x=$(echo "$resp" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['window_offset']['x'])")
     offset_y=$(echo "$resp" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['window_offset']['y'])")
-    # x should be 0–1 (openbox may add a 1px border), y should be realistic chrome height (40-100px)
+    # x should be 0-1 (openbox may add a 1px border), y is the Openbox title
+    # bar plus the browser toolbar (40-160px)
     if [ "$offset_x" -gt 1 ]; then
         echo "FAIL: calibrate: offset x=$offset_x outside expected range 0-1"
         return 1
     fi
-    if [ "$offset_y" -lt 40 ] || [ "$offset_y" -gt 100 ]; then
-        echo "FAIL: calibrate: offset y=$offset_y outside expected range 40-100"
+    if [ "$offset_y" -lt 40 ] || [ "$offset_y" -gt 160 ]; then
+        echo "FAIL: calibrate: offset y=$offset_y outside expected range 40-160"
         return 1
     fi
+    # The whole page must be on screen, or OS-level input cannot reach its
+    # bottom edge and the reported window is taller than the display.
+    local fits
+    fits=$(post '{"action": "eval", "expression": "mozInnerScreenY + innerHeight <= screen.height && outerHeight <= screen.height"}' |
+        json_get "['data']['result']")
+    assert_eq "$fits" "True" "calibrate: page and window fit on the screen" || return 1
     echo "OK: calibrate (offset: $offset_x,$offset_y)"
+}
+
+# Each case: "label|world field|expected result for window.evalWorldProbe"
+EVAL_WORLD_CASES=(
+    "default is the page world||42"
+    "page world reads page globals|\"world\": \"page\", |42"
+    "isolated world cannot see page globals|\"world\": \"isolated\", |None"
+)
+
+test_eval_world() {
+    local entry label world expected resp
+    post '{"action": "goto", "url": "data:text/html,<script>window.evalWorldProbe=42</script><p id=probe>dom</p>"}' >/dev/null
+    for entry in "${EVAL_WORLD_CASES[@]}"; do
+        IFS='|' read -r label world expected <<<"$entry"
+        resp=$(post "{${world}\"action\": \"eval\", \"expression\": \"window.evalWorldProbe\"}")
+        assert_eq "$(echo "$resp" | json_get "['data']['result']")" "$expected" "eval: $label" || return 1
+    done
+
+    resp=$(post '{"action": "eval", "world": "isolated", "expression": "document.getElementById(\"probe\").textContent"}')
+    assert_eq "$(echo "$resp" | json_get "['data']['result']")" "dom" "eval: isolated world reads the DOM" || return 1
+
+    resp=$(curl -s -X POST "$BASE" -H "Content-Type: application/json" \
+        -d '{"action": "eval", "world": "main", "expression": "1"}')
+    assert_eq "$(echo "$resp" | json_get "['error']")" "world must be one of: page, isolated" "eval: unknown world rejected" || return 1
+    echo "OK: eval worlds (${#EVAL_WORLD_CASES[@]} cases)"
 }
 
 ALL_TESTS+=(
@@ -401,4 +433,5 @@ ALL_TESTS+=(
     test_get_interactive_elements
     test_get_resolution
     test_calibrate
+    test_eval_world
 )

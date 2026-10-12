@@ -61,26 +61,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Python packages (system-level, needs root).
 #
-# camoufox is pinned to 0.4.11 ON PURPOSE. Leaving it unpinned pulled whatever
-# was newest at build time — camoufox 0.5.x reshaped the browser's on-disk
-# `distribution/` layout (no default `policies.json`), which broke
-# install_extensions.py mid-build (FileNotFoundError). Pinning locks the browser
-# build + layout the rest of this image is designed around (Firefox 135).
-#
-# Playwright is pinned to 1.53.0 to MATCH camoufox 0.4.11. camoufox 0.4.11
-# declares an UNPINNED `playwright` dependency, so a fresh `pip install` pulls
-# whatever is newest — and Playwright >= 1.60 crashes camoufox's custom Firefox
-# 135 build on protocol events (uncaught page errors with no location, WebSocket
-# asserts, etc.) because the driver's juggler expectations no longer match. See
-# daijro/camoufox#617 and microsoft/playwright#39767. Pinning to the last
-# pre-1.60 release the camoufox 0.4.11 / Firefox 135 juggler was built against
-# fixes the whole class of crashes at the source (vs. patching each failing
-# assert). Bump camoufox and playwright IN LOCKSTEP, and re-verify
-# install_extensions.py against the new browser layout.
+# camoufox, Playwright, and the Camoufox browser build below move IN LOCKSTEP.
+# Each camoufox release pairs with one browser build and caps Playwright,
+# because Playwright drives the browser over its Juggler protocol and every
+# Playwright minor may change it (daijro/camoufox#617,
+# microsoft/playwright#39767). camoufox 0.5.8 pairs with browser
+# 156.0.1-beta.36 and requires Playwright < 1.63; Playwright 1.61+ needs
+# browser beta.30 or newer. After a bump, re-verify install_extensions.py
+# against the browser's distribution/ layout and run the full test suite.
 RUN pip install --no-cache-dir \
-    "camoufox[geoip]==0.4.11" \
-    "playwright==1.53.0" \
+    "camoufox[geoip]==0.5.8" \
+    "playwright==1.62.0" \
     pyautogui fastapi uvicorn fastmcp Pillow pyyaml "redis[hiredis]"
+
+# camoufox installs fpgen's fingerprint model inside site-packages, checked
+# against the sha256 values camoufox pins. Install it as root here so the
+# browser user only ever reads it.
+RUN python -c 'from camoufox.fpgen_model import ensure_fpgen_model; ensure_fpgen_model()'
 
 # Create non-root user and directories
 RUN groupadd -g 1000 browser && useradd -u 1000 -g 1000 -m browser
@@ -92,24 +89,20 @@ RUN chown -R browser:browser /usr/local/lib/python3.12/site-packages/camoufox/
 # Switch to non-root user for the Camoufox archive and extensions
 USER browser
 
-# Camoufox 0.4.11 resolves its browser binary from the latest compatible GitHub
-# release. Pin the archive too: beta.29 stopped executing the fixture's second
-# inline script, while beta.28 is compatible with the pinned Playwright driver.
+# Install the browser build camoufox 0.5.8 pairs with. `camoufox fetch` checks
+# the download against the release's GitHub digest and records it in the
+# install's version.json; the build fails unless that digest is the one pinned
+# here, so a replaced release asset cannot slip into the image.
 ARG TARGETARCH
 RUN set -eux; \
     case "$TARGETARCH" in \
-        amd64) camoufox_arch='x86_64'; camoufox_sha='924f3109ccd6d47cd6a0384d67a345fadf975d48b6319f8dbbd5954c588982bd' ;; \
-        arm64) camoufox_arch='arm64'; camoufox_sha='3a105a2fc929e80a79b4b7fce2c93ed62c4fb2c877f3c1ed2a5d66a1c4fe968f' ;; \
+        amd64) camoufox_sha='72637885ee67c93466ad377831c647192f8f08fb5c6fd9279de1320b49dd2b53' ;; \
+        arm64) camoufox_sha='8b5fd083721c807ee2a752265683482477105052fa0e21739388b527ae067c15' ;; \
         *) echo "unsupported Camoufox architecture: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
-    camoufox_url="https://github.com/daijro/camoufox/releases/download/v152.0.4-beta.28/camoufox-152.0.4-beta.28-lin.${camoufox_arch}.zip"; \
-    wget -q -O /tmp/camoufox.zip "$camoufox_url"; \
-    echo "${camoufox_sha}  /tmp/camoufox.zip" | sha256sum -c -; \
-    mkdir -p /home/browser/.cache/camoufox; \
-    python -c 'import zipfile; zipfile.ZipFile("/tmp/camoufox.zip").extractall("/home/browser/.cache/camoufox")'; \
-    printf '{"version":"152.0.4","release":"beta.28"}' > /home/browser/.cache/camoufox/version.json; \
-    chmod -R 0755 /home/browser/.cache/camoufox; \
-    rm /tmp/camoufox.zip
+    python -m camoufox fetch official/156.0.1-beta.36; \
+    installed_sha=$(python -c 'import json, pathlib, camoufox.pkgman as p; print(json.loads((pathlib.Path(p.camoufox_path(download_if_missing=False)) / "version.json").read_text()).get("sha256") or "")'); \
+    test "$installed_sha" = "$camoufox_sha"
 
 # Copy scripts and install extensions (writes to ~/.cache/camoufox)
 COPY --chown=browser:browser scripts/ /scripts/

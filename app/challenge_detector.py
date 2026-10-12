@@ -70,6 +70,11 @@ _SNAPSHOT_SCRIPT = r"""() => {
   addElements("[role='dialog'][aria-label*='captcha' i], [role='dialog'][aria-label*='verification' i]", "generic-challenge", true);
   addElements("[data-captcha], [data-challenge]", "generic-challenge", true);
 
+  // Camoufox evaluates in an isolated world that cannot see page globals.
+  // wrappedJSObject is the page's own window; checking an own property on it
+  // runs no page code.
+  const pageWindow = window.wrappedJSObject || window;
+
   return {
     iframes: Array.from(document.querySelectorAll("iframe")).slice(0, maxItems).map((node) => ({
       resource: sanitiseResource(node.getAttribute("src")),
@@ -81,8 +86,8 @@ _SNAPSHOT_SCRIPT = r"""() => {
     })),
     elements,
     globals: {
-      aws_waf: Object.prototype.hasOwnProperty.call(window, "AwsWafCaptcha"),
-      geetest: Object.prototype.hasOwnProperty.call(window, "initGeetest4"),
+      aws_waf: Object.prototype.hasOwnProperty.call(pageWindow, "AwsWafCaptcha"),
+      geetest: Object.prototype.hasOwnProperty.call(pageWindow, "initGeetest4"),
     },
   };
 }"""

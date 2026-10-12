@@ -192,7 +192,10 @@ Response: `{"url": "...", "title": "..."}`
 {"action": "get_computed_style", "selector": "main article", "properties": ["display", "font-size"]}
 {"action": "eval", "expression": "document.title"}
 {"action": "eval", "expression": "document.querySelectorAll('a').length"}
+{"action": "eval", "expression": "document.title", "world": "isolated"}
 ```
+
+`eval` runs in the page's own JavaScript world by default, so it can read globals a site defines (`window.__NEXT_DATA__`). With `"world": "isolated"` it sees only the DOM, and page scripts cannot observe or hook it. Prefer `isolated` for DOM reads on sites that watch for automation.
 
 `get_interactive_elements` returns all buttons, links, inputs with `x`, `y`, `w`, `h`, `text`, `selector`, `visible`. Pass `x`, `y`, `w`, `h` to `system_click` so the click lands at a human offset inside the element.
 

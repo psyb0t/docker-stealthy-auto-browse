@@ -125,7 +125,7 @@ Conditions are mappings with a `type`. `timeout` is optional (0 by default), pol
 | `element` | `selector`; optional `state` | CSS selector reaches `visible` (default), `hidden`, `attached`, or `detached`. |
 | `text` | `text` | The page body's visible text contains the string. |
 | `url` | `matches` | The current URL matches the glob pattern, e.g. `*dashboard*`. |
-| `javascript` | `expression` | The expression evaluates to the boolean `true`. Non-boolean results fail the control step. |
+| `javascript` | `expression` | The expression evaluates to the boolean `true` in the page's own JavaScript world, like `eval`. Non-boolean results fail the control step. |
 | `output` | `output_id` and exactly one of `equals` or `exists` | A prior `output_id` exists or its optional list `path` equals the supplied JSON value. |
 | `all` / `any` | `conditions` | Every / any nested condition matches. |
 | `not` | `condition` | Its nested condition does not match. |

@@ -700,15 +700,18 @@ if not _cluster_mode:
         return _text_result(await _call("fill", selector=selector, value=value))
 
     @mcp.tool
-    async def eval_js(expression: str) -> str:
-        """Execute JavaScript in the page context and return the result.
+    async def eval_js(expression: str, world: str = "page") -> str:
+        """Execute JavaScript in the page and return the result.
 
         Examples: "document.title", "document.querySelectorAll('a').length".
 
         Args:
             expression: JavaScript expression to evaluate.
+            world: "page" (default) runs in the page's own JavaScript world and
+                can read page globals such as window.__NEXT_DATA__. "isolated"
+                sees only the DOM; page scripts cannot observe or hook it.
         """
-        return _text_result(await _call("eval", expression=expression))
+        return _text_result(await _call("eval", expression=expression, world=world))
 
     @mcp.tool
     async def wait_for_element(

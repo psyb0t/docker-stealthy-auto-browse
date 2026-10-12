@@ -39,51 +39,97 @@ def test_non_object_persisted_config_is_rejected() -> None:
                 assert browser._load_persisted_config() is None
 
 
-def test_webgl_cohort_is_filtered_and_persisted() -> None:
-    config: dict[str, object] = {}
-    sample_webgl = MagicMock(return_value=_webgl_cohort())
+def test_known_persisted_webgl_identity_is_kept() -> None:
+    config: dict[str, object] = _webgl_cohort()
+    expected = dict(config)
+    known_gpus = MagicMock(return_value=frozenset({("Intel", "Intel renderer")}))
 
-    with patch("camoufox.webgl.sample_webgl", sample_webgl):
-        selected = browser._prepare_webgl_config(config)
+    with patch("camoufox.webgl.firefox_gpus", known_gpus):
+        browser._drop_unknown_webgl_identity(config)
 
-    assert selected == ("Intel", "Intel renderer")
-    assert config["webGl:supportedExtensions"] == ["ANGLE_instanced_arrays"]
-    assert config["webGl2:supportedExtensions"] == ["ANGLE_instanced_arrays"]
-    assert "webGl2Enabled" not in config
-    sample_webgl.assert_called_once_with("lin")
+    assert config == expected
+    known_gpus.assert_called_once_with("lin")
 
 
-def test_persisted_webgl_identity_selects_the_same_cohort() -> None:
+def test_unknown_persisted_webgl_identity_is_dropped() -> None:
     config: dict[str, object] = {
-        "webGl:vendor": "Persisted vendor",
-        "webGl:renderer": "Persisted renderer",
+        **_webgl_cohort("Removed"),
+        "navigator.userAgent": "kept",
     }
-    sample_webgl = MagicMock(return_value=_webgl_cohort("Persisted vendor"))
+    known_gpus = MagicMock(return_value=frozenset({("Intel", "Intel renderer")}))
 
-    with patch("camoufox.webgl.sample_webgl", sample_webgl):
-        browser._prepare_webgl_config(config)
+    with patch("camoufox.webgl.firefox_gpus", known_gpus):
+        browser._drop_unknown_webgl_identity(config)
 
-    sample_webgl.assert_called_once_with(
-        "lin",
-        "Persisted vendor",
-        "Persisted renderer",
-    )
+    assert config == {"webGl2Enabled": True, "navigator.userAgent": "kept"}
 
 
-def test_invalid_persisted_webgl_identity_falls_back() -> None:
+def test_identity_without_webgl_is_left_for_camoufox() -> None:
+    config: dict[str, object] = {"navigator.userAgent": "kept"}
+
+    with patch("camoufox.webgl.firefox_gpus", MagicMock(return_value=frozenset())):
+        browser._drop_unknown_webgl_identity(config)
+
+    assert config == {"navigator.userAgent": "kept"}
+
+
+def test_persisted_user_agent_follows_the_installed_firefox() -> None:
     config: dict[str, object] = {
-        "webGl:vendor": "Removed vendor",
-        "webGl:renderer": "Removed renderer",
+        "navigator.userAgent": (
+            "Mozilla/5.0 (X11; Linux x86_64; rv:152.0) Gecko/20100101 Firefox/152.0"
+        ),
+        "headers.User-Agent": (
+            "Mozilla/5.0 (X11; Linux x86_64; rv:152.0) Gecko/20100101 Firefox/152.0"
+        ),
+        "navigator.appVersion": "5.0 (X11)",
     }
-    sample_webgl = MagicMock(
-        side_effect=[ValueError("unknown cohort"), _webgl_cohort("Replacement")]
-    )
 
-    with patch("camoufox.webgl.sample_webgl", sample_webgl):
-        selected = browser._prepare_webgl_config(config)
+    browser._align_firefox_version(config, "156")
 
-    assert selected == ("Replacement", "Replacement renderer")
-    assert sample_webgl.call_args_list[1].args == ("lin",)
+    expected = "Mozilla/5.0 (X11; Linux x86_64; rv:156.0) Gecko/20100101 Firefox/156.0"
+    assert config["navigator.userAgent"] == expected
+    assert config["headers.User-Agent"] == expected
+    assert config["navigator.appVersion"] == "5.0 (X11)"
+
+
+def test_stock_default_overrides_are_dropped() -> None:
+    config: dict[str, object] = {
+        "navigator.doNotTrack": "1",
+        "navigator.globalPrivacyControl": True,
+        "headers.Accept-Encoding": "gzip, deflate, br, zstd",
+        "window.history.length": 3,
+        "navigator.platform": "Linux x86_64",
+    }
+
+    browser._drop_stock_default_overrides(config)
+
+    assert config == {"navigator.platform": "Linux x86_64"}
+
+
+def test_screen_follows_display_and_window_geometry_is_released() -> None:
+    config: dict[str, object] = {
+        "screen.width": 1366,
+        "screen.height": 768,
+        "window.outerWidth": 1920,
+        "window.outerHeight": 1080,
+        "window.innerWidth": 1920,
+        "window.innerHeight": 1000,
+        "window.screenX": 0,
+        "window.screenY": 0,
+        "window.devicePixelRatio": 1,
+    }
+
+    browser._update_config_screen(config, 1920, 1080)
+
+    assert config == {
+        "screen.width": 1920,
+        "screen.height": 1080,
+        "screen.availWidth": 1920,
+        "screen.availHeight": 1080,
+        "screen.availLeft": 0,
+        "screen.availTop": 0,
+        "window.devicePixelRatio": 1,
+    }
 
 
 def test_runtime_fontconfig_uses_absolute_bundled_font_path() -> None:
@@ -197,9 +243,12 @@ def test_finalized_environment_removes_partial_canvas_noise() -> None:
 
 def main_test() -> None:
     test_non_object_persisted_config_is_rejected()
-    test_webgl_cohort_is_filtered_and_persisted()
-    test_persisted_webgl_identity_selects_the_same_cohort()
-    test_invalid_persisted_webgl_identity_falls_back()
+    test_known_persisted_webgl_identity_is_kept()
+    test_unknown_persisted_webgl_identity_is_dropped()
+    test_identity_without_webgl_is_left_for_camoufox()
+    test_persisted_user_agent_follows_the_installed_firefox()
+    test_stock_default_overrides_are_dropped()
+    test_screen_follows_display_and_window_geometry_is_released()
     test_runtime_fontconfig_uses_absolute_bundled_font_path()
     test_runtime_fontconfig_rejects_missing_bundle_assets()
     test_linux_font_families_match_the_production_image()

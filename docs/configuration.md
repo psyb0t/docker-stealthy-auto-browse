@@ -138,16 +138,11 @@ docker run -d \
 
 This is how you maintain a logged-in session without re-authenticating every time the container restarts.
 
-The persisted properties include the generated font list, renderer cohort, and
-fingerprint noise seeds. Existing profiles created by older images keep their
-cookies and navigator identity. On their first start with this fix, the browser assigns and
-saves any missing graphical properties. Later starts reuse them. The image
-also resolves Camoufox's bundled Linux font aliases through an absolute runtime
-fontconfig path, so `sans-serif`, `serif`, and `monospace` do not collapse to a
-single fallback family. The saved font list includes the image's installed
-Linux families and compatibility aliases used by canvas probes. Page canvas,
-main-thread `OffscreenCanvas`, and worker `OffscreenCanvas` therefore resolve
-the same fonts.
+The persisted identity includes the navigator values, font list, GPU and WebGL parameters, speech voices, media devices, and audio seed. The window's size and position are not saved: the browser window is fitted inside the display and the page sees its real dimensions.
+
+Profiles created by older images keep their cookies and identity. On the first start with a newer browser, the saved User-Agent moves to the installed Firefox version, values that stock Firefox decides for itself (Do Not Track, Global Privacy Control, `Accept-Encoding`, history length) are dropped, any missing voices, media devices, or audio seed are added, and a GPU the browser has no WebGL data for is replaced with one that fits the identity. Later starts reuse the updated file.
+
+The image resolves Camoufox's bundled Linux font aliases through an absolute runtime fontconfig path, so `sans-serif`, `serif`, and `monospace` do not collapse to a single fallback family. The saved font list includes the image's installed Linux families and compatibility aliases used by canvas probes. Page canvas, main-thread `OffscreenCanvas`, and worker `OffscreenCanvas` therefore resolve the same fonts.
 
 ## Browser extensions
 
@@ -169,7 +164,7 @@ Want to add more? Mount a persistent profile and install them through the browse
 
 ## Window manager
 
-Openbox runs by default as the X11 window manager. It adds title bars and resize handles to popup windows (e.g. OAuth login dialogs) that would otherwise be too small to interact with. No stealth impact, because the WM operates at the X11 display level, not the browser fingerprint level. Visible through VNC.
+Openbox runs by default as the X11 window manager. It adds title bars and resize handles to popup windows (e.g. OAuth login dialogs) that would otherwise be too small to interact with. The main browser window is sized to fit under its title bar, so the whole page is on screen and the page reports the window's real size and position. No stealth impact, because the WM operates at the X11 display level, not the browser fingerprint level. Visible through VNC.
 
 ## VNC access
 

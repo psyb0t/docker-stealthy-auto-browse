@@ -34,11 +34,11 @@ site, network exit, timezone, browser build, and test date.
 
 | Component      | What it does                                                                                                                                                                                |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Camoufox**   | A custom build of Firefox with zero Chrome DevTools Protocol exposure. Bot detectors look for CDP signals, and this browser doesn't have any.                                                |
+| **Camoufox**   | A custom build of Firefox with zero Chrome DevTools Protocol exposure. Bot detectors look for CDP signals, and this browser doesn't have any. Automation scripts run in a JavaScript world the page cannot see. |
 | **Xvfb**       | Virtual framebuffer that lets the browser run with a full graphical display inside a container, no physical monitor needed. This matters because headless mode is another detection signal. |
-| **PyAutoGUI**  | Generates real OS-level mouse movements and keystrokes. The browser receives these as genuine user input. It has no idea it's being automated.                                               |
+| **PyAutoGUI**  | Generates real OS-level mouse movements and keystrokes. The page receives them as trusted user input, timed like a person. See [Two input modes](#two-input-modes).                         |
 | **noVNC**      | Web-based VNC client so you can watch the browser in real time from your own browser. Great for debugging and seeing exactly what's happening.                                              |
-| **Openbox**    | Lightweight window manager. It adds title bars and resize handles to popup windows (OAuth dialogs, etc.) that would otherwise be too small to interact with. Zero stealth impact.           |
+| **Openbox**    | Lightweight window manager. It adds title bars and resize handles to popup windows (OAuth dialogs, etc.) that would otherwise be too small to interact with. The main window is sized to fit under its title bar. Zero stealth impact. |
 | **HTTP API**   | A JSON API on port 8080 that lets you control everything: navigate pages, click elements, type text, take screenshots, manage tabs, handle cookies, and more.                               |
 | **MCP Server** | [Model Context Protocol](https://modelcontextprotocol.io/) server at `/mcp` on the same port. AI agents (Claude, etc.) can drive the browser directly over MCP using Streamable HTTP.       |
 | **ffmpeg**     | `x11grab` against Xvfb for screen recording. Captures actual rendered pixels including the OS-level mouse cursor. See [Screen Recording](#screen-recording).                                |

@@ -1,12 +1,10 @@
 """Unit tests for excluding Camoufox's self-managed default addon.
 
-Camoufox downloads its own uBlock Origin at launch. When that fetch fails it
-leaves an empty ``addons/UBO`` cache directory behind and never re-validates
-it, so every later launch appends the empty path and ``confirm_paths`` raises
-``InvalidAddonPath`` (``manifest.json is missing``), crash-looping the browser.
-This project installs uBlock Origin through ``distribution/policies.json``
-instead, so the launch excludes the default addon. These tests reproduce the
-poisoned-cache failure and prove the launch passes the exclusion.
+Camoufox downloads its own uBlock Origin into a shared cache at launch. This
+project installs uBlock Origin through ``distribution/policies.json`` at build
+time instead, so the launch excludes the default addon: no second copy, and no
+network fetch on every start. These tests prove the exclusion skips the
+download and that the launch passes it.
 """
 
 from __future__ import annotations
@@ -23,7 +21,6 @@ sys.path.insert(0, "/app")
 import browser
 import camoufox.addons as camoufox_addons
 from camoufox.addons import DefaultAddons, add_default_addons, confirm_paths
-from camoufox.exceptions import InvalidAddonPath
 
 MANIFEST_FILENAME = "manifest.json"
 
@@ -32,32 +29,33 @@ class _StopLaunch(Exception):
     """Halt _launch_browser right after launch_options is captured."""
 
 
-def test_poisoned_default_addon_cache_is_bypassed_when_excluded() -> None:
+def test_default_addon_is_downloaded_unless_excluded() -> None:
     with tempfile.TemporaryDirectory() as directory:
-        poisoned_path = Path(directory) / DefaultAddons.UBO.name
-        poisoned_path.mkdir()  # empty dir, no manifest.json: the failure state
 
         def fake_addon_path(name: str) -> str:
             return str(Path(directory) / name)
 
-        with patch.object(camoufox_addons, "get_addon_path", fake_addon_path):
-            # Without the exclusion Camoufox appends the poisoned cache dir and
-            # confirm_paths rejects it, reproducing the launch crash loop.
+        def fake_download(_url: str, extract_path: str, _name: str) -> None:
+            Path(extract_path, MANIFEST_FILENAME).write_text("{}", encoding="utf-8")
+
+        download = MagicMock(side_effect=fake_download)
+        with (
+            patch.object(camoufox_addons, "get_addon_path", fake_addon_path),
+            patch.object(camoufox_addons, "download_and_extract", download),
+        ):
+            # Without the exclusion Camoufox fetches its own uBlock Origin.
             included: list[str] = []
             add_default_addons(included, None)
-            assert included == [str(poisoned_path)]
-            try:
-                confirm_paths(included)
-            except InvalidAddonPath as error:
-                assert MANIFEST_FILENAME in str(error)
-            else:
-                raise AssertionError("expected InvalidAddonPath from poisoned cache")
+            assert included == [fake_addon_path(DefaultAddons.UBO.name)]
+            confirm_paths(included)
+            assert download.call_count == 1
 
-            # Excluding uBlock Origin keeps the poisoned path out entirely.
+            # Excluding it skips the fetch and adds nothing to the launch.
+            download.reset_mock()
             excluded: list[str] = []
             add_default_addons(excluded, [DefaultAddons.UBO])
             assert excluded == []
-            confirm_paths(excluded)  # nothing to reject
+            download.assert_not_called()
 
 
 async def test_launch_browser_excludes_default_ublock_addon() -> None:
@@ -90,7 +88,7 @@ async def test_launch_browser_excludes_default_ublock_addon() -> None:
 
 
 def main_test() -> None:
-    test_poisoned_default_addon_cache_is_bypassed_when_excluded()
+    test_default_addon_is_downloaded_unless_excluded()
     asyncio.run(test_launch_browser_excludes_default_ublock_addon())
     print(json.dumps({"result": "addon exclusion tests passed"}))
 
