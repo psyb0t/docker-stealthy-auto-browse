@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.1.4] 2026-10-14
+
+### Fixed
+
+- Since 3.1.0 the browser started with none of its four default extensions (uBlock Origin, LocalCDN, ClearURLs, Consent-O-Matic). camoufox 0.5 moved the browser into a versioned folder under its cache, named by `active_version` in `config.json`, and Firefox reads only the `distribution/policies.json` beside its own binary. The image build still wrote the extension policy to the cache root, which Firefox never reads. The build now writes it into the folder the browser runs from, and fails if that folder has no `camoufox-bin`, so a future layout change breaks the build instead of shipping a browser without extensions.
+
 ## [3.1.3] 2026-10-12
 
 3.1.0, 3.1.1, and 3.1.2 failed CI and were never published to Docker Hub, ClawHub, or the MCP registry. 3.1.3 is the first published release with their changes below.

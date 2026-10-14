@@ -16,6 +16,8 @@ done
 # --- Tests that use the shared main container (must run sequentially) ---
 # These use $BASE (the main browser container started by setup)
 MAIN_TESTS=(
+    # test_extensions.sh
+    test_default_extensions_loaded
     # test_api.sh
     test_health
     test_ping

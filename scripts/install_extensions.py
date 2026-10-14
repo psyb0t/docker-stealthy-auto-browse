@@ -12,6 +12,9 @@ import urllib.request
 EXTENSION_HOST = "addons.mozilla.org"
 DOWNLOAD_TIMEOUT_SECONDS = 30
 DOWNLOAD_USER_AGENT = "stealthy-auto-browse-extension-installer"
+CAMOUFOX_CONFIG_FILE = "config.json"
+CAMOUFOX_ACTIVE_VERSION_KEY = "active_version"
+CAMOUFOX_BINARY = "camoufox-bin"
 
 EXTENSIONS = [
     {
@@ -42,7 +45,14 @@ EXTENSIONS = [
 
 
 def get_camoufox_path() -> str:
-    """Get the Camoufox installation path."""
+    """Return the folder holding the camoufox-bin that actually launches.
+
+    Firefox reads only the distribution/policies.json beside its own binary.
+    Since camoufox 0.5, `camoufox path` prints the cache root while the browser
+    lives in the versioned folder named by config.json's active_version, so the
+    root is used only when it holds the binary itself (the older layout).
+    Raises RuntimeError when no folder with the binary can be found.
+    """
     result = subprocess.run(
         [sys.executable, "-m", "camoufox", "path"],
         capture_output=True,
@@ -50,7 +60,19 @@ def get_camoufox_path() -> str:
     )
     if result.returncode != 0:
         raise RuntimeError(f"Failed to get camoufox path: {result.stderr}")
-    return result.stdout.strip()
+
+    cache_root = result.stdout.strip()
+    browser_dir = cache_root
+    config_file = os.path.join(cache_root, CAMOUFOX_CONFIG_FILE)
+    if os.path.exists(config_file):
+        with open(config_file) as f:
+            active_version = json.load(f).get(CAMOUFOX_ACTIVE_VERSION_KEY)
+        if active_version:
+            browser_dir = os.path.join(cache_root, active_version)
+
+    if not os.path.isfile(os.path.join(browser_dir, CAMOUFOX_BINARY)):
+        raise RuntimeError(f"{CAMOUFOX_BINARY} not found in {browser_dir}")
+    return browser_dir
 
 
 def download_extension(extension: dict[str, str], destination: str) -> None:
