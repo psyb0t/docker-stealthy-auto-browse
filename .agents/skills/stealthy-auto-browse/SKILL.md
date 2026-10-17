@@ -60,7 +60,7 @@ export STEALTHY_AUTO_BROWSE_URL=http://127.0.0.1:8080
 
 **Verify:** `curl $STEALTHY_AUTO_BROWSE_URL/health` returns `ok`.
 
-Recommended defaults: bind to `127.0.0.1`, set `AUTH_TOKEN` to a strong random value, do not expose port 5900 to anything beyond localhost, and pin the container image by digest. See [references/setup.md](references/setup.md).
+Recommended defaults: bind to `127.0.0.1`, set `AUTH_TOKEN` to a strong random value, and do not expose port 5900 to anything beyond localhost. See [references/setup.md](references/setup.md).
 
 ## HTTP API
 
@@ -436,11 +436,9 @@ Pipe a YAML script via stdin, get JSON results on stdout, container exits. No HT
 ```bash
 cat my-script.yaml | docker run --rm -i \
   -e TARGET_URL=https://example.com \
-  psyb0t/stealthy-auto-browse@sha256:7ce5d42ddb3b7fdbfb4af2d4bf6072f5a862d5dd2b64c7feb496e493f587223c \
+  psyb0t/stealthy-auto-browse:latest \
   --script > results.json
 ```
-
-Replace the digest with the one you've reviewed for the version you're running (`docker pull psyb0t/stealthy-auto-browse:v1.0.0 && docker inspect --format='{{index .RepoDigests 0}}' psyb0t/stealthy-auto-browse:v1.0.0`).
 
 ### Script format
 
@@ -492,7 +490,7 @@ steps:
 
 ```bash
 cat <<'EOF' | docker run --rm -i -e URL=https://staging.your-site.example \
-  psyb0t/stealthy-auto-browse@sha256:7ce5d42ddb3b7fdbfb4af2d4bf6072f5a862d5dd2b64c7feb496e493f587223c \
+  psyb0t/stealthy-auto-browse:latest \
   --script > results.json
 name: Quick Scrape
 steps:
@@ -518,7 +516,7 @@ Mount YAML files to `/loaders`. When `goto` hits a matching URL, the loader's st
 
 ```bash
 docker run -d -p 127.0.0.1:8080:8080 -v ./my-loaders:/loaders \
-  psyb0t/stealthy-auto-browse@sha256:7ce5d42ddb3b7fdbfb4af2d4bf6072f5a862d5dd2b64c7feb496e493f587223c
+  psyb0t/stealthy-auto-browse:latest
 ```
 
 In script mode:
@@ -526,7 +524,7 @@ In script mode:
 ```bash
 cat script.yaml | docker run --rm -i \
   -v ./my-loaders:/loaders \
-  psyb0t/stealthy-auto-browse@sha256:7ce5d42ddb3b7fdbfb4af2d4bf6072f5a862d5dd2b64c7feb496e493f587223c \
+  psyb0t/stealthy-auto-browse:latest \
   --script
 ```
 

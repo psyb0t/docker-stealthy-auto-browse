@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.1.5] 2026-10-17
+
+### Changed
+
+- Documentation only. The agent skill runs `psyb0t/stealthy-auto-browse:latest` instead of a pinned digest, and the cluster setup downloads the compose file from `main` instead of an old release tag.
+
 ## [3.1.4] 2026-10-14
 
 ### Fixed

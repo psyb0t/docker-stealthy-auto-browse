@@ -15,13 +15,7 @@ Before running anything beyond a throwaway local smoke test:
 
 1. **Bind to loopback.** Map ports as `-p 127.0.0.1:8080:8080` (and `127.0.0.1:5900:5900` if you need the viewer) so the API is not reachable from other machines on the network.
 2. **Set `AUTH_TOKEN` to a strong random value.** `-e AUTH_TOKEN=$(openssl rand -hex 32)`. Required as soon as the service is reachable beyond localhost. Pass it via `Authorization: Bearer <key>` headers.
-3. **Pin the image by digest.** Tags are mutable, so pin the digest you've reviewed:
-   ```bash
-   docker pull psyb0t/stealthy-auto-browse:v1.0.0
-   docker inspect --format='{{index .RepoDigests 0}}' psyb0t/stealthy-auto-browse:v1.0.0
-   # → psyb0t/stealthy-auto-browse@sha256:7ce5d42ddb3b7fdbfb4af2d4bf6072f5a862d5dd2b64c7feb496e493f587223c
-   ```
-   Use the `@sha256:...` form in every `docker run` and compose file. Re-pull and re-pin only when consciously upgrading.
+3. **Pull the image before you start.** `docker pull psyb0t/stealthy-auto-browse:latest` gets the current release. Pull again and recreate the container to upgrade.
 4. **Don't mount the docker socket.** Don't run with `--privileged`. Don't grant the container egress beyond what the test target needs (use a Docker network with restricted egress where supported).
 5. **Don't persist real session data.** If you mount `/userdata`, use a dedicated test account, encrypt the volume host-side if it leaves the machine, and shred (`rm -rf`) it when the test concludes.
 6. **Disable the noVNC viewer if you don't need it.** Don't publish port 5900. If you do publish it for local debugging, bind it to `127.0.0.1` and never expose it on a public interface. The viewer gives full keyboard/mouse control of the browser, including any logged-in sessions.
@@ -29,12 +23,10 @@ Before running anything beyond a throwaway local smoke test:
 ## Quick start (localhost, no auth, for smoke tests only)
 
 ```bash
-DIGEST=sha256:7ce5d42ddb3b7fdbfb4af2d4bf6072f5a862d5dd2b64c7feb496e493f587223c
-
 docker run -d --name browser \
   -p 127.0.0.1:8080:8080 \
   -p 127.0.0.1:5900:5900 \
-  psyb0t/stealthy-auto-browse@$DIGEST
+  psyb0t/stealthy-auto-browse:latest
 ```
 
 **Verify:** `curl http://127.0.0.1:8080/health` returns `ok` when the browser is ready (~10s first boot).
@@ -43,7 +35,6 @@ docker run -d --name browser \
 ## Recommended run (auth enabled, hardened)
 
 ```bash
-DIGEST=sha256:7ce5d42ddb3b7fdbfb4af2d4bf6072f5a862d5dd2b64c7feb496e493f587223c
 TOKEN=$(openssl rand -hex 32)
 echo "AUTH_TOKEN=$TOKEN" > .env.browser   # gitignored
 chmod 600 .env.browser
@@ -57,7 +48,7 @@ docker run -d --name browser \
   --security-opt=no-new-privileges \
   --read-only \
   --tmpfs /tmp:rw,noexec,nosuid \
-  psyb0t/stealthy-auto-browse@$DIGEST
+  psyb0t/stealthy-auto-browse:latest
 ```
 
 Notes on the hardening flags:
@@ -97,19 +88,17 @@ Notes on the hardening flags:
 ## Common configurations
 
 ```bash
-DIGEST=sha256:7ce5d42ddb3b7fdbfb4af2d4bf6072f5a862d5dd2b64c7feb496e493f587223c
-
 # Match timezone for realistic fingerprint during testing
 docker run -d -p 127.0.0.1:8080:8080 \
   -e TZ=Europe/Bucharest \
   --env-file .env.browser \
-  psyb0t/stealthy-auto-browse@$DIGEST
+  psyb0t/stealthy-auto-browse:latest
 
 # Route through your authorized proxy
 docker run -d -p 127.0.0.1:8080:8080 \
   -e PROXY_URL=http://user:pass@proxy.you-own.example:8888 \
   --env-file .env.browser \
-  psyb0t/stealthy-auto-browse@$DIGEST
+  psyb0t/stealthy-auto-browse:latest
 
 # For a private pr0xteus (v0.11.0+) HTTP proxy, allocate a lease, read its
 # proxies.http URL, and pass that as PROXY_URL (Camoufox can't reliably do authenticated SOCKS5).
@@ -119,14 +108,14 @@ docker run -d -p 127.0.0.1:8080:8080 \
 docker run -d -p 127.0.0.1:8080:8080 \
   -e XVFB_RESOLUTION=1280x720 \
   --env-file .env.browser \
-  psyb0t/stealthy-auto-browse@$DIGEST
+  psyb0t/stealthy-auto-browse:latest
 
 # Persistent profile: TEST ACCOUNTS ONLY, shred when done
 mkdir -p ./profile && chmod 700 ./profile
 docker run -d -p 127.0.0.1:8080:8080 \
   -v ./profile:/userdata \
   --env-file .env.browser \
-  psyb0t/stealthy-auto-browse@$DIGEST
+  psyb0t/stealthy-auto-browse:latest
 # When the test run ends:
 docker rm -f browser && rm -rf ./profile
 
@@ -134,13 +123,13 @@ docker rm -f browser && rm -rf ./profile
 docker run -d -p 127.0.0.1:9090:9090 -p 127.0.0.1:6900:6900 \
   -e HTTP_LISTEN_PORT=9090 -e VNC_LISTEN_PORT=6900 \
   --env-file .env.browser \
-  psyb0t/stealthy-auto-browse@$DIGEST
+  psyb0t/stealthy-auto-browse:latest
 
 # With page loaders
 docker run -d -p 127.0.0.1:8080:8080 \
   -v ./my-loaders:/loaders \
   --env-file .env.browser \
-  psyb0t/stealthy-auto-browse@$DIGEST
+  psyb0t/stealthy-auto-browse:latest
 
 # With screen recording. /recordings must be mounted writable or
 # start_recording fails fast
@@ -148,7 +137,7 @@ mkdir -p ./recordings
 docker run -d -p 127.0.0.1:8080:8080 \
   -v ./recordings:/recordings \
   --env-file .env.browser \
-  psyb0t/stealthy-auto-browse@$DIGEST
+  psyb0t/stealthy-auto-browse:latest
 
 # File-backed virtual camera and microphone for an authorized WebRTC test
 mkdir -p ./media
@@ -157,7 +146,7 @@ docker run -d -p 127.0.0.1:8080:8080 \
   -e VIRTUAL_CAMERA_FILE=camera.webm \
   -e VIRTUAL_MICROPHONE_FILE=microphone.wav \
   --env-file .env.browser \
-  psyb0t/stealthy-auto-browse@$DIGEST
+  psyb0t/stealthy-auto-browse:latest
 
 # Dynamic file-backed media for an authorized compatibility test.
 # The media mount must be writable only when uploads are needed.
@@ -165,7 +154,7 @@ docker run -d -p 127.0.0.1:8080:8080 \
   -v ./media:/media:rw \
   -e VIRTUAL_MEDIA_DYNAMIC=true \
   --env-file .env.browser \
-  psyb0t/stealthy-auto-browse@$DIGEST
+  psyb0t/stealthy-auto-browse:latest
 ```
 
 With `VIRTUAL_MEDIA_DYNAMIC=true`, use authenticated `set_virtual_media_source`
@@ -214,20 +203,16 @@ Keep `~/.openclaw/openclaw.json` mode `600` if it contains real tokens, or read 
 
 Run multiple browser instances behind HAProxy with request queuing, sticky sessions, and Redis cookie sync. `NUM_REPLICAS` sets the number of instances (default: 10).
 
-**Do not pipe the compose file from a moving branch.** Download it, review it, and pin to a release tag or commit SHA you've audited:
+Download the compose file and read it before you start it. Don't pipe it straight into `docker compose`:
 
 ```bash
-# Pick a release tag (or commit SHA) you've reviewed.
-RELEASE=v1.0.0
-
-# Download to a local file. Do NOT pipe it straight into docker compose.
+# Download to a local file.
 curl -fsSL -o docker-compose.cluster.yml \
-  "https://raw.githubusercontent.com/psyb0t/docker-stealthy-auto-browse/${RELEASE}/docker-compose.cluster.yml"
+  "https://raw.githubusercontent.com/psyb0t/docker-stealthy-auto-browse/main/docker-compose.cluster.yml"
 
 # Read it. Confirm the images, networks, and volume mounts match what you expect.
 $EDITOR docker-compose.cluster.yml
 
-# Pin each image in the compose file to a digest you've verified before bringing it up.
 docker compose -f docker-compose.cluster.yml up -d
 ```
 
