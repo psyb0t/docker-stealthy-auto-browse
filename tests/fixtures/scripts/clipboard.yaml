@@ -1,0 +1,6 @@
+name: clipboard
+steps:
+  - action: set_clipboard
+    text: "script clipboard λ"
+  - action: get_clipboard
+    output_id: clipboard

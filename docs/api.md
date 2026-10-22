@@ -288,6 +288,17 @@ Capture `console.log`, `console.error`, `console.warn`, and other console output
 | `enter_fullscreen` | none       | Puts the browser in fullscreen mode (hides address bar and window chrome).                                                                                                                                                                                                                                                                                 |
 | `exit_fullscreen`  | none       | Exits fullscreen mode.                                                                                                                                                                                                                                                                                                                                     |
 
+### Clipboard
+
+The clipboard actions use the real X11 `CLIPBOARD` selection shared by Camoufox and noVNC. Browser copy operations are visible to `get_clipboard`, and text written by `set_clipboard` can be pasted into the page with `Ctrl+V`. Clipboard contents are not written to request logs.
+
+| Action | Parameters | What It Does |
+| ------ | ---------- | ------------ |
+| `set_clipboard` | `text` | Replaces the text clipboard. `text` is required, must be a string, may be empty, and may contain at most 1 MiB of UTF-8 data. Returns `length` in Unicode characters and `bytes` in UTF-8 bytes. |
+| `get_clipboard` | none | Returns `text`, its Unicode character `length`, and its UTF-8 `bytes`. Non-UTF-8 or oversized clipboard contents return an error. |
+
+Both actions work as HTTP actions, dedicated MCP tools, YAML script steps, and `run_script` steps. Cluster mode exposes only `run_script`, so place clipboard operations in the same script when they must run on one browser instance.
+
 ### Scrolling
 
 | Action                       | Parameters                          | What It Does                                                                                                                                                                                                                                         |

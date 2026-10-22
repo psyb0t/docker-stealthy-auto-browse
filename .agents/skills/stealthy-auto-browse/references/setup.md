@@ -79,6 +79,7 @@ Notes on the hardening flags:
 | `VIRTUAL_MEDIA_UPLOAD_MAX_BYTES` | `50 MiB` | Maximum decoded upload size accepted by `upload_virtual_media` in dynamic mode. |
 | `VNC_LISTEN_HOST` | `0.0.0.0` | VNC bind address inside the container. As above, prefer a `127.0.0.1:5900:5900` host port mapping. |
 | `VNC_LISTEN_PORT` | `5900` | noVNC web viewer port. **The viewer has no authentication of its own**, so only publish to localhost. |
+| `VNC_SHOW_CURSOR` | `true` | Shows the actual automated pointer position in noVNC. Set to `false` to hide it. Only `true` and `false` are accepted. |
 | `PUID` | `1000` | Run the container as this UID. At startup the container fixes ownership of `/userdata`, `/loaders`, `/recordings` to match. |
 | `PGID` | value of `PUID` | Run the container as this GID. |
 | `LANG` | `en_US.UTF-8` | Browser locale/language. |

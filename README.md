@@ -16,6 +16,7 @@ site, network exit, timezone, browser build, and test date.
 - [What's inside](#whats-inside)
 - [Quick start](#quick-start)
 - [Two input modes](#two-input-modes)
+- [Clipboard](#clipboard)
 - [Virtual camera & microphone](#virtual-camera--microphone)
 - [MCP server](#mcp-server)
 - [Agent integrations](#agent-integrations)
@@ -37,7 +38,7 @@ site, network exit, timezone, browser build, and test date.
 | **Camoufox**   | A custom build of Firefox with zero Chrome DevTools Protocol exposure. Bot detectors look for CDP signals, and this browser doesn't have any. Automation scripts run in a JavaScript world the page cannot see. |
 | **Xvfb**       | Virtual framebuffer that lets the browser run with a full graphical display inside a container, no physical monitor needed. This matters because headless mode is another detection signal. |
 | **PyAutoGUI**  | Generates real OS-level mouse movements and keystrokes. The page receives them as trusted user input, timed like a person. See [Two input modes](#two-input-modes).                         |
-| **noVNC**      | Web-based VNC client so you can watch the browser in real time from your own browser. Great for debugging and seeing exactly what's happening.                                              |
+| **noVNC**      | Web-based VNC client so you can watch the browser in real time from your own browser. The viewer shows the automated pointer at its actual position by default. Set `VNC_SHOW_CURSOR=false` to hide it. |
 | **Openbox**    | Lightweight window manager. It adds title bars and resize handles to popup windows (OAuth dialogs, etc.) that would otherwise be too small to interact with. The main window is sized to fit under its title bar. Zero stealth impact. |
 | **HTTP API**   | A JSON API on port 8080 that lets you control everything: navigate pages, click elements, type text, take screenshots, manage tabs, handle cookies, and more.                               |
 | **MCP Server** | [Model Context Protocol](https://modelcontextprotocol.io/) server at `/mcp` on the same port. AI agents (Claude, etc.) can drive the browser directly over MCP using Streamable HTTP.       |
@@ -112,6 +113,20 @@ System input moves and types the way people do. The defaults are fitted to publi
 Each container behaves like one consistent person, and every timing can be overridden per request. The model and options are in [Humanized input](docs/api.md#humanized-input). How it scores against behavioral detectors is in [Behavioral detection results](#behavioral-detection-results).
 
 Full breakdown and usage guide: [docs/stealth.md](docs/stealth.md)
+
+## Clipboard
+
+`set_clipboard` and `get_clipboard` use the real X11 text clipboard shared by Camoufox and noVNC. Text copied in the browser can be read through the API, and text set through the API can be pasted with `Ctrl+V`. Values must be valid UTF-8 and may contain at most 1 MiB.
+
+```bash
+curl -X POST http://localhost:8080 -H "Content-Type: application/json" \
+  -d '{"action":"set_clipboard","text":"paste me"}'
+
+curl -X POST http://localhost:8080 -H "Content-Type: application/json" \
+  -d '{"action":"get_clipboard"}'
+```
+
+Both actions are dedicated MCP tools. In cluster mode, use them inside one `run_script` call so one browser instance owns both operations. See [the API reference](docs/api.md#clipboard).
 
 ## Virtual camera & microphone
 

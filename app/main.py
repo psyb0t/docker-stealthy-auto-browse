@@ -38,6 +38,7 @@ from browser import (
     BrowserConfig,
     BrowserError,
 )
+from clipboard import Clipboard, ClipboardError, redact_clipboard_params
 from fastapi import FastAPI, Request
 from PIL import Image
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -89,7 +90,10 @@ def _safe_request_id(incoming: str) -> str:
 def log_request(action: str, params: dict | None = None) -> None:
     """Log incoming action with structured fields. Redactor masks tokens."""
     if params:
-        log.info("request", extra={"action": action, "params": params})
+        log.info(
+            "request",
+            extra={"action": action, "params": redact_clipboard_params(action, params)},
+        )
     else:
         log.info("request", extra={"action": action})
 
@@ -114,6 +118,8 @@ system = System()
 
 # Screen recorder (ffmpeg x11grab)
 recorder = Recorder()
+
+clipboard = Clipboard()
 
 # Global browser instance
 browser: Browser | None = None
@@ -578,6 +584,23 @@ async def dispatch_action(cmd: dict) -> dict:
         duration = cmd.get("duration", 1)
         await asyncio.sleep(float(duration))
         return make_response(True, {"slept": duration})
+
+    if action == "set_clipboard":
+        if "text" not in cmd:
+            return make_response(False, error="text required")
+        text = cmd["text"]
+        if not isinstance(text, str):
+            return make_response(False, error="text must be a string")
+        try:
+            return make_response(True, await clipboard.set_text(text))
+        except ClipboardError as error:
+            return make_response(False, error=str(error))
+
+    if action == "get_clipboard":
+        try:
+            return make_response(True, await clipboard.get_text())
+        except ClipboardError as error:
+            return make_response(False, error=str(error))
 
     if action == "start_recording":
         mode = cmd.get("mode", "window")

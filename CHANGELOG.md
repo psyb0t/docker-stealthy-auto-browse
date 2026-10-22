@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.2.0] 2026-10-22
+
+### Added
+
+- The HTTP API, MCP server, `run_script`, and YAML script mode now expose `set_clipboard` and `get_clipboard` for the real X11 text clipboard shared with Camoufox and noVNC. Clipboard text is UTF-8, limited to 1 MiB, and redacted from request logs.
+- The noVNC framebuffer now shows the actual automated pointer position by default. Set `VNC_SHOW_CURSOR=false` to hide it. Invalid values stop startup with an error.
+
 ## [3.1.5] 2026-10-17
 
 ### Changed

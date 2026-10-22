@@ -436,6 +436,19 @@ assert mobile_extensions.isdisjoint(fingerprint["webgl"]["extensions"])
     echo "OK: script_fingerprint_consistency (font and WebGL surfaces agree)"
 }
 
+test_script_clipboard() {
+    local out actual
+    out=$(_script_run clipboard.yaml)
+    if [[ -z "$out" ]]; then
+        echo "  FAIL: script_clipboard: no output"
+        return 1
+    fi
+
+    actual=$(echo "$out" | json_get "['outputs']['clipboard']['text']")
+    assert_eq "$actual" "script clipboard λ" "script_clipboard: exact text" || return 1
+    echo "OK: script_clipboard"
+}
+
 ALL_TESTS+=(
     test_script_basic
     test_script_on_error_continue
@@ -455,4 +468,5 @@ ALL_TESTS+=(
     test_script_control_flow
     test_script_challenge_detection
     test_script_fingerprint_consistency
+    test_script_clipboard
 )

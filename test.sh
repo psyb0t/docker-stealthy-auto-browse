@@ -62,6 +62,11 @@ MAIN_TESTS=(
     test_fullscreen
     test_selector_input
     test_click
+    # test_clipboard.sh
+    test_clipboard_roundtrip
+    test_clipboard_browser_copy_paste
+    test_clipboard_validation
+    test_clipboard_run_script
     # test_mcp.sh
     test_mcp
     # test_navigation.sh

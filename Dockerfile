@@ -51,7 +51,7 @@ RUN apt-get update \
 
 # UI automation tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    xdotool scrot python3-tk python3-dev \
+    xdotool xclip scrot python3-tk python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Screen recording (ffmpeg x11grab + libx264)

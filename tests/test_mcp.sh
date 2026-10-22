@@ -99,9 +99,9 @@ try:
     r = mcp_request(2, "tools/list", {})
     tools = r.get("result", {}).get("tools", [])
     names = [t["name"] for t in tools]
-    ok = len(tools) == 18
-    results.append((f"2. tools/list ({len(tools)} tools, expect 18)", ok, f"got: {names}" if not ok else ""))
-    expected = ["goto","get_text","get_html","detect_challenge","screenshot","system_click","eval_js","browser_action","run_script"]
+    ok = len(tools) == 20
+    results.append((f"2. tools/list ({len(tools)} tools, expect 20)", ok, f"got: {names}" if not ok else ""))
+    expected = ["goto","get_text","get_html","set_clipboard","get_clipboard","detect_challenge","screenshot","system_click","eval_js","browser_action","run_script"]
     missing = [n for n in expected if n not in names]
     ok2 = len(missing) == 0
     results.append(("2b. expected tools present", ok2, f"missing: {missing}" if missing else ""))
@@ -262,6 +262,22 @@ try:
 except Exception as e:
     results.append(("10. run_script", False, str(e)))
 
+# 10b. Clipboard tools
+try:
+    clipboard_text = "MCP clipboard café λ"
+    set_data = challenge_data(
+        tool_text(tool_call(101, "set_clipboard", {"text": clipboard_text}))
+    )
+    get_data = challenge_data(tool_text(tool_call(102, "get_clipboard")))
+    ok = (
+        set_data["bytes"] == len(clipboard_text.encode())
+        and get_data["text"] == clipboard_text
+        and get_data["length"] == len(clipboard_text)
+    )
+    results.append(("10b. clipboard tools", ok, json.dumps(get_data) if not ok else ""))
+except Exception as e:
+    results.append(("10b. clipboard tools", False, str(e)))
+
 # 11. Call nonexistent tool — should return error
 try:
     r = tool_call(11, "nonexistent_tool_xyz", {"foo": "bar"})
@@ -420,7 +436,9 @@ try:
         "steps": [
             {"action": "goto", "url": test_page, "wait_until": "load"},
             {"action": "eval", "expression": "window.addDocumentedChallengeFixtures()"},
-            {"action": "detect_challenge", "output_id": "challenge"}
+            {"action": "detect_challenge", "output_id": "challenge"},
+            {"action": "set_clipboard", "text": "cluster clipboard"},
+            {"action": "get_clipboard", "output_id": "clipboard"}
         ]
     }}
     r = mcp_request(4, "tools/call", params)
@@ -438,6 +456,7 @@ try:
             "recaptcha", "turnstile", "unknown",
         }
         and "TEST_PUBLIC_KEY_DO_NOT_USE" not in json.dumps(data)
+        and data["outputs"]["clipboard"]["text"] == "cluster clipboard"
     )
     results.append(("MCP run_script documented catalogue", ok, txt[:120] if not ok else ""))
 except Exception as e:

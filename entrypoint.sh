@@ -47,6 +47,19 @@ fi
 # Ensure HOME is set for non-root users without passwd entry
 export HOME="${HOME:-/home/browser}"
 
+case "${VNC_SHOW_CURSOR:-true}" in
+    true)
+        VNC_CURSOR_ARGS=(-nocursorshape)
+        ;;
+    false)
+        VNC_CURSOR_ARGS=(-nocursor)
+        ;;
+    *)
+        echo "VNC_SHOW_CURSOR must be true or false" >&2
+        exit 1
+        ;;
+esac
+
 PIDS=()
 
 cleanup() {
@@ -116,7 +129,8 @@ HTTP_LISTEN_HOST="${HTTP_LISTEN_HOST:-0.0.0.0}"
 HTTP_LISTEN_PORT="${HTTP_LISTEN_PORT:-8080}"
 
 # Start x11vnc
-x11vnc -display :99 -rfbport 5901 -nopw -forever -shared -listen "$VNC_LISTEN_HOST" &
+x11vnc -display :99 -rfbport 5901 -nopw -forever -shared \
+    -listen "$VNC_LISTEN_HOST" "${VNC_CURSOR_ARGS[@]}" &
 PIDS+=($!)
 sleep 0.3
 

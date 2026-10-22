@@ -17,6 +17,7 @@ from typing import Any, Callable, Coroutine
 from fastmcp import FastMCP
 from fastmcp.tools import ToolResult
 from fastmcp.utilities.types import Image
+from clipboard import redact_clipboard_params
 from logger import get_logger
 from mcp.types import TextContent
 
@@ -73,7 +74,8 @@ async def _call(action: str, **params: Any) -> dict:
     if not _dispatch:
         return {"success": False, "error": "Browser not ready"}
     filtered = {k: v for k, v in params.items() if v is not None}
-    log.info(">> %s %s", action, filtered if filtered else "")
+    logged_params = redact_clipboard_params(action, filtered)
+    log.info(">> %s %s", action, logged_params if logged_params else "")
     cmd: dict[str, Any] = {"action": action}
     cmd.update(filtered)
     if _lock:
@@ -338,6 +340,12 @@ async def run_script(
             - text (str): Text to enter for prompt dialogs.
         get_last_dialog: Get info about the last dialog that appeared.
 
+    CLIPBOARD:
+        set_clipboard: Replace the X11 text clipboard with UTF-8 text.
+            - text (str, required): Text up to 1 MiB. Empty text is allowed.
+        get_clipboard: Return the current X11 clipboard text and its character
+            and UTF-8 byte counts.
+
     FILE UPLOAD:
         upload_file: Upload a file to a file input element.
             - selector (str, required): CSS selector of file input.
@@ -439,6 +447,16 @@ if not _cluster_mode:
     async def get_html() -> str:
         """Get the full HTML source of the current page."""
         return _text_result(await _call("get_html"))
+
+    @mcp.tool
+    async def set_clipboard(text: str) -> str:
+        """Replace the real X11 clipboard with UTF-8 text up to 1 MiB."""
+        return _text_result(await _call("set_clipboard", text=text))
+
+    @mcp.tool
+    async def get_clipboard() -> str:
+        """Read UTF-8 text from the real X11 clipboard."""
+        return _text_result(await _call("get_clipboard"))
 
     @mcp.tool
     async def detect_challenge(scroll_into_view: bool = False) -> str:
@@ -749,6 +767,7 @@ if not _cluster_mode:
         storage (get_storage, set_storage, clear_storage),
         dialogs (handle_dialog, get_last_dialog),
         downloads (get_last_download, upload_file),
+        clipboard (set_clipboard, get_clipboard),
         virtual media (get_virtual_media_state, set_virtual_media_source,
         upload_virtual_media),
         challenge detection (detect_challenge),

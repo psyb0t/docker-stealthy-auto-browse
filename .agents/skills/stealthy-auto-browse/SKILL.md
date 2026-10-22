@@ -327,6 +327,17 @@ Call `handle_dialog` **before** the action that triggers the dialog.
 {"action": "upload_file", "selector": "#file-input", "file_path": "/tmp/doc.pdf"}
 ```
 
+### Clipboard
+
+These actions use the real X11 text clipboard shared by Camoufox and noVNC. Text is limited to 1 MiB of UTF-8 data and is not written to request logs.
+
+```json
+{"action": "set_clipboard", "text": "paste me"}
+{"action": "get_clipboard"}
+```
+
+Both are dedicated MCP tools. In cluster mode, put them inside one `run_script` call.
+
 ### Network logging
 
 ```json
@@ -411,7 +422,7 @@ The browser exposes all actions as MCP tools via Streamable HTTP at `/mcp/` on t
 http://127.0.0.1:8080/mcp/
 ```
 
-Connect any MCP-compatible client to that URL. All actions from the HTTP API are available as tools. Dedicated tools include `goto`, `screenshot`, `system_click`, `system_type`, `eval_js`, `get_text`, `detect_challenge`, `click`, `fill`, `run_script` (multi-step), and `browser_action` (generic fallback for everything else, such as cookies, tabs, storage, dialogs, downloads, logging, and recording).
+Connect any MCP-compatible client to that URL. All actions from the HTTP API are available as tools. Dedicated tools include `goto`, `screenshot`, `system_click`, `system_type`, `eval_js`, `get_text`, `set_clipboard`, `get_clipboard`, `detect_challenge`, `click`, `fill`, `run_script` (multi-step), and `browser_action` (generic fallback for everything else, such as cookies, tabs, storage, dialogs, downloads, logging, and recording).
 
 If `AUTH_TOKEN` is set, configure the MCP client to send `Authorization: Bearer <key>` when connecting to `http://127.0.0.1:8080/mcp/`.
 
