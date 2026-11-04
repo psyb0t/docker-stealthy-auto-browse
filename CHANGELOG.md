@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.3.1] 2026-11-04
+
+### Changed
+
+- Release tag pipelines now wait for the matching successful `main` pipeline and promote its tested multi-architecture image by digest instead of rebuilding it. GitHub, ClawHub, and MCP publication start only after image promotion succeeds.
+
+### Fixed
+
+- The README now keeps setup and feature summaries at the project entry point and links to the detailed guides under `docs/`. Its Docker Hub overview copy stays within Docker Hub's 25,000-character limit, so metadata synchronization no longer fails after a successful image push.
+
 ## [3.3.0] 2026-11-04
 
 ### Added
