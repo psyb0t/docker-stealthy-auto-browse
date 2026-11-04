@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.3.0] 2026-11-04
+
+### Added
+
+- Add opt-in CAPTCHA solver providers. NopeCHA, CapSolver, CapMonster Cloud, NoCaptchaAI, YesCaptcha, and 2Captcha use pinned, checksum-verified official Firefox extensions. Anti-Captcha uses a `solve_captcha` HTTP, MCP, and script action because its official extension is Chrome-only. All providers accept a direct API key or mounted key file, and NopeCHA also supports keyless mode. Existing installations remain unchanged until a provider is configured.
+
 ## [3.2.0] 2026-10-22
 
 ### Added

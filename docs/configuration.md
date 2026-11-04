@@ -14,6 +14,10 @@
 | `HTTP_LISTEN_HOST` | `0.0.0.0`       | Host address the HTTP API binds to.                                                                                                                                                                                                                                                                      |
 | `HTTP_LISTEN_PORT` | `8080`          | Port the HTTP API listens on.                                                                                                                                                                                                                                                                            |
 | `AUTH_TOKEN`       | unset           | If set, all requests (except `/health`) require an `Authorization: Bearer <token>` header. Applies to both HTTP API and MCP.                                                                                                                                                                             |
+| `CAPTCHA_SOLVER_PROVIDER` | unset | Optional provider: `nopecha`, `capsolver`, `capmonster`, `nocaptchaai`, `yescaptcha`, `2captcha`, or `anticaptcha`. Selecting a provider enables it. |
+| `CAPTCHA_SOLVER_ENABLED` | unset | Optional strict `true` or `false` switch. A selected provider already enables support. `false` conflicts with a provider or key. |
+| `CAPTCHA_SOLVER_API_KEY` | unset | Provider API key. Mutually exclusive with `CAPTCHA_SOLVER_API_KEY_FILE`. Environment values are visible through `docker inspect`. NopeCHA alone permits no key. |
+| `CAPTCHA_SOLVER_API_KEY_FILE` | unset | Path to a UTF-8 file containing the provider API key, typically a mounted Docker secret. |
 | `VIRTUAL_MEDIA_DIR` | `/media` | Directory containing virtual media files. Configured source paths and dynamic source names must resolve inside this directory. Mount it read-only for static media; dynamic uploads require it to be writable. |
 | `VIRTUAL_CAMERA_FILE` | unset | Video file to return as the video track from page `getUserMedia()`. Absolute or relative to `VIRTUAL_MEDIA_DIR`; validated at startup. |
 | `VIRTUAL_MICROPHONE_FILE` | unset | Audio file to return as the audio track from page `getUserMedia()`. Absolute or relative to `VIRTUAL_MEDIA_DIR`; validated at startup. |
@@ -27,6 +31,36 @@
 | `LOG_FILE`         | unset           | If set, also write JSON logs to this file with 10MB × 5 backup rotation (in addition to stderr). Useful when you want a persistent log alongside `docker logs`.                                                                                                                                          |
 
 The cluster compose file defaults to five browser replicas and reads `NUM_REPLICAS`, `BROWSER_MEMORY_LIMIT` (default `5g`), and `BROWSER_MEMORY_RESERVATION` (default `512m`) to size the fleet. See [cluster mode](./cluster-mode.md#environment-variables).
+
+## CAPTCHA solver providers
+
+Solver support is opt-in. The `nopecha`, `capsolver`, `capmonster`, `nocaptchaai`, `yescaptcha`, and `2captcha` providers use pinned official Firefox extensions. The browser verifies the selected archive's exact size and SHA-256 digest and caches it under `/userdata/.cache/captcha-solvers`. Each launch configures a temporary copy. Anti-Captcha uses its fixed official API endpoints because its official extension is Chrome-only.
+
+Use a Docker secret when possible:
+
+```yaml
+services:
+  browser:
+    image: psyb0t/stealthy-auto-browse
+    environment:
+      CAPTCHA_SOLVER_PROVIDER: capsolver
+      CAPTCHA_SOLVER_API_KEY_FILE: /run/secrets/captcha_solver_api_key
+    secrets:
+      - captcha_solver_api_key
+    volumes:
+      - browser-data:/userdata
+
+secrets:
+  captcha_solver_api_key:
+    file: ./captcha-solver-api-key.txt
+
+volumes:
+  browser-data:
+```
+
+Direct keys work too, but Docker exposes environment values through container inspection. All providers except NopeCHA require a key. Startup fails on conflicting settings or when an extension cannot be downloaded, verified, safely extracted, or configured.
+
+An extension has access to every page and sends supported challenge data to its provider. Firefox can cache its configuration in the profile. Protect `/userdata`, remove it when rotating a key, review the provider's terms, and use solving only where authorized. The project does not promise accuracy, quotas, uptime, or compatibility.
 
 ## Examples
 

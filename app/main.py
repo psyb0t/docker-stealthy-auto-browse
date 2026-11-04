@@ -39,6 +39,10 @@ from browser import (
     BrowserError,
 )
 from clipboard import Clipboard, ClipboardError, redact_clipboard_params
+from captcha_solver import (
+    CAPTCHA_SOLVE_POLL_INTERVAL_DEFAULT_SECONDS,
+    CAPTCHA_SOLVE_TIMEOUT_DEFAULT_SECONDS,
+)
 from fastapi import FastAPI, Request
 from PIL import Image
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -643,6 +647,22 @@ async def dispatch_action(cmd: dict) -> dict:
 
     if action == "recording_status":
         return make_response(True, recorder.status())
+
+    if action == "solve_captcha":
+        if browser is None:
+            return make_response(False, error="Browser not ready")
+        try:
+            result = await browser.solve_captcha(
+                cmd.get("task"),
+                cmd.get("timeout", CAPTCHA_SOLVE_TIMEOUT_DEFAULT_SECONDS),
+                cmd.get(
+                    "poll_interval",
+                    CAPTCHA_SOLVE_POLL_INTERVAL_DEFAULT_SECONDS,
+                ),
+            )
+        except BrowserError as error:
+            return make_response(False, error=str(error))
+        return make_response(True, result)
 
     if action == "run_script":
         steps = cmd.get("steps")

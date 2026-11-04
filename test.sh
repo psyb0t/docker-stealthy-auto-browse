@@ -38,6 +38,7 @@ MAIN_TESTS=(
     test_get_resolution
     test_calibrate
     test_eval_world
+    test_solve_captcha_requires_provider
     # test_cookies.sh
     test_set_get_cookies
     test_delete_cookies

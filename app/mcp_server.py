@@ -157,6 +157,11 @@ async def run_script(
             vendor, confidence, location, and sanitised frame-path evidence.
             - scroll_into_view (bool): When true, scroll the first visible detected
               frame or widget into the viewport without clicking or focusing it.
+        solve_captcha: Submit an Anti-Captcha API task and wait for its solution.
+            Requires server-side CAPTCHA_SOLVER_PROVIDER=anticaptcha configuration.
+            - task (dict, required): Anti-Captcha task object without clientKey.
+            - timeout (float): Total wait in seconds, 5-600. Default 120.
+            - poll_interval (float): Poll interval in seconds, 1-30. Default 5.
         get_page_info: Get current URL, title, ready state, viewport, document, and scroll data.
             No parameters.
         get_element: Get one element's tag, text, attributes, bounding box, and visibility.
@@ -472,6 +477,31 @@ if not _cluster_mode:
         """
         return _text_result(
             await _call("detect_challenge", scroll_into_view=scroll_into_view)
+        )
+
+    @mcp.tool
+    async def solve_captcha(
+        task: dict[str, Any],
+        timeout: float = 120.0,
+        poll_interval: float = 5.0,
+    ) -> str:
+        """Submit an Anti-Captcha task using the server-side configured API key.
+
+        The task follows Anti-Captcha's task schema and must not contain clientKey.
+        This tool never accepts or returns the configured API key.
+
+        Args:
+            task: Anti-Captcha task object without clientKey.
+            timeout: Total wait in seconds, from 5 through 600.
+            poll_interval: Poll interval in seconds, from 1 through 30.
+        """
+        return _text_result(
+            await _call(
+                "solve_captcha",
+                task=task,
+                timeout=timeout,
+                poll_interval=poll_interval,
+            )
         )
 
     @mcp.tool

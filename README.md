@@ -18,6 +18,7 @@ site, network exit, timezone, browser build, and test date.
 - [Two input modes](#two-input-modes)
 - [Clipboard](#clipboard)
 - [Virtual camera & microphone](#virtual-camera--microphone)
+- [CAPTCHA solver providers](#captcha-solver-providers)
 - [MCP server](#mcp-server)
 - [Agent integrations](#agent-integrations)
 - [Script mode](#script-mode)
@@ -45,6 +46,8 @@ site, network exit, timezone, browser build, and test date.
 | **ffmpeg**     | `x11grab` against Xvfb for screen recording. Captures actual rendered pixels including the OS-level mouse cursor. See [Screen Recording](#screen-recording).                                |
 
 Pre-installed extensions: **uBlock Origin** (ads/trackers), **LocalCDN** (prevents CDN tracking), **ClearURLs** (strips tracking params), **Consent-O-Matic** (auto-handles cookie popups).
+
+Optional CAPTCHA solver providers are available as runtime integrations. No solver extension is installed or contacted by default.
 
 ## Quick start
 
@@ -98,6 +101,26 @@ Also accepts `"yaml": "..."` with the same YAML format used in script mode. In s
 See [docs/api.md](docs/api.md) for all actions and the full API reference.
 
 Navigation uses app-owned controls, not a hidden browser-library timeout. Each attempt gets 30 seconds by default, one timeout retry, and a one-second retry delay. Pass `timeout`, `retry_count`, and `retry_delay` with `goto`, `refresh`, or `new_tab` when a workflow needs different bounds. `retry_count: 0` disables retries. See [navigation controls](docs/api.md#navigation) for the limits and retry behavior.
+
+## CAPTCHA solver providers
+
+Set one provider and its API key. The browser supports the official Firefox extensions from `nopecha`, `capsolver`, `capmonster`, `nocaptchaai`, `yescaptcha`, and `2captcha`. It downloads the selected pinned artifact, verifies its exact size and SHA-256 digest, caches the original under `/userdata`, and activates a configured temporary copy:
+
+```bash
+docker run -d --name browser \
+  -p 127.0.0.1:8080:8080 \
+  -p 127.0.0.1:5900:5900 \
+  -e CAPTCHA_SOLVER_PROVIDER=capsolver \
+  -e CAPTCHA_SOLVER_API_KEY=your-token-here \
+  -v browser-data:/userdata \
+  psyb0t/stealthy-auto-browse
+```
+
+For Docker secrets, mount the secret and set `CAPTCHA_SOLVER_API_KEY_FILE=/run/secrets/captcha_solver_api_key`. Direct environment keys work for every provider but are visible through `docker inspect`. NopeCHA also supports keyless mode.
+
+Anti-Captcha uses its official HTTP API because its official extension is Chrome-only. Configure `CAPTCHA_SOLVER_PROVIDER=anticaptcha`, then call `solve_captcha` through HTTP, MCP, or a script with an Anti-Captcha task object. The key stays in server configuration and is never accepted in the action payload.
+
+Solver support is disabled by default. An enabled extension can read every page and send challenge data to its provider. Protect the key and `/userdata`, review the selected provider's terms, and use solving only where you are authorized. Accuracy, quotas, availability, and site compatibility remain controlled by the provider.
 
 ## Two input modes
 

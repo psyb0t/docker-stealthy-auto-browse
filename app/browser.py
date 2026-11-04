@@ -12,13 +12,20 @@ import re
 import subprocess
 import tempfile
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse as _urlparse
 from xml.sax.saxutils import escape as _xml_escape
 
 from logger import get_logger
+from captcha_solver import (
+    CaptchaSolverConfig,
+    CaptchaSolverError,
+    PreparedCaptchaSolverAddon,
+    prepare_captcha_solver_addon,
+    solve_captcha_task,
+)
 
 log = get_logger(__name__)
 
@@ -824,6 +831,7 @@ class BrowserConfig:
     virtual_microphone_file: Path | None = None
     virtual_media_dynamic: bool = False
     virtual_media_upload_max_bytes: int = VIRTUAL_MEDIA_UPLOAD_MAX_BYTES_DEFAULT
+    captcha_solver: CaptchaSolverConfig = field(default_factory=CaptchaSolverConfig)
 
     @classmethod
     def from_environment(cls) -> "BrowserConfig":
@@ -834,6 +842,7 @@ class BrowserConfig:
             virtual_microphone_file=_virtual_media_file("VIRTUAL_MICROPHONE_FILE"),
             virtual_media_dynamic=virtual_media_dynamic,
             virtual_media_upload_max_bytes=_virtual_media_upload_max_bytes(),
+            captcha_solver=CaptchaSolverConfig.from_environment(),
         )
 
 
@@ -848,6 +857,7 @@ class Browser:
         self._page: Any = None
         self._state = BrowserState()
         self._fontconfig_directory: tempfile.TemporaryDirectory[str] | None = None
+        self._captcha_solver_addon: PreparedCaptchaSolverAddon | None = None
         self._redis_sync = RedisSync() if RedisSync else None
         self._virtual_media_sources: dict[str, Path | None] = {
             _VIRTUAL_MEDIA_CAMERA: self.config.virtual_camera_file,
@@ -1289,6 +1299,17 @@ class Browser:
                 )
             self._fontconfig_directory = None
 
+        if self._captcha_solver_addon:
+            try:
+                self._captcha_solver_addon.cleanup()
+            except OSError as error:
+                log.warning(
+                    "CAPTCHA solver runtime extension cleanup failed",
+                    extra={"reason": "captcha_solver_cleanup_failed"},
+                    exc_info=error,
+                )
+            self._captcha_solver_addon = None
+
         self._state = BrowserState()
 
     async def goto(self, url: str, wait_until: str = "networkidle") -> BrowserState:
@@ -1302,6 +1323,24 @@ class Browser:
         await page.goto(url, timeout=timeout_ms, wait_until=wait_until)
         await self._update_state()
         return self._state
+
+    async def solve_captcha(
+        self,
+        task: Any,
+        timeout: Any,
+        poll_interval: Any,
+    ) -> dict[str, Any]:
+        """Submit and poll one API-backed CAPTCHA task off the event loop."""
+        try:
+            return await asyncio.to_thread(
+                solve_captcha_task,
+                self.config.captcha_solver,
+                task,
+                timeout,
+                poll_interval,
+            )
+        except CaptchaSolverError as error:
+            raise BrowserError(str(error)) from error
 
     async def screenshot(self, full_page: bool = False, quality: int = 80) -> str:
         """Take screenshot, return base64 string."""
@@ -1441,6 +1480,15 @@ class Browser:
 
         self._playwright = await async_playwright().start()
         try:
+            self._captcha_solver_addon = await asyncio.to_thread(
+                prepare_captcha_solver_addon,
+                self.config.captcha_solver,
+            )
+            addons = (
+                [str(self._captcha_solver_addon.path)]
+                if self._captcha_solver_addon
+                else None
+            )
             # Build launch options with proper fingerprint injection
             # This generates env vars with CAMOU_CONFIG_* for C++ level spoofing
             # Permissive screen constraints keep generation working for small
@@ -1459,6 +1507,7 @@ class Browser:
                 headless=False,
                 locale=locale,
                 humanize=True,  # Human-like mouse movement
+                addons=addons,
                 # Allows MAIN_WORLD_PREFIX scripts; nothing runs in the page's
                 # world unless a call asks for it.
                 main_world_eval=True,

@@ -13,6 +13,8 @@ Browser automation in Docker built for QA against anti-bot stacks, compatibility
 
 For installation, configuration, and container setup, see [references/setup.md](references/setup.md).
 
+Optional CAPTCHA providers are configured with `CAPTCHA_SOLVER_PROVIDER` and either a direct key or mounted key file. NopeCHA, CapSolver, CapMonster Cloud, NoCaptchaAI, YesCaptcha, and 2Captcha use official pinned Firefox extensions. Anti-Captcha uses the `solve_captcha` action. Enabling an extension gives it access to every page, so protect `/userdata` and use solving only on authorized sites. See [references/setup.md](references/setup.md).
+
 ## Security & safety
 
 - **Authorized targets only.** This tool is built for QA/testing against sites and systems you own or have written authorization to test. It is not for scraping or automating third-party sites without permission. See "Authorized use only" below before pointing it at anything.

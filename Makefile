@@ -87,6 +87,7 @@ test: dev-image ## Run the complete Docker-backed test suite.
 test-real: dev-image ## Run opt-in live fingerprint and bot-behavior checks against public sites.
 	$(DEV_RUN_DIND) bash test.sh \
 		test_liarjs_live_fingerprint_consistency \
+		test_live_captcha_solver_extensions_loaded \
 		test_live_deviceandbrowserinfo_behavior \
 		test_live_fcaptcha_checkbox_behavior \
 		test_live_fcaptcha_invisible_behavior
@@ -95,6 +96,7 @@ test-unit: dev-image ## Run in-process Python unit tests.
 	$(DEV_RUN) python tests/test_navigation_options.py
 	$(DEV_RUN) python tests/test_install_extensions.py
 	$(DEV_RUN) python tests/test_addon_exclusion.py
+	$(DEV_RUN) python tests/test_captcha_solver.py
 	$(DEV_RUN) python tests/test_fingerprint_config.py
 	$(DEV_RUN) python tests/test_recorder.py
 	$(DEV_RUN) python tests/test_clipboard.py

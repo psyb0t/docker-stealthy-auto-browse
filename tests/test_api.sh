@@ -421,6 +421,17 @@ test_eval_world() {
     echo "OK: eval worlds (${#EVAL_WORLD_CASES[@]} cases)"
 }
 
+test_solve_captcha_requires_provider() {
+    local resp
+    resp=$(post '{"action":"solve_captcha","task":{"type":"RecaptchaV2TaskProxyless"},"timeout":5,"poll_interval":1}')
+    assert_eq "$(echo "$resp" | json_get "['success']")" "False" \
+        "solve_captcha: disabled provider rejected" || return 1
+    assert_eq "$(echo "$resp" | json_get "['error']")" \
+        "solve_captcha requires CAPTCHA_SOLVER_PROVIDER=anticaptcha" \
+        "solve_captcha: safe configuration error" || return 1
+    echo "OK: solve_captcha provider boundary"
+}
+
 ALL_TESTS+=(
     test_health
     test_ping
@@ -434,4 +445,5 @@ ALL_TESTS+=(
     test_get_resolution
     test_calibrate
     test_eval_world
+    test_solve_captcha_requires_provider
 )

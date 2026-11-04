@@ -136,6 +136,8 @@ Environment placeholders are substituted recursively, including strings in contr
 
 `detect_challenge` is a read-only page-inspection action. It can tell a workflow that a documented verification widget or a conservative generic challenge cue is present, but it never clicks, solves, or enters a challenge frame. Set `scroll_into_view: true` to bring the first visible detected frame or widget into the viewport for a human takeover; that still never clicks or focuses it. Use an `output` condition to hand the decision to your orchestration layer.
 
+When `CAPTCHA_SOLVER_PROVIDER=anticaptcha` is configured, `solve_captcha` can submit an Anti-Captcha task from a script. Pass the provider task object without `clientKey`; the server adds its configured key. Extension-backed providers solve through their browser extensions and need no script action.
+
 ```yaml
 steps:
   - action: detect_challenge

@@ -72,6 +72,10 @@ Notes on the hardening flags:
 | `HTTP_LISTEN_HOST` | `0.0.0.0` | HTTP API bind address inside the container. Combine with a `127.0.0.1:8080:8080` port mapping to confine to localhost on the host. |
 | `HTTP_LISTEN_PORT` | `8080` | HTTP API port. |
 | `AUTH_TOKEN` | unset | **Set this for any non-trivial deployment.** Without it, anyone who can reach the port can control the browser. With it, requests need an `Authorization: Bearer <key>` header. |
+| `CAPTCHA_SOLVER_PROVIDER` | unset | Optional provider: `nopecha`, `capsolver`, `capmonster`, `nocaptchaai`, `yescaptcha`, `2captcha`, or `anticaptcha`. |
+| `CAPTCHA_SOLVER_ENABLED` | unset | Optional strict `true` or `false` switch. A selected provider already enables support. |
+| `CAPTCHA_SOLVER_API_KEY` | unset | Direct provider key. Mutually exclusive with the key file and visible through `docker inspect`. NopeCHA alone permits no key. |
+| `CAPTCHA_SOLVER_API_KEY_FILE` | unset | Path to a mounted UTF-8 provider key file. |
 | `VIRTUAL_MEDIA_DIR` | `/media` | Directory containing virtual camera/microphone media. Configured and dynamic source paths must resolve within it. Mount it read-only for static sources; dynamic uploads require it to be writable. |
 | `VIRTUAL_CAMERA_FILE` | unset | Video file returned as the video track from page `getUserMedia()`. Relative to `VIRTUAL_MEDIA_DIR` or an absolute path inside it. A request for video without this source fails with `NotFoundError`. |
 | `VIRTUAL_MICROPHONE_FILE` | unset | Audio file returned as the audio track from page `getUserMedia()`. Relative to `VIRTUAL_MEDIA_DIR` or an absolute path inside it. A request for audio without this source fails with `NotFoundError`. |
@@ -85,6 +89,8 @@ Notes on the hardening flags:
 | `LANG` | `en_US.UTF-8` | Browser locale/language. |
 | `LOG_LEVEL` | `INFO` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR` for the JSON logger. |
 | `LOG_FILE` | unset | If set, also write JSON logs to this file (10MB x 5 rotation) in addition to stderr. |
+
+Treat `/userdata` as sensitive while an extension provider is configured. Firefox can cache extension configuration in the persistent profile even when the key came from a mounted secret file.
 
 ## Common configurations
 

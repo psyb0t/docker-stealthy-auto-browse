@@ -152,6 +152,7 @@ These actions drive the real X11 mouse and keyboard with timing modeled on how p
 | `get_html`                 | none           | Returns the full HTML source of the page. Use when `get_text` doesn't give enough structure.                                                                                                                                                               |
 | `get_page_info`            | none           | Returns the current URL, title, ready state, viewport/document dimensions, and scroll position.                                                                                                                                                           |
 | `detect_challenge`         | `scroll_into_view` | Read-only best-effort detection of documented challenge integrations and conservative visible generic cues. Optional viewport reveal never clicks, solves, focuses, or enters a frame. |
+| `solve_captcha`            | `task`, `timeout`, `poll_interval` | Submit an Anti-Captcha task using the server-side configured key and wait for the provider solution. Requires `CAPTCHA_SOLVER_PROVIDER=anticaptcha`. |
 | `get_element`              | `selector`     | Returns one matching element's tag, text (truncated to 10,000 chars), attributes, bounding box, and visibility.                                                                                                                                          |
 | `get_elements`             | `selector`, `limit` | Returns summaries for up to `limit` matching elements (1-100; default 20). Each summary includes tag, text, attributes, bounding box, and visibility.                                                                                              |
 | `get_computed_style`       | `selector`, `properties` | Returns computed CSS property values. `properties` accepts up to 50 CSS property names; defaults to `display`, `visibility`, `color`, and `background-color`.                                                                                   |
@@ -176,6 +177,16 @@ Pass `"scroll_into_view": true` when a person will take over in VNC and the firs
 The action returns `data.status` as `"absent"`, `"present"`, or `"unknown"`. `unknown` means that the page snapshot could not be evaluated; it is deliberately not reported as absence. When present, `matches` contain `vendor`, `confidence` (`"high"`, `"medium"`, or `"low"`), `locations`, fixed `evidence` labels, and bounded frame/element bounding boxes where available. Frame evidence includes only host plus path. The action excludes query strings, fragments, site keys, response values, element text, attributes, and HTML.
 
 Known high-confidence markers cover Cloudflare Turnstile, Google reCAPTCHA, hCaptcha, Friendly Captcha, ALTCHA, Arkose, AWS WAF, and GeeTest where their documented container, iframe/script origin, or global is present. A visible generic captcha/challenge cue is returned as vendor `"unknown"` at low confidence. Detection is intentionally best-effort. An `absent` result does not guarantee that a custom, delayed, or server-side challenge will not appear later.
+
+### Anti-Captcha API tasks
+
+`solve_captcha` is available through HTTP, the dedicated MCP tool, `run_script`, and YAML script mode. It accepts an [Anti-Captcha task object](https://anti-captcha.com/apidoc/task-types/RecaptchaV2TaskProxyless) without `clientKey`. The configured key and fixed provider endpoint cannot be overridden by a request.
+
+```json
+{"action":"solve_captcha","task":{"type":"RecaptchaV2TaskProxyless","websiteURL":"https://example.com","websiteKey":"EXAMPLE-DO-NOT-USE"},"timeout":120,"poll_interval":5}
+```
+
+`timeout` accepts 5 through 600 seconds. `poll_interval` accepts 1 through 30 seconds. Provider errors and invalid result shapes fail the action without returning the configured key. The action creates a paid provider task, so callers should invoke it only after detecting a challenge and confirming authorization.
 
 Use it inside a script with the existing output condition:
 
