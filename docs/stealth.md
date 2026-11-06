@@ -18,7 +18,7 @@ Understanding the difference between these is key to not getting detected.
 
 ### System input (undetectable)
 
-Actions: `system_click`, `mouse_move`, `mouse_click`, `system_type`, `send_key`, `scroll`, `scroll_to_bottom_humanized`
+Actions: `system_click`, `mouse_move`, `mouse_click`, `system_type`, `send_key`, `scroll`, `scroll_to_bottom_humanized`, `human_pause`
 
 These use PyAutoGUI to generate **real OS-level events**, timed from human motor data rather than random jitter:
 
@@ -28,6 +28,8 @@ These use PyAutoGUI to generate **real OS-level events**, timed from human motor
 - **Wheel:** multi-notch gestures sent one notch at a time with a flick or controlled rhythm, reading pauses, and occasional scroll-backs.
 
 Each container behaves like one consistent person. The main timings (speed, path bend, tremor, click and key holds, typing rhythm, typos, wheel spacing) can be tuned per request; see [Humanized Input](api.md#humanized-input). The test suite scores these sessions with open-source bot detectors (motion-attestation, Gaitcha) and checks that a robotic control session is caught by the same checks. `make test-real` repeats this against hosted behavior scorers; see [Behavioral checks](#behavioral-checks).
+
+`human_pause` represents visible reading, review, or composition time. It keeps the pointer still most of the time and optionally schedules sparse, irregular drifts through the same fitted mouse planner. It is not a constant jiggle, background movement service, or replacement for `sleep`. Agents should call it only when the page task naturally includes visible thinking time.
 
 System input uses **viewport coordinates** (x, y pixel positions). Get these from `get_interactive_elements`.
 

@@ -449,6 +449,25 @@ test_script_clipboard() {
     echo "OK: script_clipboard"
 }
 
+test_script_human_pause() {
+    local out
+    out=$(_script_run human_pause.yaml)
+    if [[ -z "$out" ]]; then
+        echo "  FAIL: script_human_pause: no output"
+        return 1
+    fi
+    echo "$out" | python3 -c '
+import json
+import sys
+
+data = json.load(sys.stdin)
+assert data["success"] is True
+assert data["outputs"]["pause"]["duration"] == 0.1
+assert data["outputs"]["pause"]["drifts"] == 0
+' || return 1
+    echo "OK: script_human_pause"
+}
+
 ALL_TESTS+=(
     test_script_basic
     test_script_on_error_continue
@@ -469,4 +488,5 @@ ALL_TESTS+=(
     test_script_challenge_detection
     test_script_fingerprint_consistency
     test_script_clipboard
+    test_script_human_pause
 )

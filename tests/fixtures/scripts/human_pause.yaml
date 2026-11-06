@@ -1,0 +1,6 @@
+name: human_pause
+steps:
+  - action: human_pause
+    duration: 0.1
+    drift: false
+    output_id: pause

@@ -104,7 +104,7 @@ Uses PyAutoGUI for real OS-level mouse/keyboard events. The browser doesn't see 
 
 Get viewport coordinates and sizes (`x`, `y`, `w`, `h`) from `get_interactive_elements` and pass all four to `system_click`.
 
-Timing is modeled on human motor data and is consistent per container. Override it per request when needed: `speed`, `curvature`, `tremor`, `click_hold`, `click_delay` on pointer actions; `interval`, `key_hold`, `rollover`, `typos`, `typo_rate` on `system_type`; `key_hold` or `instant: true` (no human timing) on `send_key`; `notch_gap` on wheel actions; `max_gestures`, `return_to_top`, `scroll_back`, `drift` on `scroll_to_bottom_humanized`. Pointer actions return `landed_at`. Full table: [Humanized Input](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/docs/api.md#humanized-input).
+Timing is modeled on human motor data and is consistent per container. Override it per request when needed: `speed`, `curvature`, `tremor`, `click_hold`, `click_delay` on pointer actions; `interval`, `key_hold`, `rollover`, `typos`, `typo_rate` on `system_type`; `key_hold` or `instant: true` (no human timing) on `send_key`; `notch_gap` on wheel actions; `max_gestures`, `return_to_top`, `scroll_back`, `drift` on `scroll_to_bottom_humanized`; and `duration`, `drift_interval`, `drift_distance` on `human_pause`. Pointer actions return `landed_at`. Full table: [Humanized Input](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/docs/api.md#humanized-input).
 
 ### Playwright input: DOM events
 
@@ -333,6 +333,8 @@ Call `handle_dialog` **before** the action that triggers the dialog.
 
 These actions use the real X11 text clipboard shared by Camoufox and noVNC. Text is limited to 1 MiB of UTF-8 data and is not written to request logs.
 
+For substantial text, prefer `set_clipboard`, focus the field, then call `send_key` with `key: "ctrl+v"`. Use `system_type` for short edits, fields that reject paste, or work that specifically needs per-keystroke behavior.
+
 ```json
 {"action": "set_clipboard", "text": "paste me"}
 {"action": "get_clipboard"}
@@ -371,6 +373,16 @@ Capture `console.log`, `console.error`, `console.warn`, etc. Each entry has `typ
 ```
 
 `scroll_to_bottom` uses JS (fast). `scroll_to_bottom_humanized` scrolls like a reader with the OS-level wheel: gestures, reading pauses around `delay`, pointer drift, occasional scroll-backs, and Home (wheel flicks when a text field has focus) to return to the top.
+
+### Human pause
+
+Use `human_pause` only when the visible task naturally includes reading, reviewing, or composing. It keeps the pointer still most of the time and optionally makes sparse bounded drifts. Do not insert it between every action and do not use it as a replacement for `sleep`.
+
+```json
+{"action": "human_pause", "duration": 4, "drift": true, "drift_interval": 12, "drift_distance": 60}
+```
+
+Optional `x`, `y`, `w`, and `h` define a safe viewport rectangle. The action blocks until the pause ends and returns `elapsed`, `drifts`, `parked`, and `landed_at`; it never leaves background pointer movement running.
 
 ### Display
 
@@ -424,7 +436,7 @@ The browser exposes all actions as MCP tools via Streamable HTTP at `/mcp/` on t
 http://127.0.0.1:8080/mcp/
 ```
 
-Connect any MCP-compatible client to that URL. All actions from the HTTP API are available as tools. Dedicated tools include `goto`, `screenshot`, `system_click`, `system_type`, `eval_js`, `get_text`, `set_clipboard`, `get_clipboard`, `detect_challenge`, `click`, `fill`, `run_script` (multi-step), and `browser_action` (generic fallback for everything else, such as cookies, tabs, storage, dialogs, downloads, logging, and recording).
+Connect any MCP-compatible client to that URL. All actions from the HTTP API are available as tools. Dedicated tools include `goto`, `screenshot`, `system_click`, `system_type`, `human_pause`, `eval_js`, `get_text`, `set_clipboard`, `get_clipboard`, `detect_challenge`, `click`, `fill`, `run_script` (multi-step), and `browser_action` (generic fallback for everything else, such as cookies, tabs, storage, dialogs, downloads, logging, and recording).
 
 If `AUTH_TOKEN` is set, configure the MCP client to send `Authorization: Bearer <key>` when connecting to `http://127.0.0.1:8080/mcp/`.
 

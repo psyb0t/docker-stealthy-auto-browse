@@ -134,6 +134,7 @@ These actions drive the real X11 mouse and keyboard with timing modeled on how p
 | `system_type`  | `text`, `interval`, `typos`, `typo_rate`, `key_hold`, `rollover`            | Types text with **real OS keystrokes**: each key is held and released, fast typists overlap keys, Shift goes down before capitals, and the rhythm follows the key pair. Characters outside the US layout (é, ñ, €) are typed too. `typos: true` makes and corrects occasional typos on plain text fields only (see [Typos](#typos)). You must focus an input field first. Returns `typed_len`, `typos` (true when typos were enabled for the field), and `typos_disabled_reason` when typos were requested but refused. |
 | `send_key`     | `key`, `key_hold`, `instant`                                                | Sends a keyboard key or combo with a human hold. `instant: true` presses and releases at once with no human timing, as before 3.0.0. It is faster but easy for a page to spot. Examples: `"enter"`, `"tab"`, `"escape"`, `"backspace"`, `"ctrl+a"`, `"ctrl+shift+t"`. Combo keys go down in order and come up in reverse. Uses PyAutoGUI key names. |
 | `scroll`       | `amount`, `x`, `y`, `notch_gap`                                             | Scrolls `amount` mouse wheel notches (a non-zero integer, default -3), one at a time with a human rhythm. Amounts above 4 are split into several gestures with short pauses. **Negative = scroll down**, positive = scroll up. If `x`, `y` are provided (both or neither), moves the mouse there first (useful for scrolling inside a specific element). |
+| `human_pause`  | `duration`, `x`, `y`, `w`, `h`, `drift`, `drift_interval`, `drift_distance`, `speed`, `curvature`, `tremor` | Represents visible reading, review, or composition time. It optionally parks the pointer inside a viewport rectangle, remains mostly still, and makes sparse bounded human-shaped drifts. It blocks for the requested time and never starts background movement. Use `sleep` for ordinary waiting. Returns `duration`, `elapsed`, `drifts`, `parked`, and `landed_at`. |
 
 ### Playwright input (DOM events, use these first)
 
@@ -303,6 +304,8 @@ Capture `console.log`, `console.error`, `console.warn`, and other console output
 
 The clipboard actions use the real X11 `CLIPBOARD` selection shared by Camoufox and noVNC. Browser copy operations are visible to `get_clipboard`, and text written by `set_clipboard` can be pasted into the page with `Ctrl+V`. Clipboard contents are not written to request logs.
 
+For substantial text, prefer `set_clipboard`, focus the target field, then call `send_key` with `key: "ctrl+v"`. Use `system_type` for short edits, fields that reject paste, or tests that specifically need per-keystroke behavior.
+
 | Action | Parameters | What It Does |
 | ------ | ---------- | ------------ |
 | `set_clipboard` | `text` | Replaces the text clipboard. `text` is required, must be a string, may be empty, and may contain at most 1 MiB of UTF-8 data. Returns `length` in Unicode characters and `bytes` in UTF-8 bytes. |
@@ -401,9 +404,11 @@ The OS-level actions above plan every movement and keystroke from published huma
 
 **Wheel.** Scrolling happens in gestures of slow controlled notches or fast flicks that speed up and slow down. Two notches are never less than 15 ms apart.
 
+**Pauses.** `human_pause` models time spent reading, reviewing, or composing while the page is visible. The pointer stays still most of the time. Optional drifts use the same fitted mouse path planner as other pointer actions, while their sparse, right-skewed timing avoids a periodic jiggle. Use it only when the task naturally includes visible thinking time. It is not a generic delay and should not be inserted between every action.
+
 ### Pointer options
 
-Accepted by `system_click`, `mouse_click`, and `mouse_move` (the click options apply to clicks only).
+Accepted by `system_click`, `mouse_click`, `mouse_move`, and `human_pause` where listed (the click options apply to clicks only).
 
 | Option        | Range       | Default            | Effect |
 | ------------- | ----------- | ------------------ | ------ |
@@ -414,6 +419,22 @@ Accepted by `system_click`, `mouse_click`, and `mouse_move` (the click options a
 | `tremor`      | 0-5 px      | 0.35               | Hand tremor amplitude. |
 | `click_hold`  | 0.01-5 s    | session ~85-125 ms | Median time the button stays down. |
 | `click_delay` | 0-10 s      | human mix          | Median pause between arriving and pressing. |
+
+### Pause options
+
+Accepted by `human_pause`. With no rectangle, drift stays within the current viewport. When `x` and `y` are supplied, both are required and identify the centre of the safe rectangle. `w` and `h` default to 80 px.
+
+| Option             | Range       | Default | Effect |
+| ------------------ | ----------- | ------- | ------ |
+| `duration`         | 0.1-300 s   | 1 s     | Time spent in the pause after any initial parking move. |
+| `x`, `y`           | viewport coordinates | current pointer | Optional centre of the safe rectangle. |
+| `w`, `h`           | 4-10000 px  | 80 px   | Safe rectangle size, intersected with the viewport. |
+| `drift`            | true/false  | true    | Allow sparse pointer drifts during the pause. |
+| `drift_interval`   | 1-120 s     | 12 s    | Median interval used by the right-skewed drift schedule. |
+| `drift_distance`   | 0-500 px    | 60 px   | Maximum distance of each drift within the safe rectangle. Zero keeps the pointer still. |
+| `speed`            | 0.1-10      | 1       | Speed multiplier for each drift path. |
+| `curvature`        | 0-5         | 1       | Curvature of each drift path. |
+| `tremor`           | 0-5 px      | 0.35    | Tremor amplitude on each drift path. |
 
 ### Typing options
 
@@ -439,7 +460,7 @@ Typos are always corrected. A neighbouring key, a swapped pair, or a doubled or 
 | `scroll_back` | `scroll_to_bottom_humanized`              | 0-1         | 0.06             | Chance per gesture of scrolling back up a little (at most twice per page). |
 | `drift`       | `scroll_to_bottom_humanized`              | 0-1         | 0.4              | Chance per reading pause of drifting the pointer. |
 
-Out-of-range values are rejected with an error naming the option before any input is sent. Numeric strings such as `"250"` are accepted where numbers are expected. `typos`, `instant`, and `return_to_top` must be JSON booleans; `"true"` is rejected.
+Out-of-range values are rejected with an error naming the option before any input is sent. Existing input options accept numeric strings such as `"250"`; `human_pause` numeric fields require JSON numbers. Boolean options must be JSON booleans; `"true"` is rejected.
 
 OS-level input runs in a worker thread, so `/health`, screenshots, and MCP stay responsive while a long `system_type` or scroll plays. Actions themselves still run one at a time.
 

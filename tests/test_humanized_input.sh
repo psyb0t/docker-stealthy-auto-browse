@@ -21,6 +21,10 @@ readonly HI_PROBE_WAIT_ATTEMPTS=30
 readonly HI_CLICK_COUNT=30
 readonly HI_CLICK_ORDER_SEED=7
 readonly HI_SCROLL_NOTCHES=8
+readonly HI_PAUSE_SECONDS=14
+readonly HI_PAUSE_DRIFT_INTERVAL=2.5
+readonly HI_PAUSE_DRIFT_DISTANCE=30
+readonly HI_ROBOT_JIGGLE_INTERVAL=0.5
 readonly HI_HEALTH_MAX_SECONDS=1.0
 readonly HI_HEALTH_POLLS=5
 readonly HI_TARGET_IDS=(target-0 target-1 target-2 target-3 target-4 target-5 target-6 target-7)
@@ -478,10 +482,52 @@ print(round(statistics.median(holds), 1))
     echo "OK: humanized input overrides reach the page"
 }
 
+test_human_pause_detector() {
+    local det_name="stealthy-auto-browse-test-hi-pause-det"
+    local browser_name="stealthy-auto-browse-test-hi-pause"
+    local det base probe resp ox oy screenshot
+    mkdir -p "$HI_RESULTS_DIR"
+
+    det=$(_hi_start_detectors "$det_name") || return 1
+    base=$(_hi_start_browser "$browser_name") || return 1
+    probe="$det$HI_PROBE_PATH"
+
+    _hi_open_probe "$base" "$probe" || return 1
+    resp=$(_hi_post "{\"action\":\"human_pause\",\"duration\":$HI_PAUSE_SECONDS,\"x\":700,\"y\":350,\"w\":700,\"h\":400,\"drift_interval\":$HI_PAUSE_DRIFT_INTERVAL,\"drift_distance\":$HI_PAUSE_DRIFT_DISTANCE}" "$base")
+    assert_success "$resp" "human_pause detector session" >/dev/null || return 1
+    _hi_harvest "$base" "$HI_RESULTS_DIR/pause-human.json"
+    _hi_score "$det_name" "$HI_RESULTS_DIR/pause-human.json" "$HI_RESULTS_DIR/pause-human.scores.json" || return 1
+    _hi_judge pause "$HI_RESULTS_DIR/pause-human.json" "$HI_RESULTS_DIR/pause-human.scores.json" human --duration "$HI_PAUSE_SECONDS" || return 1
+    screenshot="$HI_RESULTS_DIR/pause-human.png"
+    curl -sf "$base/screenshot/desktop?whLargest=512" -o "$screenshot" || {
+        echo "  FAIL: human_pause screenshot"
+        return 1
+    }
+    [[ -s "$screenshot" ]] || {
+        echo "  FAIL: human_pause screenshot is empty"
+        return 1
+    }
+
+    _hi_open_probe "$base" "$probe" || return 1
+    read -r ox oy <<<"$(_hi_window_offset "$base")"
+    _hi_robot "$browser_name" "import time; x, y = 700 + $ox, 350 + $oy; pyautogui.moveTo(x, y); [(time.sleep($HI_ROBOT_JIGGLE_INTERVAL), pyautogui.moveTo(x + (4 if i % 2 else -4), y)) for i in range(int($HI_PAUSE_SECONDS / $HI_ROBOT_JIGGLE_INTERVAL))]" || {
+        echo "  FAIL: periodic jiggle control could not run"
+        return 1
+    }
+    _hi_harvest "$base" "$HI_RESULTS_DIR/pause-robot.json"
+    _hi_score "$det_name" "$HI_RESULTS_DIR/pause-robot.json" "$HI_RESULTS_DIR/pause-robot.scores.json" || return 1
+    _hi_judge pause "$HI_RESULTS_DIR/pause-robot.json" "$HI_RESULTS_DIR/pause-robot.scores.json" robot --duration "$HI_PAUSE_SECONDS" || return 1
+
+    stop_extra_container "$browser_name"
+    stop_extra_container "$det_name"
+    echo "OK: human pause stays sparse and irregular; periodic jiggle is caught"
+}
+
 ALL_TESTS+=(
     test_humanized_overrides
     test_humanized_mouse
     test_humanized_typing
     test_humanized_input_off_event_loop
     test_humanized_scroll
+    test_human_pause_detector
 )

@@ -132,6 +132,14 @@ _POST_RELEASE_RANGE_S = (0.04, 0.6)
 
 _SPEED_RANGE = (0.85, 1.15)
 
+# An idle pause is mostly still. The remaining movements use the same pointer
+# model as every other move, with right-skewed gaps and room to finish before
+# the pause deadline.
+IDLE_DRIFT_INTERVAL_MEDIAN_S = 12.0
+_IDLE_DRIFT_INTERVAL_SIGMA = 0.75
+_IDLE_DRIFT_INTERVAL_RANGE_FRAC = (0.35, 3.0)
+_IDLE_DRIFT_END_RESERVE_S = 1.0
+
 
 @dataclass(frozen=True)
 class MouseProfile:
@@ -176,6 +184,38 @@ def lognormal(
     """Clipped lognormal sample around a median."""
     lo, hi = bounds
     return min(hi, max(lo, median * math.exp(rng.gauss(0.0, sigma))))
+
+
+def plan_idle_drift_times(
+    duration_s: float,
+    rng: random.Random,
+    interval_median_s: float = IDLE_DRIFT_INTERVAL_MEDIAN_S,
+) -> list[float]:
+    """Plan sparse drift start times inside a visible reading pause."""
+    latest_start = duration_s - _IDLE_DRIFT_END_RESERVE_S
+    if latest_start <= 0:
+        return []
+    lo_frac, hi_frac = _IDLE_DRIFT_INTERVAL_RANGE_FRAC
+    interval_bounds = (
+        interval_median_s * lo_frac,
+        interval_median_s * hi_frac,
+    )
+    starts: list[float] = []
+    at = lognormal(
+        rng,
+        interval_median_s,
+        _IDLE_DRIFT_INTERVAL_SIGMA,
+        interval_bounds,
+    )
+    while at < latest_start:
+        starts.append(at)
+        at += lognormal(
+            rng,
+            interval_median_s,
+            _IDLE_DRIFT_INTERVAL_SIGMA,
+            interval_bounds,
+        )
+    return starts
 
 
 class _Stroke:

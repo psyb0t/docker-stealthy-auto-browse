@@ -9,6 +9,7 @@ worker thread.
 
 from __future__ import annotations
 
+import math
 import os
 import random
 import subprocess
@@ -45,8 +46,9 @@ _KEY_HOLD_CUSTOM_FLOOR_FRAC = 0.4
 _KEY_HOLD_CUSTOM_CEIL_FRAC = 2.5
 
 # Idle pointer drift while reading.
-_DRIFT_RANGE_PX = (5, 60)
+_DRIFT_RANGE_PX = (5.0, 60.0)
 _DRIFT_TARGET_PX = 80.0
+_DRIFT_MIN_TARGET_PX = 4.0
 
 
 class InputError(Exception):
@@ -291,21 +293,94 @@ class System:
             timeline.append((at, lambda: self._pyautogui.scroll(step)))
         self._replay(timeline)
 
-    def drift(self, bounds: tuple[int, int, int, int]) -> None:
+    def drift(
+        self,
+        bounds: tuple[int, int, int, int],
+        max_distance: float = _DRIFT_RANGE_PX[1],
+        profile: human_mouse.MouseProfile | None = None,
+    ) -> tuple[int, int]:
         """Small idle pointer drift, kept inside viewport bounds.
 
         bounds is (left, top, right, bottom) in viewport coords.
         """
         if not self._pyautogui:
-            return
+            return self.pointer_position()
         left, top, right, bottom = bounds
         cx, cy = self.pointer_position()
-        distance = self._rng.uniform(*_DRIFT_RANGE_PX)
-        dx = self._rng.uniform(-1.0, 1.0) * distance
-        dy = self._rng.uniform(-1.0, 1.0) * distance
-        tx = min(max(cx + dx, left), right)
-        ty = min(max(cy + dy, top), bottom)
-        self.move_mouse(tx, ty, width=_DRIFT_TARGET_PX, height=_DRIFT_TARGET_PX)
+        minimum_distance = min(_DRIFT_RANGE_PX[0], max_distance)
+        distance = self._rng.uniform(minimum_distance, max_distance)
+        angle = self._rng.uniform(0.0, 2.0 * math.pi)
+        target_size = min(
+            _DRIFT_TARGET_PX,
+            max(float(right - left), _DRIFT_MIN_TARGET_PX),
+            max(float(bottom - top), _DRIFT_MIN_TARGET_PX),
+        )
+        half_target = target_size / 2.0
+        target_left = min(left + half_target, right)
+        target_right = max(right - half_target, left)
+        target_top = min(top + half_target, bottom)
+        target_bottom = max(bottom - half_target, top)
+        tx = min(max(cx + math.cos(angle) * distance, target_left), target_right)
+        ty = min(max(cy + math.sin(angle) * distance, target_top), target_bottom)
+        return self.move_mouse(
+            tx,
+            ty,
+            width=target_size,
+            height=target_size,
+            profile=profile,
+        )
+
+    def human_pause(
+        self,
+        duration: float,
+        bounds: tuple[int, int, int, int],
+        park: tuple[float, float, float, float] | None = None,
+        drift_interval: float | None = human_mouse.IDLE_DRIFT_INTERVAL_MEDIAN_S,
+        drift_distance: float = _DRIFT_RANGE_PX[1],
+        profile: human_mouse.MouseProfile | None = None,
+    ) -> dict:
+        """Pause visibly, with optional parking and sparse bounded drift."""
+        started = time.perf_counter()
+        parked = park is not None
+        if park is not None:
+            park_x, park_y, park_width, park_height = park
+            self.move_mouse(
+                park_x,
+                park_y,
+                width=park_width,
+                height=park_height,
+                profile=profile,
+            )
+
+        pause_started = time.perf_counter()
+        starts = []
+        if drift_interval is not None and drift_distance > 0:
+            starts = human_mouse.plan_idle_drift_times(
+                duration,
+                self._rng,
+                drift_interval,
+            )
+        deadline = pause_started + duration
+        drifts = 0
+        for at in starts:
+            remaining = pause_started + at - time.perf_counter()
+            if remaining > 0:
+                time.sleep(remaining)
+            if time.perf_counter() >= deadline:
+                break
+            self.drift(bounds, drift_distance, profile)
+            drifts += 1
+
+        remaining = deadline - time.perf_counter()
+        if remaining > 0:
+            time.sleep(remaining)
+        landed_at = self.pointer_position()
+        return {
+            "elapsed": time.perf_counter() - started,
+            "drifts": drifts,
+            "parked": parked,
+            "landed_at": landed_at,
+        }
 
     def send_key(
         self,

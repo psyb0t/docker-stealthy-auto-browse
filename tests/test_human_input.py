@@ -236,6 +236,28 @@ def test_click_timing_matches_balabit() -> None:
         assert 1 <= abs(dx) + abs(dy) <= 2
 
 
+def test_idle_pause_schedule_is_sparse_and_irregular() -> None:
+    schedules = [
+        human_mouse.plan_idle_drift_times(60.0, random.Random(seed), 12.0)
+        for seed in range(200)
+    ]
+    counts = [len(schedule) for schedule in schedules]
+    assert min(counts) == 1
+    assert max(counts) <= 10
+    assert 2.0 <= statistics.fmean(counts) <= 6.0
+    assert all(
+        times == sorted(times) and all(0.0 < at < 59.0 for at in times)
+        for times in schedules
+    )
+    gaps = [
+        later - earlier
+        for times in schedules
+        for earlier, later in zip(times, times[1:])
+    ]
+    assert statistics.pstdev(gaps) / statistics.fmean(gaps) > 0.35
+    assert human_mouse.plan_idle_drift_times(1.0, random.Random(_SEED), 12.0) == []
+
+
 # ---------------------------------------------------------------- keyboard
 
 
@@ -606,6 +628,49 @@ def test_system_scroll_sends_single_spaced_notches() -> None:
         assert all(g >= human_scroll.MIN_NOTCH_GAP_S - 1e-9 for g in gaps)
 
 
+def test_system_human_pause_stays_bounded_and_ends() -> None:
+    instance, fake, clock = _fake_system()
+    bounds = (300, 180, 700, 520)
+    profile = dataclasses.replace(instance.mouse_profile, speed=2.0)
+    with patch.object(system_module, "time", clock):
+        result = instance.human_pause(
+            30.0,
+            bounds,
+            park=(500.0, 350.0, 300.0, 220.0),
+            drift_interval=4.0,
+            drift_distance=35.0,
+            profile=profile,
+        )
+    assert result["drifts"] >= 2
+    assert result["parked"] is True
+    assert result["elapsed"] >= 30.0
+    assert result["elapsed"] < 31.0
+    assert clock.now == result["elapsed"]
+    assert bounds[0] <= result["landed_at"][0] <= bounds[2]
+    assert bounds[1] <= result["landed_at"][1] <= bounds[3]
+    moves = [call for call in fake.calls if call[0] == "move"]
+    assert moves
+    assert max(call[1] for call in moves) <= result["elapsed"]
+
+
+def test_system_human_pause_without_drift_only_sleeps() -> None:
+    instance, fake, clock = _fake_system()
+    with patch.object(system_module, "time", clock):
+        result = instance.human_pause(
+            2.5,
+            (10, 10, 1000, 700),
+            drift_interval=None,
+            drift_distance=0.0,
+        )
+    assert result == {
+        "elapsed": 2.5,
+        "drifts": 0,
+        "parked": False,
+        "landed_at": (90, 20),
+    }
+    assert fake.calls == []
+
+
 def test_system_type_replays_holds_and_unicode() -> None:
     instance, fake, clock = _fake_system()
     xdotool_calls: list[list[str]] = []
@@ -739,11 +804,15 @@ class _FakePage:
         self,
         handle: _FakeHandle | None = None,
         offset: object = None,
+        viewport: tuple[int, int] = _SCREEN,
     ) -> None:
         self.handle = handle
         self.offset = offset if offset is not None else {"x": 0, "y": 0}
+        self.viewport = viewport
 
     async def evaluate(self, script: str) -> object:
+        if script == input_actions._VIEWPORT_JS:
+            return {"w": self.viewport[0], "h": self.viewport[1]}
         if isinstance(self.offset, Exception):
             raise self.offset
         return self.offset
@@ -949,6 +1018,18 @@ class _OverrideSystem:
     def system_type(self, *args: object) -> None:
         self.calls.append(("type", *args))
 
+    def pointer_position(self) -> tuple[int, int]:
+        return (400, 300)
+
+    def human_pause(self, *args: object) -> dict:
+        self.calls.append(("pause", *args))
+        return {
+            "elapsed": float(args[0]),
+            "drifts": 1,
+            "parked": args[2] is not None,
+            "landed_at": (410, 305),
+        }
+
 
 def test_actions_pass_overrides_through() -> None:
     fake = _OverrideSystem()
@@ -1004,6 +1085,41 @@ def test_actions_pass_overrides_through() -> None:
         )
     )
     assert fake.calls[-1][3] == 0.1
+
+    result = asyncio.run(
+        input_actions.human_pause(
+            {
+                "duration": 8,
+                "x": 600,
+                "y": 400,
+                "w": 300,
+                "h": 200,
+                "drift_interval": 4,
+                "drift_distance": 25,
+                "speed": 1.5,
+                "curvature": 0.5,
+                "tremor": 0.1,
+            },
+            _FakePage(viewport=(1200, 800)),
+            fake,
+        )
+    )
+    call = fake.calls[-1]
+    assert call[:3] == ("pause", 8.0, (450, 300, 750, 500))
+    assert call[3] == (600.0, 400.0, 300.0, 200.0)
+    assert call[4:6] == (4.0, 25.0)
+    pause_profile = call[6]
+    assert math.isclose(pause_profile.speed, 1.8)
+    assert pause_profile.hold_median_s == 0.1
+    assert pause_profile.curvature == 0.5
+    assert pause_profile.tremor_px == 0.1
+    assert result == {
+        "duration": 8.0,
+        "elapsed": 8.0,
+        "drifts": 1,
+        "parked": True,
+        "landed_at": {"x": 410, "y": 305},
+    }
 
 
 def test_override_validation() -> None:
@@ -1078,6 +1194,36 @@ def test_override_validation() -> None:
             input_actions.scroll_to_bottom_humanized,
             {"drift": -0.1},
             "drift must be between 0.0 and 1.0",
+        ),
+        (
+            input_actions.human_pause,
+            {"duration": 301},
+            "duration must be between 0.1 and 300.0",
+        ),
+        (
+            input_actions.human_pause,
+            {"drift_interval": 0.5},
+            "drift_interval must be between 1.0 and 120.0",
+        ),
+        (
+            input_actions.human_pause,
+            {"drift_distance": 501},
+            "drift_distance must be between 0.0 and 500.0",
+        ),
+        (
+            input_actions.human_pause,
+            {"drift": 1},
+            "drift must be true or false",
+        ),
+        (
+            input_actions.human_pause,
+            {"x": 10},
+            "x and y must be given together",
+        ),
+        (
+            input_actions.human_pause,
+            {"w": 100},
+            "w and h require x and y",
         ),
     ]
     for handler, cmd, message in cases:

@@ -73,6 +73,28 @@ The JSON printed to stdout looks like this:
 - **All HTTP API actions work as script steps**: goto, click, fill, eval, wait_for_element, etc.
 - **Page loaders still fire** on `goto` if configured.
 
+## Human input in scripts
+
+Use `human_pause` only when a visible task naturally includes reading, reviewing, or composing. It keeps the pointer mostly still and can make sparse bounded drifts. Use `sleep` for ordinary waits, and do not add `human_pause` between every step.
+
+For substantial text, write the real X11 clipboard, focus the field, and paste with `Ctrl+V`. Use `system_type` for short edits, paste-hostile fields, or tests that need per-keystroke behavior.
+
+```yaml
+steps:
+  - action: goto
+    url: ${env.TARGET_URL}
+  - action: human_pause
+    duration: 4
+    drift: true
+    drift_interval: 12
+  - action: set_clipboard
+    text: ${env.MESSAGE}
+  - action: click
+    selector: "textarea"
+  - action: send_key
+    key: ctrl+v
+```
+
 ## Control flow
 
 Alongside ordinary `action` steps, scripts can use one control node per step: `if`, `repeat`, or `while`. Control nodes are intentionally explicit and bounded; they cannot carry sibling action fields.

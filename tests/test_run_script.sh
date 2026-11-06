@@ -71,6 +71,30 @@ PYEOF
     echo "OK: run_script_yaml (name=$name, title=$title)"
 }
 
+test_run_script_human_pause() {
+    local resp
+    resp=$(post '{
+        "action": "run_script",
+        "steps": [
+            {"action": "human_pause", "duration": 0.1, "drift": false, "output_id": "pause"},
+            {"action": "ping", "output_id": "after_pause"}
+        ]
+    }')
+    assert_success "$resp" "run_script: human_pause" || return 1
+    echo "$resp" | python3 -c '
+import json
+import sys
+
+data = json.load(sys.stdin)["data"]
+assert data["success"] is True
+assert data["steps_executed"] == 2
+assert data["outputs"]["pause"]["duration"] == 0.1
+assert data["outputs"]["pause"]["drifts"] == 0
+assert data["outputs"]["after_pause"]["message"] == "pong"
+' || return 1
+    echo "OK: run_script_human_pause"
+}
+
 test_run_script_on_error_stop() {
     local resp
 
@@ -274,6 +298,7 @@ test_request_lock() {
 ALL_TESTS+=(
     test_run_script_json_steps
     test_run_script_yaml
+    test_run_script_human_pause
     test_run_script_on_error_stop
     test_run_script_on_error_continue
     test_run_script_no_steps

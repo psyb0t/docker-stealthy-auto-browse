@@ -1,8 +1,8 @@
 """Judge what a page observed during humanized (or robotic) input.
 
 Usage:
-    input_checks.py <mouse|typing|scroll> <harvest.json> <scores.json>
-        --expect <human|robot> [--notches N]
+    input_checks.py <mouse|typing|scroll|pause> <harvest.json> <scores.json>
+        --expect <human|robot> [--notches N] [--duration N]
 
 harvest.json is window.__probe.harvest() from tests/fixtures/input_probe.html;
 scores.json is the input detector container's output for the same harvest.
@@ -29,12 +29,14 @@ _EXPECT_ROBOT = "robot"
 _MODE_MOUSE = "mouse"
 _MODE_TYPING = "typing"
 _MODE_SCROLL = "scroll"
+_MODE_PAUSE = "pause"
 # (own checks that must fail, whether a detector must also flag it). Wheel
 # cadence is invisible to the detectors, so scroll relies on our checks.
 _ROBOT_RULES = {
     _MODE_MOUSE: (2, True),
     _MODE_TYPING: (2, True),
     _MODE_SCROLL: (1, False),
+    _MODE_PAUSE: (2, False),
 }
 _MS_PER_S = 1000.0
 _STROKE_IDLE_GAP_S = 0.3
@@ -67,6 +69,13 @@ _SHIFT_LEAD_MIN_MS = 20.0
 _SHIFT_CODES = frozenset({"ShiftLeft", "ShiftRight"})
 
 _WHEEL_MIN_GAP_MS = 10.0
+
+_PAUSE_BURST_GAP_MS = 300.0
+_PAUSE_MIN_BURSTS = 2
+_PAUSE_MAX_BURSTS_PER_SECOND = 0.75
+_PAUSE_MIN_EVENTS_PER_BURST = 3
+_PAUSE_MAX_ACTIVE_SHARE = 0.35
+_PAUSE_MIN_GAP_CV = 0.15
 
 # Only mouse sessions get an overall verdict. Typing and scroll sessions have
 # almost no pointer data, so their overall score swings on "not enough
@@ -105,6 +114,7 @@ _MA_ROBOT_REASONS = {
         "Constant scroll velocity",
         "No scroll pauses",
     ),
+    _MODE_PAUSE: (),
 }
 _MA_NO_SCROLL_PAUSES = "No scroll pauses"
 
@@ -391,6 +401,61 @@ def scroll_checks(harvest: dict, notches: int | None) -> list[Check]:
     return checks
 
 
+def pause_checks(harvest: dict, duration: float | None) -> list[Check]:
+    moves = [event for event in harvest["events"] if event["type"] == "mousemove"]
+    checks = [_trusted(moves)]
+    if duration is None or duration <= 0:
+        return [*checks, ("duration supplied", False, f"duration={duration}")]
+    if not moves:
+        return [*checks, ("pointer movement recorded", False, "mousemove=0")]
+
+    bursts: list[list[dict]] = [[moves[0]]]
+    for move in moves[1:]:
+        if move["t"] - bursts[-1][-1]["t"] > _PAUSE_BURST_GAP_MS:
+            bursts.append([])
+        bursts[-1].append(move)
+    maximum_bursts = max(
+        _PAUSE_MIN_BURSTS,
+        round(duration * _PAUSE_MAX_BURSTS_PER_SECOND),
+    )
+    checks.append(
+        (
+            "sparse movement bursts",
+            _PAUSE_MIN_BURSTS <= len(bursts) <= maximum_bursts,
+            f"bursts={len(bursts)} allowed={_PAUSE_MIN_BURSTS}-{maximum_bursts}",
+        )
+    )
+    median_events = statistics.median(len(burst) for burst in bursts)
+    checks.append(
+        (
+            "moves use trajectories",
+            median_events >= _PAUSE_MIN_EVENTS_PER_BURST,
+            f"median_events_per_burst={median_events:.1f}",
+        )
+    )
+    active_ms = sum(burst[-1]["t"] - burst[0]["t"] for burst in bursts)
+    active_share = active_ms / (duration * _MS_PER_S)
+    checks.append(
+        (
+            "stillness dominates",
+            active_share <= _PAUSE_MAX_ACTIVE_SHARE,
+            f"active_share={active_share:.3f}",
+        )
+    )
+    starts = [burst[0]["t"] for burst in bursts]
+    gaps = [later - earlier for earlier, later in zip(starts, starts[1:])]
+    if len(gaps) >= 2:
+        gap_cv = statistics.pstdev(gaps) / statistics.fmean(gaps)
+        checks.append(
+            (
+                "drift timing is irregular",
+                gap_cv >= _PAUSE_MIN_GAP_CV,
+                f"gap_cv={gap_cv:.3f}",
+            )
+        )
+    return checks
+
+
 def detector_checks(mode: str, scores: dict, is_single_gesture: bool) -> list[Check]:
     checks = []
     ma = scores.get("motion_attestation")
@@ -424,6 +489,14 @@ def detector_checks(mode: str, scores: dict, is_single_gesture: bool) -> list[Ch
                 "; ".join(robot_reasons) or "none",
             )
         )
+        if mode == _MODE_PAUSE:
+            checks.append(
+                (
+                    "motion-attestation result recorded",
+                    True,
+                    f"score={ma['score']} verdict={ma['verdict']}",
+                )
+            )
     gaitcha = scores.get("gaitcha") or []
     if mode == _MODE_MOUSE and gaitcha:
         passed = sum(1 for g in gaitcha if g["score"] >= _GAITCHA_PASS_SCORE)
@@ -439,7 +512,10 @@ def detector_checks(mode: str, scores: dict, is_single_gesture: bool) -> list[Ch
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=(_MODE_MOUSE, _MODE_TYPING, _MODE_SCROLL))
+    parser.add_argument(
+        "mode",
+        choices=(_MODE_MOUSE, _MODE_TYPING, _MODE_SCROLL, _MODE_PAUSE),
+    )
     parser.add_argument("harvest", type=Path)
     parser.add_argument("scores", type=Path)
     parser.add_argument(
@@ -447,6 +523,7 @@ def main() -> int:
     )
     # A single scroll request of N notches (rather than a page-long session).
     parser.add_argument("--notches", type=int)
+    parser.add_argument("--duration", type=float)
     args = parser.parse_args()
 
     harvest = json.loads(args.harvest.read_text())
@@ -455,6 +532,7 @@ def main() -> int:
         _MODE_MOUSE: lambda: mouse_checks(harvest),
         _MODE_TYPING: lambda: typing_checks(harvest),
         _MODE_SCROLL: lambda: scroll_checks(harvest, args.notches),
+        _MODE_PAUSE: lambda: pause_checks(harvest, args.duration),
     }
     own = builders[args.mode]()
     detectors = detector_checks(args.mode, scores, args.notches is not None)

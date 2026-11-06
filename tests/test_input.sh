@@ -62,6 +62,29 @@ test_scroll() {
     echo "OK: scroll (scrollY: $before -> $after)"
 }
 
+test_human_pause() {
+    local resp
+    resp=$(post '{"action":"human_pause","duration":0.1,"x":500,"y":350,"w":200,"h":120,"drift":false}')
+    assert_success "$resp" "human_pause" || return 1
+    echo "$resp" | python3 -c '
+import json
+import sys
+
+data = json.load(sys.stdin)["data"]
+assert data["duration"] == 0.1
+assert data["elapsed"] >= 0.1
+assert data["drifts"] == 0
+assert data["parked"] is True
+assert 400 <= data["landed_at"]["x"] <= 600
+assert 290 <= data["landed_at"]["y"] <= 410
+' || return 1
+
+    local invalid
+    invalid=$(post '{"action":"human_pause","duration":301}')
+    assert_eq "$(echo "$invalid" | json_get "['error']")" "duration must be between 0.1 and 300.0" "human_pause: duration limit" || return 1
+    echo "OK: human_pause parks inside its safe region"
+}
+
 test_system_type() {
     # Click on sys-input to focus it, then system_type into it
     post '{"action": "click", "selector": "#sys-input"}' >/dev/null
@@ -274,6 +297,7 @@ ALL_TESTS+=(
     test_mouse_click
     test_system_click
     test_scroll
+    test_human_pause
     test_system_type
     test_send_key
     test_send_key_pagedown

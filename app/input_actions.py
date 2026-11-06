@@ -15,6 +15,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import human_keyboard
+import human_mouse
 import human_scroll
 from human_keyboard import TypingProfile
 from human_mouse import MouseProfile
@@ -44,6 +45,15 @@ _SCROLL_MAX_GESTURES_DEFAULT = 500
 _SCROLL_MAX_GESTURES_LIMIT = 10_000
 _SCROLL_STALLS_TO_STOP = 2
 _SCROLL_DRIFT_P = 0.4
+
+_HUMAN_PAUSE_DEFAULT_S = 1.0
+_HUMAN_PAUSE_DURATION_BOUNDS_S = (0.1, 300.0)
+_HUMAN_PAUSE_DRIFT_INTERVAL_BOUNDS_S = (1.0, 120.0)
+_HUMAN_PAUSE_DRIFT_DISTANCE_BOUNDS_PX = (0.0, 500.0)
+_HUMAN_PAUSE_DRIFT_DISTANCE_DEFAULT_PX = 60.0
+_HUMAN_PAUSE_TARGET_BOUNDS_PX = (4.0, 10_000.0)
+_HUMAN_PAUSE_TARGET_DEFAULT_PX = 80.0
+_HUMAN_PAUSE_COORDINATE_BOUNDS_PX = (-1_000_000.0, 1_000_000.0)
 
 # Accepted ranges for per-request tuning overrides.
 _SPEED_BOUNDS = (0.1, 10.0)
@@ -196,6 +206,26 @@ def _bounded(cmd: dict, name: str, bounds: tuple[float, float]) -> float | None:
     return value
 
 
+def _strict_bounded(
+    cmd: dict,
+    name: str,
+    bounds: tuple[float, float],
+    default: float | None = None,
+) -> float | None:
+    """Bound a new numeric API field without legacy numeric-string coercion."""
+    if name not in cmd:
+        return default
+    value = cmd[name]
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise InputActionError(f"{name} must be a number")
+    if not math.isfinite(value):
+        raise InputActionError(f"{name} must be finite")
+    lo, hi = bounds
+    if not lo <= value <= hi:
+        raise InputActionError(f"{name} must be between {lo} and {hi}")
+    return float(value)
+
+
 def _target(cmd: dict) -> tuple[float | None, float | None, float | None]:
     """Optional duration, width and height shared by pointer actions."""
     return _positive(cmd, "duration"), _positive(cmd, "w"), _positive(cmd, "h")
@@ -346,6 +376,99 @@ async def _pointer_into_viewport(
         system.move_mouse, tx, ty, None, size["w"] / 2, size["h"] / 2
     )
     return bounds
+
+
+def _pause_bounds(
+    cmd: dict,
+    viewport_bounds: tuple[int, int, int, int],
+) -> tuple[
+    tuple[int, int, int, int],
+    tuple[float, float, float, float] | None,
+]:
+    has_coordinates = "x" in cmd or "y" in cmd
+    if not has_coordinates:
+        if "w" in cmd or "h" in cmd:
+            raise InputActionError("w and h require x and y")
+        return viewport_bounds, None
+
+    x = _strict_bounded(cmd, "x", _HUMAN_PAUSE_COORDINATE_BOUNDS_PX)
+    y = _strict_bounded(cmd, "y", _HUMAN_PAUSE_COORDINATE_BOUNDS_PX)
+    if x is None or y is None:
+        raise InputActionError("x and y must be given together")
+    width = _strict_bounded(
+        cmd,
+        "w",
+        _HUMAN_PAUSE_TARGET_BOUNDS_PX,
+        _HUMAN_PAUSE_TARGET_DEFAULT_PX,
+    )
+    height = _strict_bounded(
+        cmd,
+        "h",
+        _HUMAN_PAUSE_TARGET_BOUNDS_PX,
+        _HUMAN_PAUSE_TARGET_DEFAULT_PX,
+    )
+    left, top, right, bottom = viewport_bounds
+    safe_left = max(left, math.ceil(x - width / 2.0))
+    safe_top = max(top, math.ceil(y - height / 2.0))
+    safe_right = min(right, math.floor(x + width / 2.0))
+    safe_bottom = min(bottom, math.floor(y + height / 2.0))
+    if safe_right - safe_left < _HUMAN_PAUSE_TARGET_BOUNDS_PX[0]:
+        raise InputActionError("pause target must intersect the viewport")
+    if safe_bottom - safe_top < _HUMAN_PAUSE_TARGET_BOUNDS_PX[0]:
+        raise InputActionError("pause target must intersect the viewport")
+    safe_width = float(safe_right - safe_left)
+    safe_height = float(safe_bottom - safe_top)
+    park = (
+        safe_left + safe_width / 2.0,
+        safe_top + safe_height / 2.0,
+        safe_width,
+        safe_height,
+    )
+    return (safe_left, safe_top, safe_right, safe_bottom), park
+
+
+async def human_pause(cmd: dict, page: Any, system: System) -> dict:
+    duration = _strict_bounded(
+        cmd,
+        "duration",
+        _HUMAN_PAUSE_DURATION_BOUNDS_S,
+        _HUMAN_PAUSE_DEFAULT_S,
+    )
+    drift_interval = _strict_bounded(
+        cmd,
+        "drift_interval",
+        _HUMAN_PAUSE_DRIFT_INTERVAL_BOUNDS_S,
+        human_mouse.IDLE_DRIFT_INTERVAL_MEDIAN_S,
+    )
+    drift_distance = _strict_bounded(
+        cmd,
+        "drift_distance",
+        _HUMAN_PAUSE_DRIFT_DISTANCE_BOUNDS_PX,
+        _HUMAN_PAUSE_DRIFT_DISTANCE_DEFAULT_PX,
+    )
+    drift = _flag(cmd, "drift", True)
+    profile = _mouse_profile(cmd, system)
+    await _refresh_window_offset(page, system)
+    viewport_bounds = await _pointer_into_viewport(page, system)
+    bounds, park = _pause_bounds(cmd, viewport_bounds)
+    if not drift:
+        drift_interval = None
+    result = await asyncio.to_thread(
+        system.human_pause,
+        duration,
+        bounds,
+        park,
+        drift_interval,
+        drift_distance,
+        profile,
+    )
+    return {
+        "duration": duration,
+        "elapsed": result["elapsed"],
+        "drifts": result["drifts"],
+        "parked": result["parked"],
+        "landed_at": _point(*result["landed_at"]),
+    }
 
 
 async def _reading_pause(
@@ -608,6 +731,7 @@ ACTIONS: dict[str, ActionHandler] = {
     "system_click": system_click,
     "scroll": scroll,
     "scroll_to_bottom_humanized": scroll_to_bottom_humanized,
+    "human_pause": human_pause,
     "system_type": system_type,
     "send_key": send_key,
 }

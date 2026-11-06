@@ -99,9 +99,9 @@ try:
     r = mcp_request(2, "tools/list", {})
     tools = r.get("result", {}).get("tools", [])
     names = [t["name"] for t in tools]
-    ok = len(tools) == 21
-    results.append((f"2. tools/list ({len(tools)} tools, expect 21)", ok, f"got: {names}" if not ok else ""))
-    expected = ["goto","get_text","get_html","set_clipboard","get_clipboard","detect_challenge","solve_captcha","screenshot","system_click","eval_js","browser_action","run_script"]
+    ok = len(tools) == 22
+    results.append((f"2. tools/list ({len(tools)} tools, expect 22)", ok, f"got: {names}" if not ok else ""))
+    expected = ["goto","get_text","get_html","set_clipboard","get_clipboard","detect_challenge","solve_captcha","screenshot","system_click","human_pause","eval_js","browser_action","run_script"]
     missing = [n for n in expected if n not in names]
     ok2 = len(missing) == 0
     results.append(("2b. expected tools present", ok2, f"missing: {missing}" if missing else ""))
@@ -278,7 +278,37 @@ try:
 except Exception as e:
     results.append(("10b. clipboard tools", False, str(e)))
 
-# 11. Call nonexistent tool — should return error
+# 10c. Visible human pause
+try:
+    pause_data = challenge_data(
+        tool_text(
+            tool_call(
+                105,
+                "human_pause",
+                {
+                    "duration": 0.1,
+                    "x": 500,
+                    "y": 350,
+                    "w": 200,
+                    "h": 120,
+                    "drift": False,
+                },
+            )
+        )
+    )
+    landed = pause_data["landed_at"]
+    ok = (
+        pause_data["duration"] == 0.1
+        and pause_data["drifts"] == 0
+        and pause_data["parked"] is True
+        and 400 <= landed["x"] <= 600
+        and 290 <= landed["y"] <= 410
+    )
+    results.append(("10c. human_pause tool", ok, json.dumps(pause_data) if not ok else ""))
+except Exception as e:
+    results.append(("10c. human_pause tool", False, str(e)))
+
+# 10d. CAPTCHA solver provider boundary
 try:
     solve_data = json.loads(
         tool_text(
@@ -290,9 +320,9 @@ try:
         )
     )
     ok = solve_data.get("success") is False and "CAPTCHA_SOLVER_PROVIDER=anticaptcha" in solve_data.get("error", "")
-    results.append(("10c. solve_captcha provider boundary", ok, json.dumps(solve_data) if not ok else ""))
+    results.append(("10d. solve_captcha provider boundary", ok, json.dumps(solve_data) if not ok else ""))
 except Exception as e:
-    results.append(("10c. solve_captcha provider boundary", False, str(e)))
+    results.append(("10d. solve_captcha provider boundary", False, str(e)))
 
 # 11. Call nonexistent tool — should return error
 try:

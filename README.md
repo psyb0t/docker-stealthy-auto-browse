@@ -84,7 +84,7 @@ The server serializes requests in single-instance mode. Navigation has bounded r
 
 The image includes uBlock Origin, LocalCDN, ClearURLs, and Consent-O-Matic. Optional CAPTCHA solver integrations are disabled unless configured.
 
-Two input modes are available. Playwright actions such as `click` and `fill` are fast DOM operations. System actions such as `system_click`, `system_type`, `mouse_move`, and `scroll` send OS-level input with paths and timing fitted to published human input data. Use the system actions when trusted input or behavior matters. See [Stealth and detection evasion](docs/stealth.md) and [Humanized input](docs/api.md#humanized-input).
+Two input modes are available. Playwright actions such as `click` and `fill` are fast DOM operations. System actions such as `system_click`, `system_type`, `mouse_move`, and `scroll` send OS-level input with paths and timing fitted to published human input data. `human_pause` represents visible reading, review, or composition time without continuously jiggling the pointer. Use the system actions when trusted input or behavior matters. See [Stealth and detection evasion](docs/stealth.md) and [Humanized input](docs/api.md#humanized-input).
 
 ## HTTP API
 
@@ -127,7 +127,7 @@ The source skill is under [`.agents/skills/stealthy-auto-browse`](.agents/skills
 
 - **Script mode:** Pipe YAML to `docker run --rm -i ... --script` and receive JSON on stdout. Conditions, branches, bounded loops, and output references are supported. See [Script mode](docs/script-mode.md).
 - **Page loaders:** Run URL-matched YAML actions after navigation to handle repeated page cleanup. See [Page loaders](docs/page-loaders.md).
-- **Clipboard:** `set_clipboard` and `get_clipboard` use the real X11 text clipboard shared by Camoufox and noVNC. See [Clipboard](docs/api.md#clipboard).
+- **Clipboard:** `set_clipboard` and `get_clipboard` use the real X11 text clipboard shared by Camoufox and noVNC. For substantial text, set the clipboard, focus the field, then paste with `send_key` and `ctrl+v`. See [Clipboard](docs/api.md#clipboard).
 - **Virtual camera and microphone:** Mount media under `/media` and configure static or dynamic sources for `getUserMedia()` tests. See [Virtual camera and microphone](docs/api.md#virtual-camera-and-microphone) and [Configuration](docs/configuration.md).
 - **Recording:** `start_recording` and `stop_recording` write collision-safe MP4 files to a mounted `/recordings` directory. See [Screen recording](docs/api.md#screen-recording).
 - **CAPTCHA solver providers:** Configure one supported provider through environment variables. Official Firefox extensions are checksum-verified before use. Anti-Captcha uses its official HTTP API. No provider is installed or contacted by default. See [CAPTCHA solver providers](docs/configuration.md#captcha-solver-providers).

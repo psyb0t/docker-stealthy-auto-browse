@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.4.0] 2026-11-06
+
+### Added
+
+- Add `human_pause` to the HTTP API, MCP, `run_script`, and YAML script mode. It models a visible reading, review, or composition pause with a mostly still pointer and optional sparse, bounded human-shaped drift. It does not run in the background or replace ordinary `sleep`.
+
+### Changed
+
+- Agent guidance now prefers the real clipboard followed by `Ctrl+V` for substantial text. `system_type` remains available for short edits, paste-hostile fields, and tests that need per-keystroke behavior.
+
 ## [3.3.1] 2026-11-04
 
 ### Changed

@@ -57,6 +57,7 @@ MAIN_TESTS=(
     test_mouse_click
     test_system_click
     test_scroll
+    test_human_pause
     test_system_type
     test_send_key
     test_send_key_pagedown
@@ -79,6 +80,7 @@ MAIN_TESTS=(
     # test_run_script.sh
     test_run_script_json_steps
     test_run_script_yaml
+    test_run_script_human_pause
     test_run_script_on_error_stop
     test_run_script_on_error_continue
     test_run_script_no_steps
@@ -162,6 +164,7 @@ HEAVY_TESTS=(
     test_humanized_typing
     test_humanized_input_off_event_loop
     test_humanized_scroll
+    test_human_pause_detector
 )
 
 # Classify requested tests into main vs extra vs heavy

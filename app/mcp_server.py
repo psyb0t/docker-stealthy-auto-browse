@@ -39,6 +39,11 @@ _INSTRUCTIONS_SINGLE = (
     "CLICKING: always use click() with a CSS selector first. It is fast and reliable. "
     "Only use system_click() as a last resort when the site detects DOM event injection. "
     "Use get_interactive_elements to find selectors and coordinates. "
+    "TEXT INPUT: for substantial text, use set_clipboard(), focus the field, then "
+    "send_key('ctrl+v'). Use system_type() for short edits, paste-hostile fields, or "
+    "tasks where per-key behavior matters. "
+    "VISIBLE PAUSES: use human_pause() only when the task naturally needs reading, "
+    "review, or composition time. Do not put it between every action or use it as sleep. "
     "Use run_script to execute multi-step workflows atomically."
 )
 
@@ -217,6 +222,10 @@ async def run_script(
             - w (int), h (int), and the system_click tuning options.
 
     TEXT INPUT:
+        For substantial text, prefer set_clipboard, focus the field, then
+        send_key with "ctrl+v". This matches normal browser use and avoids an
+        unnecessarily long synthetic typing trace. Use system_type for short
+        edits, fields that block paste, and tasks where per-key behavior matters.
         fill: Set input field value instantly (clears first, no keystrokes).
             - selector (str, required): CSS selector of input element.
             - value (str, required): Value to set.
@@ -276,6 +285,18 @@ async def run_script(
               little, 0-1. Default 0.06.
             - drift (float): Chance per pause of drifting the pointer, 0-1.
               Default 0.4.
+        human_pause: Wait during visible reading, review, or composition while
+            leaving the pointer mostly still. Do not insert it between every
+            action and do not use it as a generic replacement for sleep.
+            - duration (float): Pause duration, 0.1-300 seconds. Default 1.
+            - x (int), y (int): Optional centre of a safe parking region.
+            - w (int), h (int): Safe region size, 4-10000 px. Default 80.
+            - drift (bool): Allow sparse irregular pointer drift. Default true.
+            - drift_interval (float): Median seconds between drift chances,
+              1-120. Default 12.
+            - drift_distance (float): Maximum drift distance, 0-500 px.
+              Default 60.
+            - speed, curvature, tremor: as for mouse_move.
 
     SCREENSHOTS:
         save_screenshot: Capture screenshot (prefer get_text/get_html instead).
@@ -723,6 +744,59 @@ if not _cluster_mode:
         )
 
     @mcp.tool
+    async def human_pause(
+        duration: float = 1.0,
+        x: int | None = None,
+        y: int | None = None,
+        w: int | None = None,
+        h: int | None = None,
+        drift: bool = True,
+        drift_interval: float | None = None,
+        drift_distance: float | None = None,
+        speed: float | None = None,
+        curvature: float | None = None,
+        tremor: float | None = None,
+    ) -> str:
+        """Pause for visible reading, review, or composition.
+
+        The pointer stays still most of the time. When drift is enabled, zero
+        or a few irregular moves use the same human mouse profile as other OS
+        input. Use this only when the visible task naturally needs thought or
+        reading time. Do not call it between every action or instead of sleep.
+
+        Args:
+            duration: Pause duration in seconds, from 0.1 through 300.
+            x: Optional viewport X centre of a safe parking region.
+            y: Optional viewport Y centre of a safe parking region.
+            w: Safe region width in pixels, from 4 through 10000.
+            h: Safe region height in pixels, from 4 through 10000.
+            drift: Allow sparse irregular pointer drift. Default true.
+            drift_interval: Median seconds between drift chances, from 1
+                through 120. Default 12.
+            drift_distance: Maximum drift distance in pixels, from 0 through
+                500. Default 60.
+            speed: Movement speed multiplier, from 0.1 through 10.
+            curvature: Main stroke bend multiplier, from 0 through 5.
+            tremor: Hand tremor amplitude in pixels, from 0 through 5.
+        """
+        return _text_result(
+            await _call(
+                "human_pause",
+                duration=duration,
+                x=x,
+                y=y,
+                w=w,
+                h=h,
+                drift=drift,
+                drift_interval=drift_interval,
+                drift_distance=drift_distance,
+                speed=speed,
+                curvature=curvature,
+                tremor=tremor,
+            )
+        )
+
+    @mcp.tool
     async def click(selector: str) -> str:
         """Click an element by CSS selector or XPath. PREFER THIS over system_click.
 
@@ -806,7 +880,8 @@ if not _cluster_mode:
         display (calibrate, get_resolution, set_color_scheme, enter_fullscreen,
         exit_fullscreen),
         recording (start_recording, stop_recording, recording_status),
-        scrolling (scroll_to_bottom, scroll_to_bottom_humanized),
+        scrolling and visible pauses (scroll_to_bottom,
+        scroll_to_bottom_humanized, human_pause),
         navigation (refresh), wait (wait_for_url, wait_for_network_idle),
         utility (ping, sleep).
 
