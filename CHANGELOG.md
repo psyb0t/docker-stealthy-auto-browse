@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.5.0] 2026-11-06
+
+### Added
+
+- Add shared selector, role, iframe, open-shadow, and stable element-reference targeting across DOM and trusted OS-level actions.
+- Add accessibility snapshots and role lookup, DOM change waits, trusted double-click, right-click, held-button and drag actions, popup and X window controls, and guarded noVNC human handoff with trusted activity counts.
+- Add bounded browser events through actions and authenticated SSE, request interception rules, opt-in request and response body capture, HAR 1.2 export, permissions, geolocation, element and full-page PNG capture, and HTML, PNG, and file-list clipboard formats.
+
+### Changed
+
+- Keep existing selector-only, text clipboard, viewport screenshot, tab, logging, HTTP, MCP, YAML, `run_script`, and cluster script behavior compatible. New behavior is opt-in.
+- Configure Openbox with one desktop so wheel input over an uncovered screen edge cannot switch away from the browser.
+
 ## [3.4.0] 2026-11-06
 
 ### Added

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import subprocess
 import sys
+import tempfile
 from unittest.mock import patch
 
 sys.path.insert(0, "/app")
@@ -76,10 +78,35 @@ def test_log_redaction_covers_nested_scripts() -> None:
     assert params["steps"][0]["text"] == "top secret"
 
 
+def test_mime_encoding_and_validation() -> None:
+    png = b"\x89PNG\r\n\x1a\ncontent"
+    encoded = base64.b64encode(png).decode("ascii")
+    assert clipboard._encode_clipboard_value("image/png", encoded) == png
+    assert clipboard._encode_clipboard_value("html", "<b>safe</b>") == b"<b>safe</b>"
+    with tempfile.NamedTemporaryFile() as item:
+        value = clipboard._encode_clipboard_value("files", [item.name]).decode()
+        assert value.startswith("file://")
+    for clipboard_format, value in (
+        ("image/png", "not-base64"),
+        ("files", ["/definitely/missing"]),
+        ("unknown", "x"),
+    ):
+        try:
+            if clipboard_format == "unknown":
+                clipboard._clipboard_target(clipboard_format)
+            else:
+                clipboard._encode_clipboard_value(clipboard_format, value)
+        except clipboard.ClipboardError:
+            pass
+        else:
+            raise AssertionError(f"invalid {clipboard_format} clipboard was accepted")
+
+
 if __name__ == "__main__":
     test_utf8_boundaries()
     test_invalid_utf8_is_rejected()
     test_subprocess_errors_are_sanitized()
     test_async_results()
     test_log_redaction_covers_nested_scripts()
+    test_mime_encoding_and_validation()
     print("clipboard unit tests passed")

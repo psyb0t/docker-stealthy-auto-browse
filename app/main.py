@@ -17,8 +17,12 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+import base64
+import contextvars
+import fnmatch
 import hmac
 import io
+import json
 import math
 import os
 import subprocess
@@ -26,7 +30,9 @@ import sys
 import tempfile
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import uvicorn
 import yaml
@@ -39,17 +45,30 @@ from browser import (
     BrowserError,
 )
 from clipboard import Clipboard, ClipboardError, redact_clipboard_params
+from browser_events import BrowserEventBus, BrowserEventError
+from dom_targets import (
+    FRAME_DEPTH_MAX,
+    TARGET_SELECTOR_LENGTH_MAX,
+    ElementRegistry,
+    TargetError,
+    create_reference,
+    resolve_target,
+    target_requested,
+    uses_plain_selector_target,
+    validate_role,
+)
 from captcha_solver import (
     CAPTCHA_SOLVE_POLL_INTERVAL_DEFAULT_SECONDS,
     CAPTCHA_SOLVE_TIMEOUT_DEFAULT_SECONDS,
 )
 from fastapi import FastAPI, Request
 from PIL import Image
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from recorder import Recorder, RecorderError, cleanup_orphan_tmp_files
 from challenge_detector import detect_challenges
 from script_runner import ScriptValidationError, load_script, run_script, validate_script
-from starlette.responses import JSONResponse, PlainTextResponse, Response
+from starlette.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 import input_actions
 from system import System
 
@@ -124,6 +143,8 @@ system = System()
 recorder = Recorder()
 
 clipboard = Clipboard()
+event_bus = BrowserEventBus()
+element_registry = ElementRegistry()
 
 # Global browser instance
 browser: Browser | None = None
@@ -154,11 +175,66 @@ _last_download: dict | None = None
 _network_log: list[dict] = []
 _network_logging: bool = False
 _network_handler_pages: set[int] = set()
+_network_rules: list[dict[str, Any]] = []
+_network_route_installed = False
+_network_route_context_id: int | None = None
+_network_capture_request_bodies = False
+_network_capture_response_bodies = False
+_network_body_limit = 256 * 1024
+_network_request_ids: dict[int, int] = {}
+_network_request_sequence = 0
+_NETWORK_BODY_LIMIT_MAX = 1024 * 1024
+_NETWORK_LOG_CAPACITY = 5000
+_SENSITIVE_HEADER_NAMES = frozenset(
+    {"authorization", "cookie", "proxy-authorization", "set-cookie", "x-api-key"}
+)
+_PERMISSIONS = frozenset(
+    {
+        "accessibility-events",
+        "accelerometer",
+        "ambient-light-sensor",
+        "background-sync",
+        "camera",
+        "clipboard-read",
+        "clipboard-write",
+        "geolocation",
+        "gyroscope",
+        "magnetometer",
+        "microphone",
+        "midi",
+        "midi-sysex",
+        "notifications",
+        "payment-handler",
+    }
+)
+_GEOLOCATION_ACCURACY_MAX = 100_000.0
+_permission_grants: list[tuple[list[str], str | None]] = []
+_geolocation: dict[str, float] | None = None
+_context_state_id: int | None = None
 
 # Console logging
 _console_log: list[dict] = []
 _console_logging: bool = False
 _console_handler_pages: set[int] = set()
+_base_handler_pages: set[int] = set()
+
+_handoff_active = False
+_handoff_started_at: float | None = None
+_HANDOFF_ALLOWED_ACTIONS = {
+    "end_handoff",
+    "get_events",
+    "get_html",
+    "get_page_info",
+    "get_text",
+    "handoff_status",
+    "list_tabs",
+    "list_windows",
+    "ping",
+    "recording_status",
+    "save_screenshot",
+    "sleep",
+    "wait_for_event",
+}
 
 HTTP_LISTEN_HOST = os.environ.get("HTTP_LISTEN_HOST", "0.0.0.0")
 HTTP_LISTEN_PORT = int(os.environ.get("HTTP_LISTEN_PORT", "8080"))
@@ -222,6 +298,7 @@ async def _on_dialog(dialog: Any) -> None:
         "default_value": dialog.default_value,
         "buttons": _DIALOG_BUTTONS.get(dialog.type, ["ok"]),
     }
+    event_bus.publish("dialog", dict(_last_dialog))
     log.info(
         "dialog received",
         extra={"dialog_type": dialog.type, "dialog_message": dialog.message},
@@ -259,56 +336,166 @@ async def _on_download(download: Any) -> None:
             "path": None,
         }
     log.info("download", extra={"filename": download.suggested_filename})
+    event_bus.publish("download", dict(_last_download or {}))
+
+
+def _redact_headers(headers: dict[str, str]) -> dict[str, str]:
+    return {
+        name: "[REDACTED]" if name.lower() in _SENSITIVE_HEADER_NAMES else value
+        for name, value in headers.items()
+    }
+
+
+def _redact_url(url: str) -> str:
+    parts = urlsplit(url)
+    query = []
+    for key, value in parse_qsl(parts.query, keep_blank_values=True):
+        lowered = key.lower()
+        if any(marker in lowered for marker in ("auth", "key", "password", "secret", "session", "token")):
+            value = "[REDACTED]"
+        query.append((key, value))
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
+def _append_network_item(item: dict[str, Any]) -> None:
+    _network_log.append(item)
+    if len(_network_log) > _NETWORK_LOG_CAPACITY:
+        del _network_log[: len(_network_log) - _NETWORK_LOG_CAPACITY]
 
 
 def _on_request(request: Any) -> None:
     """Track network requests when logging is enabled."""
-    if not _network_logging:
-        return
-    _network_log.append(
-        {
-            "type": "request",
-            "url": request.url,
-            "method": request.method,
-            "resource_type": request.resource_type,
-            "timestamp": time.time(),
-        }
-    )
+    global _network_request_sequence
+    _network_request_sequence += 1
+    request_id = _network_request_sequence
+    _network_request_ids[id(request)] = request_id
+    if len(_network_request_ids) > _NETWORK_LOG_CAPACITY:
+        _network_request_ids.pop(next(iter(_network_request_ids)))
+    item = {
+        "type": "request",
+        "request_id": request_id,
+        "url": _redact_url(request.url),
+        "method": request.method,
+        "resource_type": request.resource_type,
+        "timestamp": time.time(),
+        "headers": _redact_headers(request.headers),
+    }
+    if _network_capture_request_bodies and request.post_data is not None:
+        encoded = request.post_data.encode("utf-8")
+        item["body"] = encoded[:_network_body_limit].decode("utf-8", errors="replace")
+        item["body_truncated"] = len(encoded) > _network_body_limit
+    event_bus.publish("request", item)
+    if _network_logging:
+        _append_network_item(item)
 
 
-def _on_response(response: Any) -> None:
+async def _on_response(response: Any) -> None:
     """Track network responses when logging is enabled."""
-    if not _network_logging:
+    request_id = _network_request_ids.pop(id(response.request), None)
+    item = {
+        "type": "response",
+        "request_id": request_id,
+        "url": _redact_url(response.url),
+        "status": response.status,
+        "timestamp": time.time(),
+        "headers": _redact_headers(await response.all_headers()),
+    }
+    if _network_capture_response_bodies:
+        try:
+            body = await response.body()
+            limited = body[:_network_body_limit]
+            item["body_base64"] = base64.b64encode(limited).decode("ascii")
+            item["body_truncated"] = len(body) > _network_body_limit
+        except Exception as error:
+            log.warning(
+                "response body capture failed",
+                extra={"error": str(error)},
+            )
+    event_bus.publish("response", item)
+    if _network_logging:
+        _append_network_item(item)
+
+
+async def _route_network_request(route: Any, request: Any) -> None:
+    for rule in _network_rules:
+        if not fnmatch.fnmatch(request.url, rule["url"]):
+            continue
+        if rule.get("method") and request.method != rule["method"]:
+            continue
+        if rule.get("resource_type") and request.resource_type != rule["resource_type"]:
+            continue
+        if rule["action"] in {"abort", "block"}:
+            await route.abort(rule.get("error_code", "blockedbyclient"))
+            return
+        if rule["action"] == "redirect":
+            await route.continue_(url=rule["redirect_url"])
+            return
+        if rule["action"] == "fulfill":
+            fulfill_options = {
+                "status": rule.get("status", 200),
+                "body": rule.get("body", ""),
+            }
+            if "headers" in rule:
+                fulfill_options["headers"] = rule["headers"]
+            if "content_type" in rule:
+                fulfill_options["content_type"] = rule["content_type"]
+            await route.fulfill(**fulfill_options)
+            return
+        continue_options = {}
+        if "headers" in rule:
+            continue_options["headers"] = {**request.headers, **rule["headers"]}
+        if "post_data" in rule:
+            continue_options["post_data"] = rule["post_data"]
+        await route.continue_(**continue_options)
         return
-    _network_log.append(
-        {
-            "type": "response",
-            "url": response.url,
-            "status": response.status,
-            "timestamp": time.time(),
-        }
-    )
+    await route.continue_()
 
 
 def _on_console(message: Any) -> None:
     """Track console messages when logging is enabled."""
-    if not _console_logging:
-        return
-    _console_log.append(
-        {
-            "type": message.type,
-            "text": message.text,
-            "location": message.location,
-            "timestamp": time.time(),
-        }
+    item = {
+        "type": message.type,
+        "text": message.text,
+        "location": message.location,
+        "timestamp": time.time(),
+    }
+    event_bus.publish("console", item)
+    if _console_logging:
+        _console_log.append(item)
+
+
+def _on_page_close(page: Any) -> None:
+    event_bus.publish("page_closed", {"url": page.url})
+    contextvars.copy_context().run(
+        asyncio.create_task,
+        element_registry.clear(page),
     )
+
+
+def _on_frame_navigated(page: Any, frame: Any) -> None:
+    if frame is page.main_frame:
+        event_bus.publish("navigation", {"url": frame.url})
+        contextvars.copy_context().run(
+            asyncio.create_task,
+            element_registry.clear(page),
+        )
+
+
+def _on_popup(popup: Any) -> None:
+    _setup_page_handlers(popup)
+    event_bus.publish("popup", {"url": popup.url})
 
 
 def _setup_page_handlers(page: Any) -> None:
     """Register all event handlers on a page."""
-    page.on("dialog", _on_dialog)
-    page.on("download", _on_download)
     page_id = id(page)
+    if page_id not in _base_handler_pages:
+        page.on("dialog", _on_dialog)
+        page.on("download", _on_download)
+        page.on("close", lambda: _on_page_close(page))
+        page.on("framenavigated", lambda frame: _on_frame_navigated(page, frame))
+        page.on("popup", _on_popup)
+        _base_handler_pages.add(page_id)
     if page_id not in _network_handler_pages:
         page.on("request", _on_request)
         page.on("response", _on_response)
@@ -413,6 +600,8 @@ async def get_active_page(open_if_empty: bool = True) -> Any:
             return None
         if not browser._context:
             return None
+        await _ensure_network_route(browser._context)
+        await _ensure_context_state(browser._context)
         pages = browser._context.pages
         if not pages:
             _active_page = None
@@ -424,6 +613,32 @@ async def get_active_page(open_if_empty: bool = True) -> Any:
         if _active_page is None or _active_page not in pages:
             _active_page = pages[-1]
         return _active_page
+
+
+async def _ensure_network_route(context: Any) -> None:
+    global _network_route_installed, _network_route_context_id
+    context_id = id(context)
+    if not _network_rules or _network_route_context_id == context_id:
+        return
+    await context.route("**/*", _route_network_request)
+    _network_route_installed = True
+    _network_route_context_id = context_id
+
+
+async def _ensure_context_state(context: Any) -> None:
+    global _context_state_id, _handoff_active, _handoff_started_at
+    context_id = id(context)
+    if _context_state_id == context_id:
+        return
+    if _context_state_id is not None and _handoff_active:
+        _handoff_active = False
+        _handoff_started_at = None
+        event_bus.publish("handoff_ended", {"reason": "browser_relaunch"})
+    for permissions, origin in _permission_grants:
+        await context.grant_permissions(permissions, origin=origin)
+    if _geolocation is not None:
+        await context.set_geolocation(_geolocation)
+    _context_state_id = context_id
 
 
 def _navigation_number(
@@ -564,15 +779,72 @@ def make_response(
     return resp
 
 
+def _event_types(command: dict[str, Any]) -> set[str] | None:
+    raw_types = command.get("types")
+    if raw_types is None:
+        return None
+    if not isinstance(raw_types, list) or not all(
+        isinstance(item, str) and item for item in raw_types
+    ):
+        raise BrowserEventError("types must be a list of non-empty strings")
+    return set(raw_types)
+
+
+async def _handoff_activity(*, stop: bool) -> dict[str, int]:
+    page = await get_active_page(open_if_empty=False)
+    if page is None:
+        return {"pointer": 0, "keyboard": 0, "wheel": 0}
+    result = await page.evaluate(
+        """stop => {
+            const handoff = globalThis.__sabHandoff;
+            if (!handoff) return {pointer: 0, keyboard: 0, wheel: 0};
+            const counts = {...handoff.counts};
+            if (stop) {
+                handoff.controller.abort();
+                delete globalThis.__sabHandoff;
+            }
+            return counts;
+        }""",
+        stop,
+    )
+    return result
+
+
+async def _target_box(page: Any, command: dict[str, Any]) -> dict[str, float]:
+    target = await resolve_target(page, command, element_registry)
+    box = await target.bounding_box()
+    if box is None or box["width"] <= 0 or box["height"] <= 0:
+        raise TargetError("target is not visible")
+    return box
+
+
+def _target_point_command(command: dict[str, Any], box: dict[str, float]) -> dict:
+    return {
+        **command,
+        "x": box["x"] + box["width"] / 2,
+        "y": box["y"] + box["height"] / 2,
+        "w": box["width"],
+        "h": box["height"],
+    }
+
+
 # =============================================================================
 # ACTION DISPATCH
 # =============================================================================
 
 
-async def dispatch_action(cmd: dict) -> dict:
+async def _dispatch_action_inner(cmd: dict) -> dict:
     """Execute a single action command. Returns response dict."""
     global _next_dialog_action, _active_page, _network_logging, _console_logging
+    global _handoff_active, _handoff_started_at
+    global _network_capture_request_bodies, _network_capture_response_bodies
+    global _network_body_limit, _network_rules, _network_route_installed
+    global _network_route_context_id
+    global _permission_grants, _geolocation, _context_state_id
     action = cmd.get("action", "")
+
+    if _handoff_active and action not in _HANDOFF_ALLOWED_ACTIONS:
+        return make_response(False, error="human handoff is active")
 
     # Actions that don't need page
     if action == "ping":
@@ -589,20 +861,111 @@ async def dispatch_action(cmd: dict) -> dict:
         await asyncio.sleep(float(duration))
         return make_response(True, {"slept": duration})
 
-    if action == "set_clipboard":
-        if "text" not in cmd:
-            return make_response(False, error="text required")
-        text = cmd["text"]
-        if not isinstance(text, str):
-            return make_response(False, error="text must be a string")
+    if action == "get_events":
         try:
-            return make_response(True, await clipboard.set_text(text))
+            events = event_bus.get(
+                after_id=int(cmd.get("after_id", 0)),
+                event_types=_event_types(cmd),
+                limit=int(cmd.get("limit", 100)),
+            )
+        except (BrowserEventError, TypeError, ValueError) as error:
+            return make_response(False, error=str(error))
+        return make_response(True, {"events": events, "count": len(events)})
+
+    if action == "wait_for_event":
+        try:
+            events = await event_bus.wait(
+                after_id=int(cmd.get("after_id", 0)),
+                event_types=_event_types(cmd),
+                timeout=float(cmd.get("timeout", 30)),
+            )
+        except (BrowserEventError, TypeError, ValueError) as error:
+            return make_response(False, error=str(error))
+        return make_response(True, {"events": events, "count": len(events)})
+
+    if action == "begin_handoff":
+        if _handoff_active:
+            return make_response(False, error="human handoff is already active")
+        page = await get_active_page(open_if_empty=False)
+        if page is None:
+            return make_response(False, error="No active page")
+        await page.evaluate(
+            """() => {
+                const controller = new AbortController();
+                const counts = {pointer: 0, keyboard: 0, wheel: 0};
+                const trusted = key => event => {
+                    if (event.isTrusted) counts[key]++;
+                };
+                document.addEventListener('pointermove', trusted('pointer'), {
+                    capture: true, signal: controller.signal,
+                });
+                document.addEventListener('pointerdown', trusted('pointer'), {
+                    capture: true, signal: controller.signal,
+                });
+                document.addEventListener('keydown', trusted('keyboard'), {
+                    capture: true, signal: controller.signal,
+                });
+                document.addEventListener('wheel', trusted('wheel'), {
+                    capture: true, signal: controller.signal,
+                });
+                globalThis.__sabHandoff = {controller, counts};
+            }"""
+        )
+        _handoff_active = True
+        _handoff_started_at = time.time()
+        event_bus.publish("handoff_started", {})
+        return make_response(True, {"active": True, "started_at": _handoff_started_at})
+
+    if action == "handoff_status":
+        activity = await _handoff_activity(stop=False) if _handoff_active else None
+        return make_response(
+            True,
+            {
+                "active": _handoff_active,
+                "started_at": _handoff_started_at,
+                "activity": activity,
+            },
+        )
+
+    if action == "end_handoff":
+        if not _handoff_active:
+            return make_response(False, error="human handoff is not active")
+        duration = time.time() - (_handoff_started_at or time.time())
+        activity = await _handoff_activity(stop=True)
+        _handoff_active = False
+        _handoff_started_at = None
+        event_bus.publish(
+            "handoff_ended",
+            {"duration": duration, "activity": activity},
+        )
+        return make_response(
+            True,
+            {"active": False, "duration": duration, "activity": activity},
+        )
+
+    if action == "set_clipboard":
+        clipboard_format = cmd.get("format", "text")
+        try:
+            if clipboard_format == "text":
+                if "text" not in cmd:
+                    return make_response(False, error="text required")
+                return make_response(True, await clipboard.set_text(cmd.get("text")))
+            if clipboard_format == "image/png":
+                value = cmd.get("content_base64")
+            elif clipboard_format == "files":
+                value = cmd.get("files")
+            else:
+                value = cmd.get("text")
+            return make_response(True, await clipboard.set(clipboard_format, value))
         except ClipboardError as error:
             return make_response(False, error=str(error))
 
     if action == "get_clipboard":
         try:
-            return make_response(True, await clipboard.get_text())
+            clipboard_format = cmd.get("format", "text")
+            if clipboard_format == "text":
+                return make_response(True, await clipboard.get_text())
+            return make_response(True, await clipboard.get(clipboard_format))
         except ClipboardError as error:
             return make_response(False, error=str(error))
 
@@ -837,6 +1200,132 @@ async def dispatch_action(cmd: dict) -> dict:
             await _focus_active_tab(len(pages) - 1, _active_page)
         return make_response(True, {"closed": True, "remaining": len(pages)})
 
+    if action == "list_windows":
+        if browser is None:
+            return make_response(False, error="Browser not ready")
+        active = await get_active_page(open_if_empty=False)
+        pages = browser._context.pages if browser._context else []
+        windows = browser.list_windows()
+        for window in windows:
+            index = window["index"]
+            window["url"] = pages[index].url if index < len(pages) else ""
+            window["active"] = index < len(pages) and pages[index] is active
+        return make_response(True, {"windows": windows, "count": len(windows)})
+
+    if action == "focus_window":
+        index = cmd.get("index")
+        if not isinstance(index, int) or isinstance(index, bool):
+            return make_response(False, error="index must be an integer")
+        pages = browser._context.pages if browser and browser._context else []
+        if index < 0 or index >= len(pages):
+            return make_response(False, error="window index out of range")
+        _active_page = pages[index]
+        await _focus_active_tab(index, _active_page)
+        return make_response(True, {"index": index, "url": _active_page.url})
+
+    if action == "move_resize_window":
+        if browser is None:
+            return make_response(False, error="Browser not ready")
+        try:
+            values = {
+                key: int(cmd[key]) for key in ("index", "x", "y", "width", "height")
+            }
+        except (KeyError, TypeError, ValueError):
+            return make_response(
+                False,
+                error="index, x, y, width, and height must be integers",
+            )
+        try:
+            result = browser.move_resize_window(**values)
+        except BrowserError as error:
+            return make_response(False, error=str(error))
+        return make_response(True, result)
+
+    if action == "wait_for_popup":
+        try:
+            events = await event_bus.wait(
+                after_id=int(cmd.get("after_id", 0)),
+                event_types={"popup"},
+                timeout=float(cmd.get("timeout", 30)),
+            )
+        except (BrowserEventError, TypeError, ValueError) as error:
+            return make_response(False, error=str(error))
+        return make_response(True, {"popup": events[0] if events else None})
+
+    if action == "close_window":
+        close_command = {"action": "close_tab"}
+        if "index" in cmd:
+            close_command["index"] = cmd["index"]
+        return await dispatch_action(close_command)
+
+    if action == "set_permissions":
+        if not browser or not browser._context:
+            return make_response(False, error="No browser context")
+        permissions = cmd.get("permissions")
+        origin = cmd.get("origin")
+        if not isinstance(permissions, list) or not all(
+            isinstance(item, str) and item for item in permissions
+        ):
+            return make_response(False, error="permissions must be a list of strings")
+        if not permissions or any(item not in _PERMISSIONS for item in permissions):
+            return make_response(False, error="permissions contains an unsupported value")
+        if origin is not None:
+            if not isinstance(origin, str):
+                return make_response(False, error="origin must be a string")
+            parsed_origin = urlsplit(origin)
+            if (
+                parsed_origin.scheme not in {"http", "https"}
+                or not parsed_origin.hostname
+                or parsed_origin.username is not None
+                or parsed_origin.password is not None
+                or parsed_origin.query
+                or parsed_origin.fragment
+                or parsed_origin.path not in {"", "/"}
+            ):
+                return make_response(False, error="origin must be a bare HTTP(S) origin")
+        await browser._context.grant_permissions(permissions, origin=origin)
+        _permission_grants = [
+            grant for grant in _permission_grants if grant[1] != origin
+        ]
+        _permission_grants.append((list(permissions), origin))
+        _context_state_id = id(browser._context)
+        return make_response(True, {"permissions": permissions, "origin": origin})
+
+    if action == "clear_permissions":
+        if not browser or not browser._context:
+            return make_response(False, error="No browser context")
+        await browser._context.clear_permissions()
+        _permission_grants = []
+        _context_state_id = id(browser._context)
+        return make_response(True, {"cleared": True})
+
+    if action == "set_geolocation":
+        if not browser or not browser._context:
+            return make_response(False, error="No browser context")
+        try:
+            latitude = float(cmd["latitude"])
+            longitude = float(cmd["longitude"])
+            accuracy = float(cmd.get("accuracy", 0))
+        except (KeyError, TypeError, ValueError):
+            return make_response(False, error="invalid geolocation values")
+        if not all(math.isfinite(value) for value in (latitude, longitude, accuracy)):
+            return make_response(False, error="geolocation values must be finite")
+        if not (
+            -90 <= latitude <= 90
+            and -180 <= longitude <= 180
+            and 0 <= accuracy <= _GEOLOCATION_ACCURACY_MAX
+        ):
+            return make_response(False, error="geolocation values are out of range")
+        geolocation = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "accuracy": accuracy,
+        }
+        await browser._context.set_geolocation(geolocation)
+        _geolocation = geolocation
+        _context_state_id = id(browser._context)
+        return make_response(True, geolocation)
+
     # --- Cookie management (with optional Redis sync) ---
 
     if action == "get_cookies":
@@ -867,11 +1356,37 @@ async def dispatch_action(cmd: dict) -> dict:
     # --- Network logging ---
 
     if action == "enable_network_log":
+        capture_request_bodies = cmd.get("capture_request_bodies", False)
+        capture_response_bodies = cmd.get("capture_response_bodies", False)
+        if not isinstance(capture_request_bodies, bool) or not isinstance(
+            capture_response_bodies, bool
+        ):
+            return make_response(False, error="body capture options must be booleans")
+        try:
+            body_limit = int(cmd.get("max_body_bytes", 256 * 1024))
+        except (TypeError, ValueError):
+            return make_response(False, error="max_body_bytes must be an integer")
+        if body_limit < 1 or body_limit > _NETWORK_BODY_LIMIT_MAX:
+            return make_response(
+                False,
+                error=f"max_body_bytes must be between 1 and {_NETWORK_BODY_LIMIT_MAX}",
+            )
+        _network_capture_request_bodies = capture_request_bodies
+        _network_capture_response_bodies = capture_response_bodies
+        _network_body_limit = body_limit
         _network_logging = True
         page = await get_active_page()
         if page:
             _setup_page_handlers(page)
-        return make_response(True, {"enabled": True})
+        return make_response(
+            True,
+            {
+                "enabled": True,
+                "capture_request_bodies": capture_request_bodies,
+                "capture_response_bodies": capture_response_bodies,
+                "max_body_bytes": body_limit,
+            },
+        )
 
     if action == "disable_network_log":
         _network_logging = False
@@ -893,6 +1408,182 @@ async def dispatch_action(cmd: dict) -> dict:
         )
         _network_log.clear()
         return result
+
+    if action == "set_network_rules":
+        if not browser or not browser._context:
+            return make_response(False, error="No browser context")
+        rules = cmd.get("rules")
+        if not isinstance(rules, list) or not rules or len(rules) > 100:
+            return make_response(
+                False,
+                error="rules must be a non-empty list of at most 100 items",
+            )
+        validated_rules: list[dict[str, Any]] = []
+        for rule in rules:
+            if not isinstance(rule, dict):
+                return make_response(False, error="each network rule must be an object")
+            url_pattern = rule.get("url")
+            rule_action = rule.get("action", "continue")
+            if not isinstance(url_pattern, str) or not url_pattern:
+                return make_response(False, error="each network rule requires url")
+            if rule_action not in {
+                "abort",
+                "block",
+                "continue",
+                "fulfill",
+                "redirect",
+            }:
+                return make_response(False, error="network rule action is invalid")
+            method = rule.get("method")
+            if method is not None and (
+                not isinstance(method, str) or not method or len(method) > 20
+            ):
+                return make_response(False, error="network rule method is invalid")
+            if method is not None:
+                rule = {**rule, "method": method.upper()}
+            resource_type = rule.get("resource_type")
+            if resource_type is not None and (
+                not isinstance(resource_type, str)
+                or not resource_type
+                or len(resource_type) > 50
+            ):
+                return make_response(False, error="network resource_type is invalid")
+            headers = rule.get("headers")
+            if headers is not None and (
+                not isinstance(headers, dict)
+                or not all(
+                    isinstance(key, str) and isinstance(value, str)
+                    for key, value in headers.items()
+                )
+            ):
+                return make_response(False, error="network rule headers must be strings")
+            if headers is not None and any(
+                not key
+                or any(character in key + value for character in "\r\n")
+                for key, value in headers.items()
+            ):
+                return make_response(False, error="network rule headers are invalid")
+            if rule_action == "redirect":
+                redirect_url = rule.get("redirect_url")
+                if not isinstance(redirect_url, str):
+                    return make_response(False, error="redirect_url is required")
+                parsed_redirect = urlsplit(redirect_url)
+                if (
+                    parsed_redirect.scheme not in {"http", "https"}
+                    or not parsed_redirect.hostname
+                    or parsed_redirect.username is not None
+                    or parsed_redirect.password is not None
+                ):
+                    return make_response(False, error="redirect_url must be HTTP(S) without credentials")
+            if rule_action == "fulfill":
+                status = rule.get("status", 200)
+                body = rule.get("body", "")
+                if not isinstance(status, int) or not 100 <= status <= 599:
+                    return make_response(False, error="fulfill status is out of range")
+                if not isinstance(body, str) or len(body.encode()) > _NETWORK_BODY_LIMIT_MAX:
+                    return make_response(False, error="fulfill body is invalid or too large")
+            validated_rules.append(dict(rule))
+        if _network_route_installed:
+            await browser._context.unroute("**/*", _route_network_request)
+        _network_rules = validated_rules
+        await browser._context.route("**/*", _route_network_request)
+        _network_route_installed = True
+        _network_route_context_id = id(browser._context)
+        return make_response(True, {"count": len(validated_rules)})
+
+    if action == "clear_network_rules":
+        if not browser or not browser._context:
+            return make_response(False, error="No browser context")
+        if _network_route_installed:
+            await browser._context.unroute("**/*", _route_network_request)
+        _network_route_installed = False
+        _network_route_context_id = None
+        _network_rules = []
+        return make_response(True, {"cleared": True})
+
+    if action == "export_har":
+        requests_by_id = {
+            item.get("request_id"): item
+            for item in _network_log
+            if item["type"] == "request" and item.get("request_id") is not None
+        }
+        responses_by_id = {
+            item.get("request_id"): item
+            for item in _network_log
+            if item["type"] == "response" and item.get("request_id") is not None
+        }
+        entries = []
+        for request_id, request_item in requests_by_id.items():
+            response_item = responses_by_id.get(request_id, {})
+            request_headers = [
+                {"name": name, "value": value}
+                for name, value in request_item["headers"].items()
+            ]
+            response_headers = [
+                {"name": name, "value": value}
+                for name, value in response_item.get("headers", {}).items()
+            ]
+            response_body = response_item.get("body_base64", "")
+            content = {
+                "size": len(base64.b64decode(response_body)) if response_body else 0,
+                "mimeType": response_item.get("headers", {}).get("content-type", ""),
+            }
+            if response_body:
+                content.update({"text": response_body, "encoding": "base64"})
+            entries.append(
+                {
+                    "startedDateTime": datetime.fromtimestamp(
+                        request_item["timestamp"],
+                        timezone.utc,
+                    ).isoformat().replace("+00:00", "Z"),
+                    "time": 0,
+                    "request": {
+                        "method": request_item["method"],
+                        "url": request_item["url"],
+                        "httpVersion": "",
+                        "cookies": [],
+                        "headers": request_headers,
+                        "queryString": [
+                            {"name": key, "value": value}
+                            for key, value in parse_qsl(
+                                urlsplit(request_item["url"]).query,
+                                keep_blank_values=True,
+                            )
+                        ],
+                        "headersSize": -1,
+                        "bodySize": len(request_item.get("body", "").encode()),
+                    },
+                    "response": {
+                        "status": response_item.get("status", 0),
+                        "statusText": "",
+                        "httpVersion": "",
+                        "cookies": [],
+                        "headers": response_headers,
+                        "content": content,
+                        "redirectURL": "",
+                        "headersSize": -1,
+                        "bodySize": content["size"],
+                    },
+                    "cache": {},
+                    "timings": {"send": -1, "wait": -1, "receive": -1},
+                }
+            )
+        har = {
+            "log": {
+                "version": "1.2",
+                "creator": {"name": "stealthy-auto-browse", "version": "1"},
+                "entries": entries,
+            }
+        }
+        path = cmd.get("path")
+        if path is not None:
+            if not isinstance(path, str) or not path:
+                return make_response(False, error="path must be a non-empty string")
+            parent = os.path.dirname(os.path.abspath(path))
+            os.makedirs(parent, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as output:
+                json.dump(har, output, separators=(",", ":"))
+        return make_response(True, {"har": har, "path": path, "count": len(entries)})
 
     # --- Console logging ---
 
@@ -929,6 +1620,18 @@ async def dispatch_action(cmd: dict) -> dict:
 
     if action == "save_screenshot":
         ss_type = cmd.get("type", "browser")
+        if ss_type not in {"browser", "desktop"}:
+            return make_response(False, error="type must be browser or desktop")
+        full_page = cmd.get("full_page", False)
+        if not isinstance(full_page, bool):
+            return make_response(False, error="full_page must be a boolean")
+        if target_requested(cmd) and full_page:
+            return make_response(False, error="element target and full_page conflict")
+        if ss_type == "desktop" and (target_requested(cmd) or full_page):
+            return make_response(
+                False,
+                error="desktop screenshots do not accept element targets or full_page",
+            )
 
         if ss_type == "desktop":
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
@@ -948,7 +1651,14 @@ async def dispatch_action(cmd: dict) -> dict:
             page = await get_active_page()
             if not page:
                 return make_response(False, error="No active page")
-            data = await page.screenshot(type="png")
+            if target_requested(cmd):
+                try:
+                    target = await resolve_target(page, cmd, element_registry)
+                except TargetError as error:
+                    return make_response(False, error=str(error))
+                data = await target.screenshot(type="png")
+            else:
+                data = await page.screenshot(type="png", full_page=full_page)
 
         # Optional resize
         w = cmd.get("width")
@@ -1032,16 +1742,75 @@ async def dispatch_action(cmd: dict) -> dict:
         return make_response(True, {"url": page.url, "title": await page.title()})
 
     if action == "click":
-        selector = cmd.get("selector", "")
-        if not selector:
-            return make_response(False, error="No selector")
-        await page.click(selector)
+        if uses_plain_selector_target(cmd):
+            selector = cmd.get("selector", "")
+            if not selector:
+                return make_response(False, error="No selector")
+            await page.click(selector)
+            await asyncio.sleep(0.5)
+            return make_response(True, {"clicked": selector})
+        try:
+            target = await resolve_target(page, cmd, element_registry)
+        except TargetError as error:
+            return make_response(False, error=str(error))
+        await target.click()
         await asyncio.sleep(0.5)
-        return make_response(True, {"clicked": selector})
+        return make_response(True, {"clicked": True})
+
+    if action in {"hover", "double_click", "right_click"}:
+        try:
+            target = await resolve_target(page, cmd, element_registry)
+        except TargetError as error:
+            return make_response(False, error=str(error))
+        if action == "hover":
+            await target.hover()
+        elif action == "double_click":
+            await target.dblclick()
+        else:
+            await target.click(button="right")
+        return make_response(True, {action: True})
+
+    if action == "drag_and_drop":
+        source_command = cmd.get("source")
+        target_command = cmd.get("target")
+        if not isinstance(source_command, dict) or not isinstance(target_command, dict):
+            return make_response(False, error="source and target must be target objects")
+        try:
+            source = await resolve_target(page, source_command, element_registry)
+            destination = await resolve_target(page, target_command, element_registry)
+        except TargetError as error:
+            return make_response(False, error=str(error))
+        await source.drag_to(destination)
+        return make_response(True, {"dragged": True})
 
     if action in input_actions.ACTIONS:
         try:
-            data = await input_actions.ACTIONS[action](cmd, page, system)
+            input_command = cmd
+            if action == "system_drag":
+                source_command = cmd.get("source")
+                target_command = cmd.get("target")
+                if not isinstance(source_command, dict) or not isinstance(
+                    target_command, dict
+                ):
+                    return make_response(
+                        False,
+                        error="source and target must be target objects",
+                    )
+                source_box = await _target_box(page, source_command)
+                target_box = await _target_box(page, target_command)
+                input_command = {
+                    **cmd,
+                    "source_x": source_box["x"] + source_box["width"] / 2,
+                    "source_y": source_box["y"] + source_box["height"] / 2,
+                    "target_x": target_box["x"] + target_box["width"] / 2,
+                    "target_y": target_box["y"] + target_box["height"] / 2,
+                }
+            elif target_requested(cmd):
+                box = await _target_box(page, cmd)
+                input_command = _target_point_command(cmd, box)
+            data = await input_actions.ACTIONS[action](input_command, page, system)
+        except TargetError as e:
+            return make_response(False, error=str(e))
         except input_actions.InputActionError as e:
             return make_response(False, error=str(e))
         return make_response(True, data)
@@ -1093,16 +1862,34 @@ async def dispatch_action(cmd: dict) -> dict:
         return make_response(True, {"scheme": browser.color_scheme, "pages": pages})
 
     if action == "fill":
-        selector, value = cmd.get("selector", ""), cmd.get("value", "")
-        await page.fill(selector, value)
-        return make_response(True, {"filled": selector})
+        if uses_plain_selector_target(cmd):
+            selector = cmd.get("selector", "")
+            await page.fill(selector, cmd.get("value", ""))
+            return make_response(True, {"filled": selector})
+        try:
+            target = await resolve_target(page, cmd, element_registry)
+        except TargetError as error:
+            return make_response(False, error=str(error))
+        await target.fill(cmd.get("value", ""))
+        return make_response(True, {"filled": True})
 
     if action == "type":
-        selector = cmd.get("selector", "")
-        text = cmd.get("text", "")
-        delay = cmd.get("delay", 0.05)
-        await page.type(selector, text, delay=int(delay * 1000))
-        return make_response(True, {"typed": selector})
+        if uses_plain_selector_target(cmd):
+            selector = cmd.get("selector", "")
+            delay = float(cmd.get("delay", 0.05))
+            await page.type(
+                selector,
+                cmd.get("text", ""),
+                delay=int(delay * 1000),
+            )
+            return make_response(True, {"typed": selector})
+        try:
+            target = await resolve_target(page, cmd, element_registry)
+        except TargetError as error:
+            return make_response(False, error=str(error))
+        delay = float(cmd.get("delay", 0.05))
+        await target.press_sequentially(cmd.get("text", ""), delay=int(delay * 1000))
+        return make_response(True, {"typed": True})
 
     if action == "eval":
         expr = cmd.get("expression", "")
@@ -1117,11 +1904,191 @@ async def dispatch_action(cmd: dict) -> dict:
         result = await page.evaluate(expr)
         return make_response(True, {"result": result})
 
+    if action == "create_element_reference":
+        try:
+            reference = await create_reference(page, cmd, element_registry)
+        except TargetError as error:
+            return make_response(False, error=str(error))
+        return make_response(True, reference)
+
+    if action == "release_element_reference":
+        element_id = cmd.get("element_id")
+        if not isinstance(element_id, str) or not element_id:
+            return make_response(False, error="element_id required")
+        await element_registry.remove(element_id)
+        return make_response(True, {"released": element_id})
+
+    if action == "get_accessibility_tree":
+        target_command = dict(cmd)
+        if not target_requested(target_command):
+            target_command["selector"] = "body"
+        try:
+            target = await resolve_target(page, target_command, element_registry)
+        except TargetError as error:
+            return make_response(False, error=str(error))
+        if target_command.get("element_id"):
+            return make_response(
+                False,
+                error="get_accessibility_tree does not support element_id targets",
+            )
+        snapshot = await target.aria_snapshot()
+        return make_response(True, {"snapshot": snapshot})
+
+    if action == "get_by_role":
+        role = cmd.get("role")
+        try:
+            validate_role(role, cmd.get("name"))
+        except TargetError as error:
+            return make_response(False, error=str(error))
+        try:
+            limit = int(cmd.get("limit", 20))
+        except (TypeError, ValueError):
+            return make_response(False, error="limit must be an integer")
+        if limit < 1 or limit > 100:
+            return make_response(False, error="limit must be between 1 and 100")
+        frames = cmd.get("frames", [])
+        scope: Any = page
+        if not isinstance(frames, list) or not all(
+            isinstance(item, str) and item for item in frames
+        ):
+            return make_response(False, error="frames must be a list of selectors")
+        for frame_selector in frames:
+            scope = scope.frame_locator(frame_selector)
+        locator = scope.get_by_role(role, name=cmd.get("name"))
+        count = min(await locator.count(), limit)
+        elements = []
+        for index in range(count):
+            handle = await locator.nth(index).element_handle()
+            if handle is None:
+                continue
+            element_id = await element_registry.add(page, handle)
+            details = await handle.evaluate(
+                "el => ({tag: el.tagName.toLowerCase(), text: "
+                "(el.innerText || el.textContent || '').trim().slice(0, 500)})"
+            )
+            elements.append({"element_id": element_id, **details})
+        return make_response(True, {"elements": elements, "count": len(elements)})
+
+    if action == "wait_for_dom_change":
+        condition = cmd.get("condition", "text")
+        allowed_conditions = {
+            "added",
+            "removed",
+            "text",
+            "attribute",
+            "visible",
+            "hidden",
+            "moved",
+        }
+        if condition not in allowed_conditions:
+            return make_response(False, error="invalid DOM change condition")
+        if condition == "attribute" and not isinstance(cmd.get("attribute"), str):
+            return make_response(False, error="attribute is required for attribute changes")
+        try:
+            timeout_ms = int(float(cmd.get("timeout", 30)) * 1000)
+        except (TypeError, ValueError):
+            return make_response(False, error="timeout must be a number")
+        if timeout_ms < 1 or timeout_ms > 300_000:
+            return make_response(False, error="timeout must be between 0 and 300")
+        try:
+            target = await resolve_target(page, cmd, element_registry)
+        except TargetError as error:
+            if condition in {"added", "removed"} and cmd.get("selector"):
+                scope: Any = page
+                for frame_selector in cmd.get("frames", []):
+                    scope = scope.frame_locator(frame_selector)
+                if condition == "removed":
+                    if await scope.locator(cmd["selector"]).count() == 0:
+                        return make_response(
+                            True,
+                            {"condition": condition, "changed": True},
+                        )
+                    return make_response(False, error=str(error))
+                await scope.locator(cmd["selector"]).first.wait_for(
+                    state="attached",
+                    timeout=timeout_ms,
+                )
+                return make_response(True, {"condition": condition, "changed": True})
+            return make_response(False, error=str(error))
+        if condition == "added":
+            return make_response(True, {"condition": condition, "changed": True})
+        result = await target.evaluate(
+            """(element, options) => new Promise((resolve, reject) => {
+                const initialText = element.textContent;
+                const initialAttribute = options.attribute
+                    ? element.getAttribute(options.attribute) : null;
+                const initialRect = element.getBoundingClientRect().toJSON();
+                const visible = () => {
+                    const rect = element.getBoundingClientRect();
+                    const style = getComputedStyle(element);
+                    return !!(rect.width && rect.height && style.visibility !== 'hidden'
+                        && style.display !== 'none');
+                };
+                const initialVisible = visible();
+                const changed = () => {
+                    if (options.condition === 'removed') return !element.isConnected;
+                    if (options.condition === 'text') return element.textContent !== initialText;
+                    if (options.condition === 'attribute') {
+                        return element.getAttribute(options.attribute) !== initialAttribute;
+                    }
+                    if (options.condition === 'visible') return !initialVisible && visible();
+                    if (options.condition === 'hidden') return initialVisible && !visible();
+                    if (options.condition === 'moved') {
+                        const rect = element.getBoundingClientRect();
+                        return rect.x !== initialRect.x || rect.y !== initialRect.y
+                            || rect.width !== initialRect.width
+                            || rect.height !== initialRect.height;
+                    }
+                    return false;
+                };
+                const observer = new MutationObserver(() => {
+                    if (changed()) finish(true);
+                });
+                const resizeObserver = new ResizeObserver(() => {
+                    if (changed()) finish(true);
+                });
+                const timer = setTimeout(() => finish(false), options.timeout);
+                const finish = value => {
+                    clearTimeout(timer);
+                    observer.disconnect();
+                    resizeObserver.disconnect();
+                    resolve(value);
+                };
+                observer.observe(document, {
+                    subtree: true,
+                    childList: true,
+                    characterData: true,
+                    attributes: true,
+                });
+                resizeObserver.observe(element);
+            })""",
+            {
+                "condition": condition,
+                "attribute": cmd.get("attribute"),
+                "timeout": timeout_ms,
+            },
+        )
+        return make_response(True, {"condition": condition, "changed": bool(result)})
+
     if action == "get_interactive_elements":
         assert browser is not None
         visible_only = cmd.get("visible_only", True)
         browser._page = page
         elements = await browser.get_interactive_elements(visible_only)
+        for element in elements:
+            selector = element.get("selector")
+            if not selector:
+                continue
+            try:
+                handle = await page.locator(selector).first.element_handle()
+            except PlaywrightError as error:
+                log.warning(
+                    "interactive element reference failed",
+                    extra={"error": str(error)},
+                )
+                continue
+            if handle is not None:
+                element["element_id"] = await element_registry.add(page, handle)
         return make_response(True, {"count": len(elements), "elements": elements})
 
     if action == "get_text":
@@ -1150,19 +2117,25 @@ async def dispatch_action(cmd: dict) -> dict:
         scroll_into_view = cmd.get("scroll_into_view", False)
         if not isinstance(scroll_into_view, bool):
             return make_response(False, error="scroll_into_view must be a boolean")
-        return make_response(
-            True,
-            await detect_challenges(page, scroll_into_view=scroll_into_view),
+        challenge_result = await detect_challenges(
+            page,
+            scroll_into_view=scroll_into_view,
         )
+        event_bus.publish(
+            "challenge_result",
+            {
+                "status": challenge_result.get("status"),
+                "detected": challenge_result.get("detected"),
+            },
+        )
+        return make_response(True, challenge_result)
 
     if action == "get_element":
-        selector = cmd.get("selector", "")
-        if not selector:
-            return make_response(False, error="selector required")
-        locator = page.locator(selector).first
-        if await locator.count() == 0:
-            return make_response(False, error="element not found")
-        element = await locator.evaluate("""node => {
+        try:
+            target = await resolve_target(page, cmd, element_registry)
+        except TargetError as error:
+            return make_response(False, error=str(error))
+        element = await target.evaluate("""node => {
             const rect = node.getBoundingClientRect();
             return {
                 tag: node.tagName.toLowerCase(),
@@ -1172,20 +2145,49 @@ async def dispatch_action(cmd: dict) -> dict:
                 visible: Boolean(rect.width && rect.height),
             };
         }""")
+        if cmd.get("element_id"):
+            element["element_id"] = cmd["element_id"]
+        else:
+            handle = await target.element_handle()
+            if handle is None:
+                return make_response(False, error="target is not attached")
+            element["element_id"] = await element_registry.add(page, handle)
         return make_response(True, element)
 
     if action == "get_elements":
         selector = cmd.get("selector", "")
-        if not selector:
+        if not isinstance(selector, str) or not selector:
             return make_response(False, error="selector required")
+        if len(selector) > TARGET_SELECTOR_LENGTH_MAX:
+            return make_response(False, error="selector is too long")
         try:
             limit = int(cmd.get("limit", 20))
         except (TypeError, ValueError):
             return make_response(False, error="limit must be an integer")
         if limit < 1 or limit > 100:
             return make_response(False, error="limit must be between 1 and 100")
-        elements = await page.locator(selector).evaluate_all(
-            """(nodes, maxItems) => nodes.slice(0, maxItems).map(node => {
+        frames = cmd.get("frames", [])
+        if not isinstance(frames, list) or not all(
+            isinstance(item, str) and item for item in frames
+        ):
+            return make_response(False, error="frames must be a list of selectors")
+        if len(frames) > FRAME_DEPTH_MAX:
+            return make_response(
+                False,
+                error=f"frames supports at most {FRAME_DEPTH_MAX} levels",
+            )
+        scope: Any = page
+        for frame_selector in frames:
+            scope = scope.frame_locator(frame_selector)
+        locator = scope.locator(selector)
+        count = min(await locator.count(), limit)
+        elements = []
+        for index in range(count):
+            handle = await locator.nth(index).element_handle()
+            if handle is None:
+                continue
+            element = await handle.evaluate(
+                """node => {
                 const rect = node.getBoundingClientRect();
                 return {
                     tag: node.tagName.toLowerCase(),
@@ -1194,16 +2196,14 @@ async def dispatch_action(cmd: dict) -> dict:
                     boundingBox: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
                     visible: Boolean(rect.width && rect.height),
                 };
-            })""",
-            limit,
-        )
+            }"""
+            )
+            element["element_id"] = await element_registry.add(page, handle)
+            elements.append(element)
         return make_response(True, {"count": len(elements), "elements": elements})
 
     if action == "get_computed_style":
-        selector = cmd.get("selector", "")
         properties = cmd.get("properties", ["display", "visibility", "color", "background-color"])
-        if not selector:
-            return make_response(False, error="selector required")
         if not isinstance(properties, list) or not all(
             isinstance(property_name, str) and re.fullmatch(r"[a-zA-Z-]{1,64}", property_name)
             for property_name in properties
@@ -1211,30 +2211,44 @@ async def dispatch_action(cmd: dict) -> dict:
             return make_response(False, error="properties must be CSS property names")
         if len(properties) > 50:
             return make_response(False, error="properties may contain at most 50 entries")
-        locator = page.locator(selector).first
-        if await locator.count() == 0:
-            return make_response(False, error="element not found")
-        styles = await locator.evaluate(
+        try:
+            target = await resolve_target(page, cmd, element_registry)
+        except TargetError as error:
+            return make_response(False, error=str(error))
+        styles = await target.evaluate(
             """(node, names) => {
                 const computed = getComputedStyle(node);
                 return Object.fromEntries(names.map(name => [name, computed.getPropertyValue(name)]));
             }""",
             properties,
         )
-        return make_response(True, {"selector": selector, "styles": styles})
+        return make_response(True, {"styles": styles})
 
     # --- Wait conditions ---
 
     if action == "wait_for_element":
-        selector = cmd.get("selector", "")
-        if not selector:
-            return make_response(False, error="selector required")
         state = cmd.get("state", "visible")
         timeout = cmd.get("timeout", 30)
-        await page.wait_for_selector(
-            selector, state=state, timeout=int(float(timeout) * 1000)
-        )
-        return make_response(True, {"selector": selector, "state": state})
+        try:
+            if cmd.get("element_id"):
+                target = await resolve_target(page, cmd, element_registry)
+            else:
+                scope: Any = page
+                frames = cmd.get("frames", [])
+                if not isinstance(frames, list):
+                    raise TargetError("frames must be a list of selectors")
+                for frame_selector in frames:
+                    scope = scope.frame_locator(frame_selector)
+                if cmd.get("selector"):
+                    target = scope.locator(cmd["selector"]).first
+                elif cmd.get("role"):
+                    target = scope.get_by_role(cmd["role"], name=cmd.get("name")).first
+                else:
+                    raise TargetError("one of selector, element_id, or role is required")
+        except TargetError as error:
+            return make_response(False, error=str(error))
+        await target.wait_for(state=state, timeout=int(float(timeout) * 1000))
+        return make_response(True, {"state": state})
 
     if action == "wait_for_text":
         text = cmd.get("text", "")
@@ -1305,25 +2319,41 @@ async def dispatch_action(cmd: dict) -> dict:
     # --- File upload ---
 
     if action == "upload_file":
-        selector = cmd.get("selector", "")
         file_path = cmd.get("file_path", "")
-        if not selector:
-            return make_response(False, error="selector required")
         if not file_path:
             return make_response(False, error="file_path required")
         if not os.path.isfile(file_path):
             return make_response(False, error=f"File not found: {file_path}")
-        await page.set_input_files(selector, file_path)
+        try:
+            target = await resolve_target(page, cmd, element_registry)
+        except TargetError as error:
+            return make_response(False, error=str(error))
+        await target.set_input_files(file_path)
         return make_response(
             True,
             {
-                "selector": selector,
                 "file": os.path.basename(file_path),
                 "size": os.path.getsize(file_path),
             },
         )
 
     return make_response(False, error=f"Unknown action: {action}")
+
+
+async def dispatch_action(cmd: dict) -> dict:
+    """Execute an action and publish bounded failure metadata."""
+    action = cmd.get("action", "")
+    try:
+        result = await _dispatch_action_inner(cmd)
+    except Exception as error:
+        event_bus.publish(
+            "action_failure",
+            {"action": action, "error_type": type(error).__name__},
+        )
+        raise
+    if not result.get("success", False):
+        event_bus.publish("action_failure", {"action": action})
+    return result
 
 
 # =============================================================================
@@ -1494,7 +2524,23 @@ async def handle_screenshot_browser(request: Request) -> Response:
         return PlainTextResponse("No active page", status_code=503)
 
     try:
-        data = await page.screenshot(type="png")
+        selector = request.query_params.get("selector")
+        frames = request.query_params.getlist("frame")
+        full_page = request.query_params.get("full_page", "false").lower() == "true"
+        if selector and full_page:
+            return PlainTextResponse(
+                "selector and full_page conflict",
+                status_code=400,
+            )
+        if selector:
+            target = await resolve_target(
+                page,
+                {"selector": selector, "frames": frames},
+                element_registry,
+            )
+            data = await target.screenshot(type="png")
+        else:
+            data = await page.screenshot(type="png", full_page=full_page)
         data = _resize_png(data, request)
         return Response(content=data, media_type=CONTENT_TYPE_IMAGE_PNG)
     except Exception as e:
@@ -1541,6 +2587,38 @@ async def handle_state() -> JSONResponse:
             "window_offset": system.window_offset,
         }
     )
+
+
+@app.get("/events")
+async def handle_events(request: Request) -> Response:
+    """Stream process-local browser events as server-sent events."""
+    try:
+        after_id = int(request.query_params.get("after_id", "0"))
+        event_types = set(request.query_params.getlist("type")) or None
+        event_bus.get(after_id=after_id, event_types=event_types, limit=1)
+    except (BrowserEventError, TypeError, ValueError) as error:
+        return JSONResponse(
+            make_response(False, error=str(error)),
+            status_code=400,
+        )
+
+    async def stream() -> Any:
+        cursor = after_id
+        while not await request.is_disconnected():
+            events = await event_bus.wait(
+                after_id=cursor,
+                event_types=event_types,
+                timeout=15,
+            )
+            if not events:
+                yield ": keepalive\n\n"
+                continue
+            for event in events:
+                cursor = max(cursor, event["id"])
+                payload = json.dumps(event, separators=(",", ":"))
+                yield f"id: {event['id']}\nevent: {event['type']}\ndata: {payload}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
 
 
 @app.get("/health")

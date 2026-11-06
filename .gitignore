@@ -24,9 +24,11 @@ plan.md
 .brutal_reviews/
 .secaudit/
 .plan-and-delegate/
+.captcha-visual-assistant-details/
 sec.sarif
 
 # Codex and agent scratch
+AGENTS.md
 CODEX.local.md
 .agent_notes/
 .agent_knowledge/

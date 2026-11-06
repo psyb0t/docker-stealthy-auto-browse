@@ -57,7 +57,7 @@ PAGE_CONTENT_CASES=(
 )
 
 PAGE_CONTENT_ERROR_CASES=(
-    'get_element_missing_selector|{"action": "get_element"}|selector required'
+    'get_element_missing_target|{"action": "get_element"}|one of selector, element_id, or role is required'
     'get_elements_non_integer_limit|{"action": "get_elements", "selector": "input", "limit": "not-a-number"}|limit must be an integer'
     'get_elements_out_of_range_limit|{"action": "get_elements", "selector": "input", "limit": 101}|limit must be between 1 and 100'
     'get_computed_style_invalid_property|{"action": "get_computed_style", "selector": "input", "properties": ["color;display:none"]}|properties must be CSS property names'
@@ -371,6 +371,18 @@ test_get_resolution() {
     echo "OK: get_resolution (1920x1080 verified)"
 }
 
+test_single_workspace() {
+    local desktop_count current_desktop
+    desktop_count=$(docker exec --user browser -e DISPLAY=:99 "$CONTAINER_NAME" \
+        xdotool get_num_desktops)
+    current_desktop=$(docker exec --user browser -e DISPLAY=:99 "$CONTAINER_NAME" \
+        xdotool get_desktop)
+
+    assert_eq "$desktop_count" "1" "window manager: desktop count" || return 1
+    assert_eq "$current_desktop" "0" "window manager: current desktop" || return 1
+    echo "OK: window manager uses one desktop"
+}
+
 test_calibrate() {
     local resp offset_x offset_y
     resp=$(post '{"action": "calibrate"}')
@@ -443,6 +455,7 @@ ALL_TESTS+=(
     test_detect_challenge_raw_dom_selectors
     test_get_interactive_elements
     test_get_resolution
+    test_single_workspace
     test_calibrate
     test_eval_world
     test_solve_captcha_requires_provider

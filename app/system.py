@@ -49,6 +49,8 @@ _KEY_HOLD_CUSTOM_CEIL_FRAC = 2.5
 _DRIFT_RANGE_PX = (5.0, 60.0)
 _DRIFT_TARGET_PX = 80.0
 _DRIFT_MIN_TARGET_PX = 4.0
+_MOUSE_BUTTONS = frozenset({"left", "middle", "right"})
+_DOUBLE_CLICK_GAP_RANGE_S = (0.08, 0.2)
 
 
 class InputError(Exception):
@@ -233,7 +235,102 @@ class System:
             self.move_mouse(x, y, duration, width, height, profile)
         return self._press_release(profile or self.mouse_profile)
 
-    def _press_release(self, profile: human_mouse.MouseProfile) -> tuple[int, int]:
+    def button_click(
+        self,
+        button: str,
+        x: float | None = None,
+        y: float | None = None,
+        duration: float | None = None,
+        width: float | None = None,
+        height: float | None = None,
+        profile: human_mouse.MouseProfile | None = None,
+    ) -> tuple[int, int]:
+        """Click one mouse button at a target or the current pointer."""
+        self._validate_button(button)
+        if not self._pyautogui:
+            return (0, 0)
+        if x is not None and y is not None:
+            self.move_mouse(x, y, duration, width, height, profile)
+        px, py = (int(value) for value in self._pyautogui.position())
+        plan = human_mouse.plan_click(self._rng, profile or self.mouse_profile)
+        time.sleep(plan.pre_press_s)
+        self._pyautogui.mouseDown(px, py, button=button)
+        time.sleep(plan.hold_s)
+        self._pyautogui.mouseUp(px, py, button=button)
+        time.sleep(human_mouse.plan_post_release(self._rng))
+        return self.viewport_coords(px, py)
+
+    def double_click(
+        self,
+        x: float,
+        y: float,
+        duration: float | None = None,
+        width: float | None = None,
+        height: float | None = None,
+        profile: human_mouse.MouseProfile | None = None,
+    ) -> tuple[int, int]:
+        """Move to a target and issue two human-timed left clicks."""
+        if not self._pyautogui:
+            return (round(x), round(y))
+        self.move_mouse(x, y, duration, width, height, profile)
+        active_profile = profile or self.mouse_profile
+        first = human_mouse.plan_click(self._rng, active_profile)
+        second = human_mouse.plan_click(self._rng, active_profile)
+        time.sleep(first.pre_press_s)
+        px, py = (int(value) for value in self._pyautogui.position())
+        self._pyautogui.mouseDown(px, py)
+        time.sleep(first.hold_s)
+        self._pyautogui.mouseUp(px, py)
+        time.sleep(self._rng.uniform(*_DOUBLE_CLICK_GAP_RANGE_S))
+        self._pyautogui.mouseDown(px, py)
+        time.sleep(second.hold_s)
+        self._pyautogui.mouseUp(px, py)
+        time.sleep(human_mouse.plan_post_release(self._rng))
+        return self.viewport_coords(px, py)
+
+    def mouse_down(self, button: str = "left") -> tuple[int, int]:
+        self._validate_button(button)
+        if not self._pyautogui:
+            return (0, 0)
+        x, y = (int(value) for value in self._pyautogui.position())
+        self._pyautogui.mouseDown(x, y, button=button)
+        return self.viewport_coords(x, y)
+
+    def mouse_up(self, button: str = "left") -> tuple[int, int]:
+        self._validate_button(button)
+        if not self._pyautogui:
+            return (0, 0)
+        x, y = (int(value) for value in self._pyautogui.position())
+        self._pyautogui.mouseUp(x, y, button=button)
+        return self.viewport_coords(x, y)
+
+    def drag(
+        self,
+        source_x: float,
+        source_y: float,
+        target_x: float,
+        target_y: float,
+        profile: human_mouse.MouseProfile | None = None,
+    ) -> tuple[int, int]:
+        """Drag between viewport points with a humanized path."""
+        if not self._pyautogui:
+            return (round(target_x), round(target_y))
+        self.move_mouse(source_x, source_y, profile=profile)
+        self.mouse_down()
+        try:
+            return self.move_mouse(target_x, target_y, profile=profile)
+        finally:
+            self.mouse_up()
+
+    @staticmethod
+    def _validate_button(button: str) -> None:
+        if button not in _MOUSE_BUTTONS:
+            raise InputError("button must be left, middle, or right")
+
+    def _press_release(
+        self,
+        profile: human_mouse.MouseProfile,
+    ) -> tuple[int, int]:
         pyautogui = self._pyautogui
         plan = human_mouse.plan_click(self._rng, profile)
         time.sleep(plan.pre_press_s)

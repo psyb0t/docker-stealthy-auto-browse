@@ -199,7 +199,7 @@ Want to add more? Mount a persistent profile and install them through the browse
 
 ## Window manager
 
-Openbox runs by default as the X11 window manager. It adds title bars and resize handles to popup windows (e.g. OAuth login dialogs) that would otherwise be too small to interact with. The main browser window is sized to fit under its title bar, so the whole page is on screen and the page reports the window's real size and position. No stealth impact, because the WM operates at the X11 display level, not the browser fingerprint level. Visible through VNC.
+Openbox runs by default as the X11 window manager. It adds title bars and resize handles to popup windows (e.g. OAuth login dialogs) that would otherwise be too small to interact with. The main browser window is sized to fit under its title bar, so the whole page is on screen and the page reports the window's real size and position. Openbox is configured with one desktop, so wheel input over an uncovered screen edge cannot switch away from the browser. No stealth impact, because the WM operates at the X11 display level, not the browser fingerprint level. Visible through VNC.
 
 ## VNC access
 

@@ -178,7 +178,7 @@ print(urllib.request.urlopen(req, timeout=30).read().decode())
 }
 
 _selector_input_case() {
-    local label="$1" action_json="$2" element_id="$3" expected="$4"
+    local label="$1" action_json="$2" element_id="$3" expected="$4" response_key="$5"
 
     # Clear input first
     _post_json "{\"action\":\"fill\",\"selector\":\"#${element_id}\",\"value\":\"\"}" >/dev/null
@@ -189,7 +189,14 @@ _selector_input_case() {
     fi
 
     # Execute action
-    _post_json "$action_json" >/dev/null
+    local action_response response_target expected_target
+    action_response=$(_post_json "$action_json")
+    response_target=$(echo "$action_response" | json_get "['data']['$response_key']")
+    expected_target=$(python3 -c \
+        'import json, sys; print(json.loads(sys.argv[1])["selector"])' \
+        "$action_json")
+    assert_eq "$response_target" "$expected_target" \
+        "selector_input[$label]: response target" || return 1
 
     local resp val
     resp=$(post "{\"action\": \"eval\", \"expression\": \"document.getElementById('${element_id}').value\"}")
@@ -201,22 +208,25 @@ _selector_input_case() {
 test_selector_input() {
     _selector_input_case "fill_css" \
         '{"action":"fill","selector":"#name-input","value":"hello world"}' \
-        "name-input" "hello world" || return 1
+        "name-input" "hello world" "filled" || return 1
     _selector_input_case "fill_xpath" \
         '{"action":"fill","selector":"xpath=//input[@id=\"name-input\"]","value":"xpath fill"}' \
-        "name-input" "xpath fill" || return 1
+        "name-input" "xpath fill" "filled" || return 1
     _selector_input_case "type_css" \
         '{"action":"type","selector":"#email-input","text":"typed","delay":0.02}' \
-        "email-input" "typed" || return 1
+        "email-input" "typed" "typed" || return 1
     _selector_input_case "type_xpath" \
         '{"action":"type","selector":"xpath=//input[@id=\"email-input\"]","text":"xtyped","delay":0.02}' \
-        "email-input" "xtyped" || return 1
+        "email-input" "xtyped" "typed" || return 1
     echo "OK: selector_input (4 cases passed)"
 }
 
 test_click() {
     # CSS selector
-    post '{"action": "click", "selector": "#submit-btn"}' >/dev/null
+    local click_response click_target
+    click_response=$(post '{"action": "click", "selector": "#submit-btn"}')
+    click_target=$(echo "$click_response" | json_get "['data']['clicked']")
+    assert_eq "$click_target" "#submit-btn" "click: CSS response target" || return 1
     sleep 0.5
     local resp val
     resp=$(post '{"action": "eval", "expression": "document.getElementById(\"btn-clicked\") ? document.getElementById(\"btn-clicked\").textContent : \"\""}')
@@ -225,7 +235,10 @@ test_click() {
 
     # Clear and test XPath
     post '{"action": "eval", "expression": "document.getElementById(\"click-result\").innerHTML = \"\""}' >/dev/null
-    post '{"action": "click", "selector": "xpath=//button[@id=\"submit-btn\"]"}' >/dev/null
+    click_response=$(post '{"action": "click", "selector": "xpath=//button[@id=\"submit-btn\"]"}')
+    click_target=$(echo "$click_response" | json_get "['data']['clicked']")
+    assert_eq "$click_target" "xpath=//button[@id=\"submit-btn\"]" \
+        "click: XPath response target" || return 1
     sleep 0.5
     resp=$(post '{"action": "eval", "expression": "document.getElementById(\"btn-clicked\") ? document.getElementById(\"btn-clicked\").textContent : \"\""}')
     val=$(echo "$resp" | json_get "['data']['result']")

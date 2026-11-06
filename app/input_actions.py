@@ -322,6 +322,103 @@ async def system_click(cmd: dict, page: Any, system: System) -> dict:
     return {"system_clicked": _point(cmd["x"], cmd["y"]), "landed_at": _point(*clicked)}
 
 
+async def system_hover(cmd: dict, page: Any, system: System) -> dict:
+    return await mouse_move(cmd, page, system)
+
+
+async def system_double_click(cmd: dict, page: Any, system: System) -> dict:
+    x, y = _xy(cmd, required=True)
+    duration, width, height = _target(cmd)
+    profile = _mouse_profile(cmd, system)
+    await _refresh_window_offset(page, system)
+    clicked = await asyncio.to_thread(
+        system.double_click,
+        x,
+        y,
+        duration,
+        width,
+        height,
+        profile,
+    )
+    return {"system_double_clicked": _point(cmd["x"], cmd["y"]), "landed_at": _point(*clicked)}
+
+
+async def system_right_click(cmd: dict, page: Any, system: System) -> dict:
+    x, y = _xy(cmd, required=True)
+    duration, width, height = _target(cmd)
+    profile = _mouse_profile(cmd, system)
+    await _refresh_window_offset(page, system)
+    clicked = await asyncio.to_thread(
+        system.button_click,
+        "right",
+        x,
+        y,
+        duration,
+        width,
+        height,
+        profile,
+    )
+    return {"system_right_clicked": _point(cmd["x"], cmd["y"]), "landed_at": _point(*clicked)}
+
+
+async def system_mouse_down(cmd: dict, page: Any, system: System) -> dict:
+    button = cmd.get("button", "left")
+    await _refresh_window_offset(page, system)
+    try:
+        x, y = _xy(cmd, required=False)
+        if x is not None:
+            duration, width, height = _target(cmd)
+            profile = _mouse_profile(cmd, system)
+            await asyncio.to_thread(
+                system.move_mouse,
+                x,
+                y,
+                duration,
+                width,
+                height,
+                profile,
+            )
+        point = await asyncio.to_thread(system.mouse_down, button)
+    except InputError as error:
+        raise InputActionError(str(error)) from error
+    return {"button": button, "down_at": _point(*point)}
+
+
+async def system_mouse_up(cmd: dict, page: Any, system: System) -> dict:
+    button = cmd.get("button", "left")
+    await _refresh_window_offset(page, system)
+    try:
+        x, y = _xy(cmd, required=False)
+        if x is not None:
+            await asyncio.to_thread(system.move_mouse, x, y)
+        point = await asyncio.to_thread(system.mouse_up, button)
+    except InputError as error:
+        raise InputActionError(str(error)) from error
+    return {"button": button, "up_at": _point(*point)}
+
+
+async def system_drag(cmd: dict, page: Any, system: System) -> dict:
+    source_x = _number(cmd, "source_x", required=True)
+    source_y = _number(cmd, "source_y", required=True)
+    target_x = _number(cmd, "target_x", required=True)
+    target_y = _number(cmd, "target_y", required=True)
+    profile = _mouse_profile(cmd, system)
+    await _refresh_window_offset(page, system)
+    landed = await asyncio.to_thread(
+        system.drag,
+        source_x,
+        source_y,
+        target_x,
+        target_y,
+        profile,
+    )
+    return {
+        "source": _point(source_x, source_y),
+        "target": _point(target_x, target_y),
+        "landed_at": _point(*landed),
+    }
+
+
 async def scroll(cmd: dict, page: Any, system: System) -> dict:
     amount = _integer(cmd, "amount", _SCROLL_AMOUNT_DEFAULT)
     if amount == 0:
@@ -729,6 +826,12 @@ ACTIONS: dict[str, ActionHandler] = {
     "mouse_move": mouse_move,
     "mouse_click": mouse_click,
     "system_click": system_click,
+    "system_hover": system_hover,
+    "system_double_click": system_double_click,
+    "system_right_click": system_right_click,
+    "system_mouse_down": system_mouse_down,
+    "system_mouse_up": system_mouse_up,
+    "system_drag": system_drag,
     "scroll": scroll,
     "scroll_to_bottom_humanized": scroll_to_bottom_humanized,
     "human_pause": human_pause,

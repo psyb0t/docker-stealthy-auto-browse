@@ -148,6 +148,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gosu \
     && rm -rf /var/lib/apt/lists/*
 
+# Keep the browser on one desktop. Openbox defaults to four, and wheel input
+# over an uncovered screen edge otherwise switches away from the browser.
+RUN install -d -o browser -g browser /home/browser/.config/openbox \
+    && sed '0,/<number>4<\/number>/s//<number>1<\/number>/' \
+        /etc/xdg/openbox/rc.xml > /home/browser/.config/openbox/rc.xml \
+    && chown browser:browser /home/browser/.config/openbox/rc.xml
+
 # Copy entrypoint (runs as root, drops to target user)
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
 

@@ -8,6 +8,7 @@
 | `/screenshot/browser` | GET    | Browser viewport as PNG (what the page looks like)       |
 | `/screenshot/desktop` | GET    | Full virtual desktop as PNG (including browser chrome)   |
 | `/state`              | GET    | Current URL, page title, and window offset as JSON       |
+| `/events`             | GET    | Authenticated browser event stream as SSE                |
 | `/health`             | GET    | Returns `ok` when the browser is ready                   |
 | `/mcp/`               | POST   | MCP (Model Context Protocol) Streamable HTTP endpoint    |
 
@@ -113,6 +114,12 @@ Every interaction (clicks, typing, key presses) uses OS-level input. The site se
 
 All actions are sent as `POST /` with JSON body `{"action": "name", ...params}`.
 
+### Element targets
+
+Actions that operate on one element accept exactly one of `selector`, `element_id`, or `role`. A role target also accepts the accessible `name`. Selector and role targets accept `frames`, an ordered list of iframe selectors from the top page to the target frame. Frame chains support up to eight levels. CSS selectors pierce open shadow roots. Closed shadow roots are inaccessible.
+
+`create_element_reference` returns an opaque `element_id` that remains tied to the same DOM node while it is attached. References expire after five minutes, are bounded to 512 per process, and become stale after top-level navigation, page close, browser relaunch, or explicit release. `get_element`, DOM input, waits, uploads, element screenshots, and OS-level target actions accept these references. `get_accessibility_tree` accepts selector or role targets, but not `element_id`.
+
 ### Navigation
 
 | Action    | Parameters                                                  | What It Does |
@@ -135,6 +142,12 @@ These actions drive the real X11 mouse and keyboard with timing modeled on how p
 | `send_key`     | `key`, `key_hold`, `instant`                                                | Sends a keyboard key or combo with a human hold. `instant: true` presses and releases at once with no human timing, as before 3.0.0. It is faster but easy for a page to spot. Examples: `"enter"`, `"tab"`, `"escape"`, `"backspace"`, `"ctrl+a"`, `"ctrl+shift+t"`. Combo keys go down in order and come up in reverse. Uses PyAutoGUI key names. |
 | `scroll`       | `amount`, `x`, `y`, `notch_gap`                                             | Scrolls `amount` mouse wheel notches (a non-zero integer, default -3), one at a time with a human rhythm. Amounts above 4 are split into several gestures with short pauses. **Negative = scroll down**, positive = scroll up. If `x`, `y` are provided (both or neither), moves the mouse there first (useful for scrolling inside a specific element). |
 | `human_pause`  | `duration`, `x`, `y`, `w`, `h`, `drift`, `drift_interval`, `drift_distance`, `speed`, `curvature`, `tremor` | Represents visible reading, review, or composition time. It optionally parks the pointer inside a viewport rectangle, remains mostly still, and makes sparse bounded human-shaped drifts. It blocks for the requested time and never starts background movement. Use `sleep` for ordinary waiting. Returns `duration`, `elapsed`, `drifts`, `parked`, and `landed_at`. |
+| `system_hover` | element target, plus [pointer options](#pointer-options) | Resolves the element's current viewport rectangle and moves the real pointer into it. |
+| `system_double_click` | element target, plus [pointer options](#pointer-options) | Resolves the target, moves there, and sends two real left-button clicks with a valid double-click interval. |
+| `system_right_click` | element target, plus [pointer options](#pointer-options) | Resolves the target and sends a real right-button click. |
+| `system_mouse_down` | optional element target, `button` | Moves to the target when supplied, then holds the selected button. |
+| `system_mouse_up` | `button` | Releases the selected held button at the current pointer position. |
+| `system_drag` | `source`, `target`, plus [pointer options](#pointer-options) | Resolves source and target objects, then performs a real held-button drag with humanized movement. |
 
 ### Playwright input (DOM events, use these first)
 
@@ -143,21 +156,29 @@ These actions drive the real X11 mouse and keyboard with timing modeled on how p
 | `click` | `selector`                  | **Preferred click method.** Clicks an element by CSS selector or XPath (`xpath=//button[@id='submit']`). Fast and reliable. Only fall back to `system_click` if the site actively detects and blocks DOM event injection. |
 | `fill`  | `selector`, `value`         | Sets an input field's value instantly. Clears existing content first. Fast but detectable, because it doesn't generate individual keystroke events.                       |
 | `type`  | `selector`, `text`, `delay` | Types into an element character-by-character via Playwright. Middle ground between `fill` (instant) and `system_type` (OS-level). `delay` defaults to 0.05s between keys. |
+| `hover` | element target | Hovers a target through Playwright. |
+| `double_click` | element target | Double-clicks a target through Playwright. |
+| `right_click` | element target | Right-clicks a target through Playwright. |
+| `drag_and_drop` | `source`, `target` | Drags one target object to another through Playwright. |
 
 ### Page inspection
 
 | Action                     | Parameters     | What It Does                                                                                                                                                                                                                                               |
 | -------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `get_interactive_elements` | `visible_only` | Scans the page and returns **every** interactive element (buttons, links, inputs, selects, textareas) with their viewport coordinates (`x`, `y`), dimensions (`w`, `h`), `text`, CSS `selector`, and `visible` status. This is how you find what to click. |
+| `get_interactive_elements` | `visible_only` | Scans the page and returns interactive elements with viewport coordinates, dimensions, text, selector, visibility, and reusable `element_id` where a stable handle can be created. |
 | `get_text`                 | none           | Returns all visible text from the page body (truncated to 10,000 chars). Usually the first thing to call after navigating. It tells you what's on the page without a screenshot.                                                                           |
 | `get_html`                 | none           | Returns the full HTML source of the page. Use when `get_text` doesn't give enough structure.                                                                                                                                                               |
 | `get_page_info`            | none           | Returns the current URL, title, ready state, viewport/document dimensions, and scroll position.                                                                                                                                                           |
 | `detect_challenge`         | `scroll_into_view` | Read-only best-effort detection of documented challenge integrations and conservative visible generic cues. Optional viewport reveal never clicks, solves, focuses, or enters a frame. |
 | `solve_captcha`            | `task`, `timeout`, `poll_interval` | Submit an Anti-Captcha task using the server-side configured key and wait for the provider solution. Requires `CAPTCHA_SOLVER_PROVIDER=anticaptcha`. |
-| `get_element`              | `selector`     | Returns one matching element's tag, text (truncated to 10,000 chars), attributes, bounding box, and visibility.                                                                                                                                          |
-| `get_elements`             | `selector`, `limit` | Returns summaries for up to `limit` matching elements (1-100; default 20). Each summary includes tag, text, attributes, bounding box, and visibility.                                                                                              |
+| `get_element`              | element target | Returns one matching element's reusable ID, tag, text, attributes, bounding box, and visibility. |
+| `get_elements`             | `selector`, `frames`, `limit` | Returns summaries and reusable IDs for up to `limit` matches. `limit` is 1 through 100 and defaults to 20. |
 | `get_computed_style`       | `selector`, `properties` | Returns computed CSS property values. `properties` accepts up to 50 CSS property names; defaults to `display`, `visibility`, `color`, and `background-color`.                                                                                   |
 | `eval`                     | `expression`, `world` | Executes JavaScript in the page and returns the result. Example: `"document.title"`, `"document.querySelectorAll('a').length"`. `world` is `page` (default) or `isolated`. `page` runs in the page's own JavaScript world and can read globals the site defines, such as `window.__NEXT_DATA__`. `isolated` sees the DOM but not the page's variables, and page scripts cannot observe or hook it. Use `isolated` for DOM reads on sites that watch for automation. |
+| `create_element_reference` | element target | Returns metadata and a reusable opaque `element_id`. |
+| `release_element_reference` | `element_id` | Disposes one stored reference. |
+| `get_accessibility_tree` | optional selector or role target | Returns Playwright's ARIA snapshot for the target or page body. |
+| `get_by_role` | `role`, `name`, `frames`, `limit` | Returns matching accessible elements and reusable IDs. |
 
 ### Challenge detection
 
@@ -218,6 +239,7 @@ Use these instead of `sleep`. They wait for **actual page state**, not arbitrary
 | `wait_for_text`         | `text`, `timeout`              | Waits for specific text to appear anywhere on the page (substring match).                                                                                       |
 | `wait_for_url`          | `url`, `timeout`               | Waits for the URL to match a glob pattern. `*` matches any chars except `/`, `**` matches everything. Example: `"**/dashboard"`.                                |
 | `wait_for_network_idle` | `timeout`                      | Waits until no network requests have been made for 500ms. Useful for pages that load content dynamically.                                                       |
+| `wait_for_dom_change` | element target, `condition`, `attribute`, `timeout` | Waits for `added`, `removed`, `text`, `attribute`, `visible`, `hidden`, or `moved`. `attribute` is required for attribute changes. |
 
 ### Tab management
 
@@ -227,6 +249,11 @@ Use these instead of `sleep`. They wait for **actual page state**, not arbitrary
 | `new_tab`    | `url`, `wait_until`, `timeout`, `retry_count`, `retry_delay` | Opens a new tab (becomes the active tab). Optionally navigates to a URL with the same explicit navigation controls as `goto`. |
 | `switch_tab` | `index`             | Switches the active tab by index (0-based). All subsequent actions operate on the active tab.           |
 | `close_tab`  | `index` (optional)  | Closes a tab. If no index, closes the active tab. After closing, the last remaining tab becomes active. |
+| `list_windows` | none | Returns visible Camoufox X windows, geometry, page URL, and active state. |
+| `focus_window` | `index` | Raises and focuses the page/window index. |
+| `move_resize_window` | `index`, `x`, `y`, `width`, `height` | Moves and resizes one visible Camoufox X window. Minimum size is 100 by 100. |
+| `wait_for_popup` | `after_id`, `timeout` | Waits for a popup event after the supplied event ID. |
+| `close_window` | `index` | Closes the page at the window index. |
 
 Firefox opens each tab as its own OS window, so `new_tab` / `switch_tab` / `close_tab` also **foreground** the target tab's window (the display, screenshots, recordings, and VNC follow the active tab) and transfer OS-level keyboard focus into its content so `send_key` / `system_type` reach the switched tab. Foregrounding uses a brief off-screen mouse gesture that renders no context menu (clean in recordings).
 
@@ -272,11 +299,16 @@ Record all HTTP requests and responses the page makes. Useful for finding API en
 
 | Action                 | Parameters | What It Does                                                                                                                     |
 | ---------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `enable_network_log`   | none       | Starts recording. Each entry captures: URL, method, resource type (fetch/document/script/image/etc), status code, and timestamp. |
+| `enable_network_log`   | `capture_request_bodies`, `capture_response_bodies`, `max_body_bytes` | Starts recording. Body capture is off by default. The per-body limit defaults to 256 KiB and may not exceed 1 MiB. |
 | `disable_network_log`  | none       | Stops recording. Already-captured entries remain.                                                                                |
 | `get_network_log`      | none       | Returns all captured entries with their count.                                                                                   |
 | `clear_network_log`    | none       | Deletes captured entries. Keeps logging on if it was on.                                                                         |
 | `getclear_network_log` | none       | Returns all captured entries and clears the log in one call.                                                                     |
+| `set_network_rules` | `rules` | Installs ordered future-request rules. Each rule has a URL glob and `action`: `block`, `abort`, `continue`, `redirect`, or `fulfill`. Optional `method` and `resource_type` narrow the match. Redirects require an HTTP(S) `redirect_url` without credentials. Fulfill rules accept bounded status, headers, content type, and text body. |
+| `clear_network_rules` | none | Removes all interception rules. |
+| `export_har` | optional `path` | Returns a bounded HAR 1.2 object assembled from the current network log and optionally writes it to a script-mode path. |
+
+Rules affect only requests started after installation. Sensitive request and response headers are replaced with `[REDACTED]`. URL query values whose names look like credentials are also redacted. Response bodies are base64 in network log and HAR results.
 
 ### Console logging
 
@@ -308,8 +340,8 @@ For substantial text, prefer `set_clipboard`, focus the target field, then call 
 
 | Action | Parameters | What It Does |
 | ------ | ---------- | ------------ |
-| `set_clipboard` | `text` | Replaces the text clipboard. `text` is required, must be a string, may be empty, and may contain at most 1 MiB of UTF-8 data. Returns `length` in Unicode characters and `bytes` in UTF-8 bytes. |
-| `get_clipboard` | none | Returns `text`, its Unicode character `length`, and its UTF-8 `bytes`. Non-UTF-8 or oversized clipboard contents return an error. |
+| `set_clipboard` | `format`, `text`, `content_base64`, `files` | Replaces one clipboard target. `format` defaults to `text`. Use `text` for `text` and `html`, strict base64 PNG in `content_base64` for `image/png`, or up to 32 absolute existing regular file paths in `files`. Text and clipboard payloads are limited to 1 MiB. File lists reject symlinks and more than 1 GiB of aggregate file size. |
+| `get_clipboard` | `format` | Reads `text`, `html`, `image/png`, or `files`. PNG content returns as base64. File content is not returned. |
 
 Both actions work as HTTP actions, dedicated MCP tools, YAML script steps, and `run_script` steps. Cluster mode exposes only `run_script`, so place clipboard operations in the same script when they must run on one browser instance.
 
@@ -328,8 +360,20 @@ Both actions work as HTTP actions, dedicated MCP tools, YAML script steps, and `
 | `ping`            | none                                                        | Health check that returns `"pong"` and the current page URL.                                                                                                                                                                                 |
 | `sleep`           | `duration`                                                  | Pauses for N seconds. Prefer `wait_for_element` or `wait_for_text` when waiting for page content.                                                                                                                                            |
 | `close`           | none                                                        | Shuts down the browser. The container stops after this.                                                                                                                                                                                      |
-| `save_screenshot` | `output_id`, `path`, `type`, `width`, `height`, `whLargest` | Captures a screenshot. `type`: `"browser"` (default) or `"desktop"`. Optional `path` to also write PNG to disk. In script mode, `output_id` collects the base64 PNG into the outputs dict. Supports resize via `width`/`height`/`whLargest`. |
+| `save_screenshot` | `output_id`, `path`, `type`, element target, `full_page`, `width`, `height`, `whLargest` | Captures PNG only. `type` is `browser` or `desktop`. Browser capture can select one element or the full page. Element and full-page capture cannot be combined. Optional `path` writes the PNG. `output_id` collects base64 in script mode. |
 | `get_virtual_media_state` | none | Reports virtual-media configuration and, in dynamic mode, each active source basename and source revision. |
+
+### Events and human handoff
+
+`get_events` reads the bounded 1,000-record process-local event ring. `wait_for_event` waits without polling. Both accept `after_id`, an optional `types` list, and bounded result or timeout controls. Events include navigation, popup and page close, dialogs, downloads, console messages, requests, responses, and handoff state. A cursor older than retained history receives a `gap` record. A future cursor is rejected.
+
+`GET /events` streams the same records as server-sent events. Use repeated `type` query parameters to filter and `after_id` to resume. The stream uses the same Bearer authentication as the rest of the API. Event storage is process-local and is not shared across cluster replicas.
+
+`begin_handoff` blocks browser-mutating API and MCP actions while leaving noVNC input available. `handoff_status` reports trusted pointer, keyboard, and wheel activity observed since handoff began. `end_handoff` removes the listeners, returns the final counts, and resumes automation. Screenshot, page reads, event reads, state, and health remain available during handoff.
+
+### Permissions and geolocation
+
+`set_permissions` grants a non-empty permission list, optionally for one bare HTTP(S) origin. Allowed values are `accessibility-events`, `accelerometer`, `ambient-light-sensor`, `background-sync`, `camera`, `clipboard-read`, `clipboard-write`, `geolocation`, `gyroscope`, `magnetometer`, `microphone`, `midi`, `midi-sysex`, `notifications`, and `payment-handler`. `clear_permissions` clears all grants. `set_geolocation` validates finite latitude, longitude, and accuracy before applying them. Configured permission and geolocation state is reapplied after an automatic browser relaunch.
 
 ### Virtual camera and microphone
 
@@ -466,7 +510,7 @@ OS-level input runs in a worker thread, so `/health`, screenshots, and MCP stay 
 
 ## Screenshots
 
-Both screenshot endpoints support resize parameters. The default resolution is 1920x1080, which is a big image. You almost always want to resize.
+Both screenshot endpoints return PNG and support resize parameters. The browser endpoint also accepts `selector`, repeated `frame` parameters for an ordered iframe chain, and `full_page=true`. Element and full-page capture cannot be combined. The default resolution is 1920x1080, which is a big image. You almost always want to resize.
 
 ```bash
 # Resize to 512px on the longest side (best default: keeps aspect ratio and size small)

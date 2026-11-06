@@ -739,6 +739,28 @@ def _fit_window_to_screen(window_id: str, width: int, height: int) -> None:
     )
 
 
+def _window_geometry(window_id: str) -> dict[str, int]:
+    try:
+        result = subprocess.run(
+            ["xdotool", "getwindowgeometry", "--shell", window_id],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        )
+        values = dict(
+            line.split("=", 1) for line in result.stdout.splitlines() if "=" in line
+        )
+        return {
+            "x": int(values["X"]),
+            "y": int(values["Y"]),
+            "width": int(values["WIDTH"]),
+            "height": int(values["HEIGHT"]),
+        }
+    except (OSError, subprocess.SubprocessError, KeyError, ValueError) as error:
+        raise BrowserError("failed to read browser window geometry") from error
+
+
 def _log_browser_postmortem() -> None:
     """Capture crash diagnostics at the moment the health probe fails.
 
@@ -1922,6 +1944,58 @@ class Browser:
                 "focus_tab_window: activate/focus failed",
                 extra={"index": index, "error": str(e)},
             )
+
+    def list_windows(self) -> list[dict[str, int]]:
+        """Return visible Camoufox X windows in page creation order."""
+        try:
+            result = subprocess.run(
+                ["xdotool", "search", "--onlyvisible", "--class", "Camoufox"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            raise BrowserError("failed to list browser windows") from error
+        windows: list[dict[str, int]] = []
+        for index, window_id in enumerate(
+            sorted(int(item) for item in result.stdout.split() if item.isdigit())
+        ):
+            geometry = _window_geometry(str(window_id))
+            windows.append({"index": index, "window_id": window_id, **geometry})
+        return windows
+
+    def move_resize_window(
+        self,
+        index: int,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+    ) -> dict[str, int]:
+        """Move and resize one visible Camoufox X window."""
+        windows = self.list_windows()
+        if index < 0 or index >= len(windows):
+            raise BrowserError("window index out of range")
+        if width < 100 or height < 100:
+            raise BrowserError("window width and height must be at least 100")
+        window_id = str(windows[index]["window_id"])
+        try:
+            subprocess.run(
+                ["xdotool", "windowmove", window_id, str(x), str(y)],
+                check=True,
+                capture_output=True,
+                timeout=5,
+            )
+            subprocess.run(
+                ["xdotool", "windowsize", window_id, str(width), str(height)],
+                check=True,
+                capture_output=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            raise BrowserError("failed to move or resize browser window") from error
+        return {"index": index, "window_id": int(window_id), **_window_geometry(window_id)}
 
     async def _update_state(self) -> None:
         """Update state from current page."""

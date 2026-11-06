@@ -96,6 +96,8 @@ Every response:
 Uses PyAutoGUI for real OS-level mouse/keyboard events. The browser doesn't see synthetic DOM events. Use only for legitimate detection-stack testing where the stack incorrectly blocks DOM-event automation.
 
 - `system_click`: move along a human path to the target, then press with a human hold (viewport x,y of the target centre, plus its w,h)
+- `system_hover`, `system_double_click`, `system_right_click`: target an element by selector, role, or reusable `element_id`
+- `system_mouse_down`, `system_mouse_up`, `system_drag`: trusted held-button and drag gestures
 - `mouse_move`: move without clicking (hover menus, tooltips)
 - `mouse_click`: click where the pointer is, or move to x,y first
 - `system_type`: type with real key holds, human rhythm, Shift before capitals; optional self-correcting typos
@@ -113,6 +115,9 @@ Uses Playwright's DOM events. Faster, uses CSS selectors/XPath, distinguishable 
 - `click`: click by selector
 - `fill`: set input value instantly
 - `type`: type into element character-by-character
+- `hover`, `double_click`, `right_click`, `drag_and_drop`: DOM pointer gestures
+
+Element actions accept one of `selector`, `role` plus optional accessible `name`, or a reusable `element_id`. Add `frames` as an ordered iframe selector chain. CSS selectors pierce open shadow roots. Closed shadow roots cannot be entered. Prefer role and accessible name when the page has good accessibility metadata. Create a stable reference before repeated operations on a dynamic page, then reacquire it after navigation.
 
 ### Which to use
 
@@ -331,7 +336,7 @@ Call `handle_dialog` **before** the action that triggers the dialog.
 
 ### Clipboard
 
-These actions use the real X11 text clipboard shared by Camoufox and noVNC. Text is limited to 1 MiB of UTF-8 data and is not written to request logs.
+These actions use the real X11 clipboard shared by Camoufox and noVNC. Formats are `text`, `html`, `image/png`, and `files`. Clipboard payloads are bounded and are not written to request logs.
 
 For substantial text, prefer `set_clipboard`, focus the field, then call `send_key` with `key: "ctrl+v"`. Use `system_type` for short edits, fields that reject paste, or work that specifically needs per-keystroke behavior.
 
@@ -341,6 +346,12 @@ For substantial text, prefer `set_clipboard`, focus the field, then call `send_k
 ```
 
 Both are dedicated MCP tools. In cluster mode, put them inside one `run_script` call.
+
+### Events and human handoff
+
+Use `get_events` or `wait_for_event` instead of repeatedly polling page state. The HTTP SSE stream is `GET /events`. Event history is bounded and process-local.
+
+Call `begin_handoff` before asking a person to use noVNC. Mutating automation is blocked while handoff is active. `handoff_status` reports trusted pointer, keyboard, and wheel activity. Call `end_handoff` before resuming automated actions.
 
 ### Network logging
 
@@ -436,7 +447,7 @@ The browser exposes all actions as MCP tools via Streamable HTTP at `/mcp/` on t
 http://127.0.0.1:8080/mcp/
 ```
 
-Connect any MCP-compatible client to that URL. All actions from the HTTP API are available as tools. Dedicated tools include `goto`, `screenshot`, `system_click`, `system_type`, `human_pause`, `eval_js`, `get_text`, `set_clipboard`, `get_clipboard`, `detect_challenge`, `click`, `fill`, `run_script` (multi-step), and `browser_action` (generic fallback for everything else, such as cookies, tabs, storage, dialogs, downloads, logging, and recording).
+Connect any MCP-compatible client to that URL. All actions from the HTTP API are available through dedicated tools or `browser_action`. Dedicated tools include `goto`, `screenshot`, `system_click`, `system_type`, `human_pause`, `eval_js`, `get_text`, `set_clipboard`, `set_clipboard_data`, `get_clipboard`, `get_events`, `wait_for_event`, `begin_handoff`, `handoff_status`, `end_handoff`, `detect_challenge`, `click`, `fill`, and `run_script`.
 
 If `AUTH_TOKEN` is set, configure the MCP client to send `Authorization: Bearer <key>` when connecting to `http://127.0.0.1:8080/mcp/`.
 

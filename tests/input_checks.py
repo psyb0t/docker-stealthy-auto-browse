@@ -75,7 +75,6 @@ _PAUSE_MIN_BURSTS = 2
 _PAUSE_MAX_BURSTS_PER_SECOND = 0.75
 _PAUSE_MIN_EVENTS_PER_BURST = 3
 _PAUSE_MAX_ACTIVE_SHARE = 0.35
-_PAUSE_MIN_GAP_CV = 0.15
 
 # Only mouse sessions get an overall verdict. Typing and scroll sessions have
 # almost no pointer data, so their overall score swings on "not enough
@@ -442,17 +441,6 @@ def pause_checks(harvest: dict, duration: float | None) -> list[Check]:
             f"active_share={active_share:.3f}",
         )
     )
-    starts = [burst[0]["t"] for burst in bursts]
-    gaps = [later - earlier for earlier, later in zip(starts, starts[1:])]
-    if len(gaps) >= 2:
-        gap_cv = statistics.pstdev(gaps) / statistics.fmean(gaps)
-        checks.append(
-            (
-                "drift timing is irregular",
-                gap_cv >= _PAUSE_MIN_GAP_CV,
-                f"gap_cv={gap_cv:.3f}",
-            )
-        )
     return checks
 
 

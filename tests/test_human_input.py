@@ -43,6 +43,10 @@ _TARGET_RANGE_PX = (16.0, 90.0)
 _MOVE_SAMPLES = 3000
 _CLICK_SAMPLES = 4000
 _TYPING_SAMPLES = 400
+_IDLE_DRIFT_SCHEDULE_SAMPLES = 500
+_IDLE_DRIFT_TEST_DURATION_S = 30.0
+_IDLE_DRIFT_TEST_INTERVAL_MEDIAN_S = 2.5
+_IDLE_DRIFT_MIN_POPULATION_CV = 0.4
 
 _TYPING_TEXTS = (
     "The quick brown fox jumps over the lazy dog.",
@@ -669,6 +673,23 @@ def test_system_human_pause_without_drift_only_sleeps() -> None:
         "landed_at": (90, 20),
     }
     assert fake.calls == []
+
+
+def test_idle_drift_intervals_vary_across_sessions() -> None:
+    intervals = []
+    for seed in range(_IDLE_DRIFT_SCHEDULE_SAMPLES):
+        starts = human_mouse.plan_idle_drift_times(
+            _IDLE_DRIFT_TEST_DURATION_S,
+            random.Random(seed),
+            _IDLE_DRIFT_TEST_INTERVAL_MEDIAN_S,
+        )
+        intervals.append(starts[0])
+        intervals.extend(later - earlier for earlier, later in zip(starts, starts[1:]))
+
+    coefficient_of_variation = statistics.pstdev(intervals) / statistics.fmean(
+        intervals
+    )
+    assert coefficient_of_variation >= _IDLE_DRIFT_MIN_POPULATION_CV
 
 
 def test_system_type_replays_holds_and_unicode() -> None:

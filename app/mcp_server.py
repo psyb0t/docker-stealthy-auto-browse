@@ -135,6 +135,13 @@ async def run_script(
 
     AVAILABLE ACTIONS AND PARAMETERS:
 
+    ELEMENT TARGETS:
+        Element actions accept exactly one of selector, element_id, or role.
+        Role targets may include name. Selector and role targets may include
+        frames, an ordered iframe selector chain. CSS selectors pierce open
+        shadow roots. create_element_reference returns a reusable element_id;
+        release_element_reference disposes it.
+
     NAVIGATION:
         goto: Navigate to a URL.
             - url (str, required): Target URL.
@@ -170,10 +177,13 @@ async def run_script(
         get_page_info: Get current URL, title, ready state, viewport, document, and scroll data.
             No parameters.
         get_element: Get one element's tag, text, attributes, bounding box, and visibility.
-            - selector (str, required): CSS selector or XPath.
+            - selector, element_id, or role plus optional name and frames.
         get_elements: Get a bounded list of matching element summaries.
             - selector (str, required): CSS selector or XPath.
+            - frames (list[str]): Optional ordered iframe selector chain.
             - limit (int): 1-100, default 20.
+        get_accessibility_tree: Return an ARIA snapshot for the page or target.
+        get_by_role: Return bounded summaries for an accessible role and name.
         get_computed_style: Get selected computed CSS properties for one element.
             - selector (str, required): CSS selector or XPath.
             - properties (list[str]): Up to 50 CSS property names. Defaults to display,
@@ -200,7 +210,9 @@ async def run_script(
 
     CLICKING (prefer click over system_click):
         click: Click element by CSS selector or XPath. Fast and reliable.
-            - selector (str, required): CSS selector or "xpath=..." expression.
+            - selector, element_id, or role plus optional name and frames.
+        hover, double_click, right_click, drag_and_drop: DOM pointer actions
+            using the shared target format. Drag accepts source and target.
         system_click: Move like a human to viewport coordinates, then click with a
             human press and hold. The window position is re-measured first, so
             calibrate is not needed.
@@ -220,6 +232,10 @@ async def run_script(
             - x (int): Viewport X coordinate.
             - y (int): Viewport Y coordinate.
             - w (int), h (int), and the system_click tuning options.
+        system_hover, system_double_click, system_right_click: Trusted pointer
+            actions using the shared element target format.
+        system_mouse_down, system_mouse_up: Trusted held-button controls.
+        system_drag: Trusted source-to-target drag with humanized movement.
 
     TEXT INPUT:
         For substantial text, prefer set_clipboard, focus the field, then
@@ -301,6 +317,8 @@ async def run_script(
     SCREENSHOTS:
         save_screenshot: Capture screenshot (prefer get_text/get_html instead).
             - type (str): "browser" (default) or "desktop".
+            - selector, element_id, or role: Optional browser element target.
+            - full_page (bool): Capture the full browser page.
             - width (int): Resize to width (keeps aspect ratio).
             - height (int): Resize to height (keeps aspect ratio).
             - whLargest (int): Resize largest dimension to this. Use 512 for LLMs.
@@ -308,7 +326,7 @@ async def run_script(
 
     WAIT CONDITIONS:
         wait_for_element: Wait for element to reach a state.
-            - selector (str, required): CSS selector or XPath.
+            - selector, element_id, or role plus optional name and frames.
             - state (str): "visible" (default), "hidden", "attached", "detached".
             - timeout (float): Max wait in seconds. Default 30.
         wait_for_text: Wait for text to appear on page.
@@ -319,6 +337,8 @@ async def run_script(
             - timeout (float): Max wait in seconds. Default 30.
         wait_for_network_idle: Wait for no network activity.
             - timeout (float): Max wait in seconds. Default 30.
+        wait_for_dom_change: Wait for added, removed, text, attribute,
+            visible, hidden, or moved changes on a shared element target.
         sleep: Pause execution.
             - duration (float): Seconds to sleep. Default 1.
 
@@ -367,10 +387,11 @@ async def run_script(
         get_last_dialog: Get info about the last dialog that appeared.
 
     CLIPBOARD:
-        set_clipboard: Replace the X11 text clipboard with UTF-8 text.
-            - text (str, required): Text up to 1 MiB. Empty text is allowed.
-        get_clipboard: Return the current X11 clipboard text and its character
-            and UTF-8 byte counts.
+        set_clipboard: Replace one X11 clipboard target. format accepts text,
+            html, image/png, or files. PNG uses content_base64. Files uses a
+            bounded list of absolute existing regular file paths.
+        get_clipboard: Return text, HTML, base64 PNG, or file URI data for the
+            requested format.
 
     FILE UPLOAD:
         upload_file: Upload a file to a file input element.
@@ -381,11 +402,32 @@ async def run_script(
         get_last_download: Get info about the last downloaded file.
 
     NETWORK LOGGING:
-        enable_network_log: Start recording network requests/responses.
+        enable_network_log: Start recording requests and responses, with
+            optional bounded request and response body capture.
         disable_network_log: Stop recording.
         get_network_log: Get recorded network log entries.
         clear_network_log: Clear the network log.
         getclear_network_log: Get and clear in one call.
+        set_network_rules: Install ordered future-request block, abort,
+            continue, redirect, or fulfill rules.
+        clear_network_rules: Remove all request rules.
+        export_har: Return a bounded HAR 1.2 object and optionally save it.
+
+    WINDOWS AND HANDOFF:
+        list_windows, focus_window, move_resize_window: Inspect and control X11
+            browser windows.
+        wait_for_popup, close_window: Wait for or close browser pages/windows.
+        begin_handoff: Block mutating automation while noVNC remains usable.
+        handoff_status: Return trusted pointer, keyboard, and wheel counts.
+        end_handoff: End the handoff and resume automation.
+
+    EVENTS:
+        get_events: Read the bounded process-local browser event ring.
+        wait_for_event: Wait for matching events without polling.
+
+    PERMISSIONS AND LOCATION:
+        set_permissions, clear_permissions: Manage allowlisted browser grants.
+        set_geolocation: Set validated finite coordinates and accuracy.
 
     CONSOLE LOGGING:
         enable_console_log: Start recording console messages.
@@ -480,9 +522,73 @@ if not _cluster_mode:
         return _text_result(await _call("set_clipboard", text=text))
 
     @mcp.tool
-    async def get_clipboard() -> str:
-        """Read UTF-8 text from the real X11 clipboard."""
-        return _text_result(await _call("get_clipboard"))
+    async def get_clipboard(format: str = "text") -> str:
+        """Read text, HTML, PNG, or file URIs from the real X11 clipboard."""
+        return _text_result(await _call("get_clipboard", format=format))
+
+    @mcp.tool
+    async def set_clipboard_data(
+        format: str,
+        text: str | None = None,
+        content_base64: str | None = None,
+        files: list[str] | None = None,
+    ) -> str:
+        """Set HTML, PNG, or file-list clipboard data.
+
+        Use `text` for `html`, `content_base64` for `image/png`, and `files`
+        for `files`. Use set_clipboard for ordinary UTF-8 text.
+        """
+        return _text_result(
+            await _call(
+                "set_clipboard",
+                format=format,
+                text=text,
+                content_base64=content_base64,
+                files=files,
+            )
+        )
+
+    @mcp.tool
+    async def get_events(
+        after_id: int = 0,
+        types: list[str] | None = None,
+        limit: int = 100,
+    ) -> str:
+        """Read buffered browser events after an event ID."""
+        return _text_result(
+            await _call("get_events", after_id=after_id, types=types, limit=limit)
+        )
+
+    @mcp.tool
+    async def wait_for_event(
+        after_id: int = 0,
+        types: list[str] | None = None,
+        timeout: float = 30,
+    ) -> str:
+        """Wait for a matching browser event without polling."""
+        return _text_result(
+            await _call(
+                "wait_for_event",
+                after_id=after_id,
+                types=types,
+                timeout=timeout,
+            )
+        )
+
+    @mcp.tool
+    async def begin_handoff() -> str:
+        """Pause mutating automation while a person controls the browser."""
+        return _text_result(await _call("begin_handoff"))
+
+    @mcp.tool
+    async def handoff_status() -> str:
+        """Return whether human handoff is active."""
+        return _text_result(await _call("handoff_status"))
+
+    @mcp.tool
+    async def end_handoff() -> str:
+        """Return control to automation after human handoff."""
+        return _text_result(await _call("end_handoff"))
 
     @mcp.tool
     async def detect_challenge(scroll_into_view: bool = False) -> str:
@@ -545,6 +651,12 @@ if not _cluster_mode:
         width: int | None = None,
         height: int | None = None,
         whLargest: int | None = None,
+        selector: str | None = None,
+        element_id: str | None = None,
+        role: str | None = None,
+        name: str | None = None,
+        frames: list[str] | None = None,
+        full_page: bool = False,
     ) -> ToolResult:
         """Take a screenshot of the browser viewport or full desktop.
 
@@ -558,6 +670,12 @@ if not _cluster_mode:
             width: Resize to this width (keeps aspect ratio if height omitted).
             height: Resize to this height (keeps aspect ratio if width omitted).
             whLargest: Resize so the largest dimension is this many pixels. Use 512 by default.
+            selector: Optional element selector. Returns only that element.
+            element_id: Optional stable element reference instead of selector.
+            role: Optional accessible role instead of selector.
+            name: Optional accessible name used with role.
+            frames: Ordered iframe selector chain for selector or role targeting.
+            full_page: Capture the full page instead of the viewport.
         """
         result = await _call(
             "save_screenshot",
@@ -565,6 +683,12 @@ if not _cluster_mode:
             width=width,
             height=height,
             whLargest=whLargest,
+            selector=selector,
+            element_id=element_id,
+            role=role,
+            name=name,
+            frames=frames,
+            full_page=full_page,
         )
         binary = result.pop("_binary", None)
         if binary:
@@ -574,8 +698,13 @@ if not _cluster_mode:
 
     @mcp.tool
     async def system_click(
-        x: int,
-        y: int,
+        x: int | None = None,
+        y: int | None = None,
+        selector: str | None = None,
+        element_id: str | None = None,
+        role: str | None = None,
+        name: str | None = None,
+        frames: list[str] | None = None,
         w: int | None = None,
         h: int | None = None,
         duration: float | None = None,
@@ -596,6 +725,11 @@ if not _cluster_mode:
             x: Viewport X coordinate of the target centre (from
                 get_interactive_elements).
             y: Viewport Y coordinate of the target centre.
+            selector: Element selector instead of coordinates.
+            element_id: Stable element reference instead of coordinates.
+            role: Accessible role instead of coordinates.
+            name: Optional accessible name used with role.
+            frames: Ordered iframe selector chain for selector or role targeting.
             w: Target width from get_interactive_elements. The click lands at a
                 human offset inside the target instead of dead centre.
             h: Target height from get_interactive_elements.
@@ -612,6 +746,11 @@ if not _cluster_mode:
                 "system_click",
                 x=x,
                 y=y,
+                selector=selector,
+                element_id=element_id,
+                role=role,
+                name=name,
+                frames=frames,
                 w=w,
                 h=h,
                 duration=duration,
@@ -797,7 +936,13 @@ if not _cluster_mode:
         )
 
     @mcp.tool
-    async def click(selector: str) -> str:
+    async def click(
+        selector: str | None = None,
+        element_id: str | None = None,
+        role: str | None = None,
+        name: str | None = None,
+        frames: list[str] | None = None,
+    ) -> str:
         """Click an element by CSS selector or XPath. PREFER THIS over system_click.
 
         Reliable, fast, and works on most sites. Only fall back to
@@ -807,10 +952,26 @@ if not _cluster_mode:
         Args:
             selector: CSS selector or XPath (prefix with "xpath=").
         """
-        return _text_result(await _call("click", selector=selector))
+        return _text_result(
+            await _call(
+                "click",
+                selector=selector,
+                element_id=element_id,
+                role=role,
+                name=name,
+                frames=frames,
+            )
+        )
 
     @mcp.tool
-    async def fill(selector: str, value: str) -> str:
+    async def fill(
+        value: str,
+        selector: str | None = None,
+        element_id: str | None = None,
+        role: str | None = None,
+        name: str | None = None,
+        frames: list[str] | None = None,
+    ) -> str:
         """Set an input field's value instantly by CSS selector.
 
         Clears existing content first. Does not generate individual keystrokes.
@@ -819,7 +980,17 @@ if not _cluster_mode:
             selector: CSS selector of the input element.
             value: The value to set.
         """
-        return _text_result(await _call("fill", selector=selector, value=value))
+        return _text_result(
+            await _call(
+                "fill",
+                value=value,
+                selector=selector,
+                element_id=element_id,
+                role=role,
+                name=name,
+                frames=frames,
+            )
+        )
 
     @mcp.tool
     async def eval_js(expression: str, world: str = "page") -> str:
@@ -837,7 +1008,13 @@ if not _cluster_mode:
 
     @mcp.tool
     async def wait_for_element(
-        selector: str, state: str = "visible", timeout: float = 30
+        selector: str | None = None,
+        state: str = "visible",
+        timeout: float = 30,
+        element_id: str | None = None,
+        role: str | None = None,
+        name: str | None = None,
+        frames: list[str] | None = None,
     ) -> str:
         """Wait for an element to reach a state.
 
@@ -848,7 +1025,14 @@ if not _cluster_mode:
         """
         return _text_result(
             await _call(
-                "wait_for_element", selector=selector, state=state, timeout=timeout
+                "wait_for_element",
+                selector=selector,
+                element_id=element_id,
+                role=role,
+                name=name,
+                frames=frames,
+                state=state,
+                timeout=timeout,
             )
         )
 
@@ -875,7 +1059,17 @@ if not _cluster_mode:
         virtual media (get_virtual_media_state, set_virtual_media_source,
         upload_virtual_media),
         challenge detection (detect_challenge),
-        network logging (enable_network_log, get_network_log, etc.),
+        DOM targets and references (get_accessibility_tree, get_by_role,
+        create_element_reference, release_element_reference, wait_for_dom_change),
+        pointer control (hover, double_click, right_click, drag_and_drop,
+        system_hover, system_double_click, system_right_click,
+        system_mouse_down, system_mouse_up, system_drag),
+        windows and handoff (list_windows, focus_window, move_resize_window,
+        wait_for_popup, close_window, begin_handoff, handoff_status, end_handoff),
+        permissions (set_permissions, clear_permissions, set_geolocation),
+        network logging and interception (enable_network_log, get_network_log,
+        set_network_rules, clear_network_rules, export_har),
+        browser events (get_events, wait_for_event),
         console logging (enable_console_log, get_console_log, etc.),
         display (calibrate, get_resolution, set_color_scheme, enter_fullscreen,
         exit_fullscreen),

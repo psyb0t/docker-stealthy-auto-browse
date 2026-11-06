@@ -99,9 +99,9 @@ try:
     r = mcp_request(2, "tools/list", {})
     tools = r.get("result", {}).get("tools", [])
     names = [t["name"] for t in tools]
-    ok = len(tools) == 22
-    results.append((f"2. tools/list ({len(tools)} tools, expect 22)", ok, f"got: {names}" if not ok else ""))
-    expected = ["goto","get_text","get_html","set_clipboard","get_clipboard","detect_challenge","solve_captcha","screenshot","system_click","human_pause","eval_js","browser_action","run_script"]
+    ok = len(tools) == 28
+    results.append((f"2. tools/list ({len(tools)} tools, expect 28)", ok, f"got: {names}" if not ok else ""))
+    expected = ["goto","get_text","get_html","set_clipboard","get_clipboard","set_clipboard_data","get_events","wait_for_event","begin_handoff","handoff_status","end_handoff","detect_challenge","solve_captcha","screenshot","system_click","human_pause","eval_js","browser_action","run_script"]
     missing = [n for n in expected if n not in names]
     ok2 = len(missing) == 0
     results.append(("2b. expected tools present", ok2, f"missing: {missing}" if missing else ""))
@@ -228,7 +228,7 @@ except Exception as e:
 
 # 9. screenshot
 try:
-    r = tool_call(9, "screenshot", {"whLargest": 256})
+    r = tool_call(9, "screenshot", {"selector": "#submit-btn", "whLargest": 256})
     content = r.get("result", {}).get("content", [])
     has_img = any(c.get("type") == "image" for c in content)
     results.append(("9. screenshot image", has_img, "no image content" if not has_img else ""))
@@ -277,6 +277,37 @@ try:
     results.append(("10b. clipboard tools", ok, json.dumps(get_data) if not ok else ""))
 except Exception as e:
     results.append(("10b. clipboard tools", False, str(e)))
+
+# 10bb. Rich clipboard, event, and handoff tools
+try:
+    html_text = "<b>MCP HTML clipboard</b>"
+    set_data = challenge_data(
+        tool_text(
+            tool_call(
+                106,
+                "set_clipboard_data",
+                {"format": "html", "text": html_text},
+            )
+        )
+    )
+    get_data = challenge_data(
+        tool_text(tool_call(107, "get_clipboard", {"format": "html"}))
+    )
+    events_data = challenge_data(tool_text(tool_call(108, "get_events", {"limit": 5})))
+    begin_data = challenge_data(tool_text(tool_call(109, "begin_handoff")))
+    status_data = challenge_data(tool_text(tool_call(110, "handoff_status")))
+    end_data = challenge_data(tool_text(tool_call(111, "end_handoff")))
+    ok = (
+        set_data["format"] == "html"
+        and get_data["text"] == html_text
+        and isinstance(events_data["events"], list)
+        and begin_data["active"] is True
+        and status_data["active"] is True
+        and end_data["active"] is False
+    )
+    results.append(("10bb. rich browser tools", ok, "new MCP tool contract failed" if not ok else ""))
+except Exception as e:
+    results.append(("10bb. rich browser tools", False, str(e)))
 
 # 10c. Visible human pause
 try:

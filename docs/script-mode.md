@@ -70,7 +70,7 @@ The JSON printed to stdout looks like this:
 - **`${env.VAR_NAME}`** in any string value is replaced with the environment variable. Pass `-e VAR=value` to Docker.
 - **`save_screenshot`** captures the browser viewport (or full desktop with `type: desktop`). Supports `width`, `height`, `whLargest` for resize. Can also write to disk with `path: /output/file.png` (in addition to `output_id`).
 - **`on_error: continue`** keeps going past failures. **`on_error: stop`** (default) halts on the first error.
-- **All HTTP API actions work as script steps**: goto, click, fill, eval, wait_for_element, etc.
+- **All HTTP API actions work as script steps**: iframe and role targeting, element references, DOM observation, trusted pointer gestures, handoff, windows, events, network rules, permissions, rich clipboard data, PNG capture, and the existing browser actions.
 - **Page loaders still fire** on `goto` if configured.
 
 ## Human input in scripts

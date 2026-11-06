@@ -18,7 +18,7 @@ Understanding the difference between these is key to not getting detected.
 
 ### System input (undetectable)
 
-Actions: `system_click`, `mouse_move`, `mouse_click`, `system_type`, `send_key`, `scroll`, `scroll_to_bottom_humanized`, `human_pause`
+Actions: `system_click`, `system_hover`, `system_double_click`, `system_right_click`, `system_mouse_down`, `system_mouse_up`, `system_drag`, `mouse_move`, `mouse_click`, `system_type`, `send_key`, `scroll`, `scroll_to_bottom_humanized`, `human_pause`
 
 These use PyAutoGUI to generate **real OS-level events**, timed from human motor data rather than random jitter:
 
@@ -30,6 +30,8 @@ These use PyAutoGUI to generate **real OS-level events**, timed from human motor
 Each container behaves like one consistent person. The main timings (speed, path bend, tremor, click and key holds, typing rhythm, typos, wheel spacing) can be tuned per request; see [Humanized Input](api.md#humanized-input). The test suite scores these sessions with open-source bot detectors (motion-attestation, Gaitcha) and checks that a robotic control session is caught by the same checks. `make test-real` repeats this against hosted behavior scorers; see [Behavioral checks](#behavioral-checks).
 
 `human_pause` represents visible reading, review, or composition time. It keeps the pointer still most of the time and optionally schedules sparse, irregular drifts through the same fitted mouse planner. It is not a constant jiggle, background movement service, or replacement for `sleep`. Agents should call it only when the page task naturally includes visible thinking time.
+
+Human handoff does not synthesize activity. `begin_handoff` pauses mutating automation while a person uses noVNC, and `handoff_status` reports trusted pointer, keyboard, and wheel events without changing them.
 
 System input uses **viewport coordinates** (x, y pixel positions). Get these from `get_interactive_elements`.
 
@@ -74,18 +76,18 @@ challenge not being taken.
 
 ### Behavioral checks
 
-These detectors score how the input moves, not what the browser is. Each check runs the same task three ways from one container and one IP, so only the input differs.
+These detectors score how the input moves, not what the browser is. Each check runs from one container and one IP, so only the input path differs. The controls vary because hosted detectors change their behavior.
 
-| Check                                                                                          | Humanized system input | Playwright DOM input | Raw PyAutoGUI |
-| ---------------------------------------------------------------------------------------------- | ---------------------- | -------------------- | ------------- |
-| [DeviceAndBrowserInfo login test](https://deviceandbrowserinfo.com/are_you_a_bot_interactions) | **human**              | bot                  | bot           |
-| [FCaptcha](https://www.webdecoy.com/product/fcaptcha-demo) checkbox                            | **verified**           | failed               | failed        |
-| [FCaptcha](https://www.webdecoy.com/product/fcaptcha-demo) invisible risk score (lower is better) | **0.06, allowed**   | 0.60, blocked        | 0.22, allowed |
-| [motion-attestation](https://github.com/libcaptcha/motion-attestation) and [Gaitcha](https://github.com/willybahuaud/gaitcha): mouse, typing, scroll | **pass** | not run | caught |
+| Check                                                                                          | Humanized system input | Playwright DOM input | Synthetic DOM input | Raw PyAutoGUI |
+| ---------------------------------------------------------------------------------------------- | ---------------------- | -------------------- | ------------------- | ------------- |
+| [DeviceAndBrowserInfo login test](https://deviceandbrowserinfo.com/are_you_a_bot_interactions) | **human**              | bot                  | not run             | bot           |
+| [FCaptcha](https://www.webdecoy.com/product/fcaptcha-demo) checkbox                            | **verified**           | verified             | failed              | failed        |
+| [FCaptcha](https://www.webdecoy.com/product/fcaptcha-demo) invisible risk score (lower is better) | **0.06, allowed**   | 0.60, blocked        | not run             | 0.22, allowed |
+| [motion-attestation](https://github.com/libcaptcha/motion-attestation) and [Gaitcha](https://github.com/willybahuaud/gaitcha): mouse, typing, scroll | **pass** | not run | not run | caught |
 
 Raw PyAutoGUI sends the same trusted OS-level events with straight instant moves and zero-length holds, and the hosted checks still flag it or score it riskier. The pass comes from the humanized timing, not from the events being trusted.
 
-`make test-real` runs the hosted checks above and the liarjs.dev font, canvas, worker, and WebGL checks. It asserts that the humanized run passes and both robotic runs fail or score clearly worse. The offline detectors run on every `make test` against a local probe page, and each check also plays a robotic session that must be caught. The default suite does not depend on a third-party service.
+`make test-real` runs the hosted checks above and the liarjs.dev font, canvas, worker, and WebGL checks. It asserts that the humanized run passes and every named negative control fails or scores clearly worse. The offline detectors run on every `make test` against a local probe page, and each check also plays a robotic session that must be caught. The default suite does not depend on a third-party service.
 
 ## Why it actually works
 

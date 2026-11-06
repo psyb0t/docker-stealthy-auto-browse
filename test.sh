@@ -36,6 +36,7 @@ MAIN_TESTS=(
     test_live_fcaptcha_invisible_behavior
     test_get_interactive_elements
     test_get_resolution
+    test_single_workspace
     test_calibrate
     test_eval_world
     test_solve_captcha_requires_provider
@@ -69,6 +70,11 @@ MAIN_TESTS=(
     test_clipboard_browser_copy_paste
     test_clipboard_validation
     test_clipboard_run_script
+    # test_browser_primitives.sh
+    test_dom_targets_and_references
+    test_pointer_handoff_and_windows
+    test_network_permissions_events_and_capture
+    test_clipboard_mime
     # test_mcp.sh
     test_mcp
     # test_navigation.sh

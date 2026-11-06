@@ -3,11 +3,9 @@
 # demos that score input behavior. They run through `make test-real` only and
 # are not part of the default suite, because the sites can change or go down.
 #
-# Each test does the same task three ways on the shared browser: humanized
-# OS-level input, Playwright DOM input, and raw pyautogui (instant straight
-# moves, zero-hold clicks and keys). The humanized run must pass and both
-# robotic runs must fail or score worse on the same IP and fingerprint, which
-# isolates the input behavior from network and fingerprint reputation.
+# Each test compares humanized OS-level input with robot controls on the same
+# browser and IP. Controls use Playwright, synthetic DOM input, or raw
+# pyautogui as named by the test. Every control must fail or score worse.
 
 readonly LIVE_DBI_URL="https://deviceandbrowserinfo.com/are_you_a_bot_interactions"
 readonly LIVE_FCAPTCHA_URL="https://www.webdecoy.com/product/fcaptcha-demo"
@@ -16,11 +14,14 @@ readonly LIVE_EMAIL="test.user@example.com"
 readonly LIVE_PASSWORD="not-a-real-password!"
 readonly LIVE_MESSAGE="Hi, I would like to know more about pricing for a small team."
 readonly LIVE_RESULT_WAIT_SECONDS=25
+readonly LIVE_CHECKBOX_POLL_INTERVAL_SECONDS=0.1
+readonly LIVE_WIDGET_STABLE_POLL_SECONDS=0.25
+readonly LIVE_WIDGET_STABLE_ATTEMPTS=40
+readonly LIVE_WIDGET_STABLE_SAMPLES=3
 readonly LIVE_PAGE_SETTLE_SECONDS=3
 readonly LIVE_SCROLL_ATTEMPTS=12
 readonly LIVE_SCROLL_NOTCHES=-3
 readonly LIVE_SCROLL_PAUSE_SECONDS=0.8
-readonly LIVE_SCROLL_INTO_VIEW_SECONDS=0.3
 readonly LIVE_VIEW_MARGIN_PX=150
 # Where the pointer rests on the page before wheel scrolling: x y w h.
 readonly LIVE_POINTER_REST="700 450 400 200"
@@ -66,6 +67,26 @@ _live_box() {
     _live_eval "(() => { const r = ($1).getBoundingClientRect(); return [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2), Math.round(r.width), Math.round(r.height), innerHeight].join(' '); })()"
 }
 
+_live_wait_stable_box() {
+    local element_expression="$1" box="" previous_box="" stable=0 i
+    for ((i = 0; i < LIVE_WIDGET_STABLE_ATTEMPTS; i++)); do
+        box=$(_live_box "$element_expression")
+        if [ "$box" = "$previous_box" ]; then
+            stable=$((stable + 1))
+            if ((stable >= LIVE_WIDGET_STABLE_SAMPLES)); then
+                echo "$box"
+                return 0
+            fi
+        else
+            stable=0
+            previous_box="$box"
+        fi
+        sleep "$LIVE_WIDGET_STABLE_POLL_SECONDS"
+    done
+    echo "  FAIL: target did not stop moving" >&2
+    return 1
+}
+
 _live_open() {
     assert_success "$(_live_action "{'action': 'goto', 'url': '$1', 'wait_until': 'load'}")" "open $1" >/dev/null || return 1
     sleep "$LIVE_PAGE_SETTLE_SECONDS"
@@ -108,14 +129,16 @@ _live_human_type() {
 # Each element is measured right before its click, because scrolling to the
 # next one moves the ones before it.
 _live_robot_fill() {
-    local offset ox oy script cx cy w h vh output
+    local offset ox oy script box cx cy w h vh output
     offset=$(_live_action "{'action': 'calibrate'}" |
         python3 -c 'import json, sys; o = json.load(sys.stdin)["data"]["window_offset"]; print(o["x"], o["y"])')
     read -r ox oy <<<"$offset"
     while [ $# -gt 0 ]; do
         _live_eval "(($1).scrollIntoView({block: 'center'}), 1)" >/dev/null
-        sleep "$LIVE_SCROLL_INTO_VIEW_SECONDS"
-        read -r cx cy w h vh <<<"$(_live_box "$1")"
+        if ! box=$(_live_wait_stable_box "$1"); then
+            return 1
+        fi
+        read -r cx cy w h vh <<<"$box"
         script="g.moveTo($cx + $ox, $cy + $oy); g.click()"
         if [ -n "$2" ]; then
             script+="; g.write($(python3 -c 'import sys; print(repr(sys.argv[1]))' "$2"))"
@@ -131,6 +154,19 @@ _live_robot_fill() {
     done
 }
 
+_live_robot_click_visible() {
+    local element_expression="$1" offset ox oy cx cy w h vh output
+    offset=$(_live_action "{'action': 'calibrate'}" |
+        python3 -c 'import json, sys; o = json.load(sys.stdin)["data"]["window_offset"]; print(o["x"], o["y"])')
+    read -r ox oy <<<"$offset"
+    read -r cx cy w h vh <<<"$(_live_box "$element_expression")"
+    if ! output=$(docker exec "${LIVE_X_ENV[@]}" "$CONTAINER_NAME" \
+        python3 -c "import pyautogui as g; g.FAILSAFE = False; g.moveTo($cx + $ox, $cy + $oy); g.click()" 2>&1); then
+        echo "  FAIL: raw pyautogui click failed: $output"
+        return 1
+    fi
+}
+
 # _live_wait_eval <expression>: poll until it returns a non-empty value.
 _live_wait_eval() {
     local value="" i
@@ -140,6 +176,25 @@ _live_wait_eval() {
         sleep 1
     done
     echo "$value"
+}
+
+_live_wait_fcaptcha_checkbox() {
+    local response
+    response=$(_live_action "{'action': 'wait_for_element', 'selector': '[role=checkbox]', 'timeout': 30}")
+    assert_success "$response" "wait for FCaptcha checkbox" >/dev/null
+    _live_wait_stable_box "$LIVE_FC_CHECKBOX" >/dev/null
+}
+
+_live_wait_fcaptcha_state() {
+    local state="" deadline=$((SECONDS + LIVE_RESULT_WAIT_SECONDS))
+    while ((SECONDS < deadline)); do
+        state=$(_live_eval "$LIVE_FC_CHECKBOX_STATE")
+        if [ -n "$state" ]; then
+            break
+        fi
+        sleep "$LIVE_CHECKBOX_POLL_INTERVAL_SECONDS"
+    done
+    echo "$state"
 }
 
 # --- deviceandbrowserinfo.com login form ---
@@ -191,25 +246,29 @@ test_live_fcaptcha_checkbox_behavior() {
     local state
 
     _live_open "$LIVE_FCAPTCHA_URL" || return 1
-    _live_wheel_to "$LIVE_FC_CHECKBOX" || return 1
-    _live_human_click "$LIVE_FC_CHECKBOX" || return 1
-    state=$(_live_wait_eval "$LIVE_FC_CHECKBOX_STATE")
-    echo "  humanized: $state"
-    assert_eq "$state" "verified" "fcaptcha checkbox: humanized click verifies" || return 1
-
-    _live_open "$LIVE_FCAPTCHA_URL" || return 1
-    _live_action "{'action': 'click', 'selector': '[role=checkbox]'}" >/dev/null
-    state=$(_live_wait_eval "$LIVE_FC_CHECKBOX_STATE")
-    echo "  playwright: $state"
-    assert_eq "$state" "failed" "fcaptcha checkbox: Playwright click fails" || return 1
-
-    _live_open "$LIVE_FCAPTCHA_URL" || return 1
-    _live_robot_fill "$LIVE_FC_CHECKBOX" ""
-    state=$(_live_wait_eval "$LIVE_FC_CHECKBOX_STATE")
+    _live_eval "(($LIVE_FC_CHECKBOX).scrollIntoView({block: 'center'}), 1)" >/dev/null
+    _live_wait_fcaptcha_checkbox || return 1
+    _live_robot_click_visible "$LIVE_FC_CHECKBOX"
+    state=$(_live_wait_fcaptcha_state)
     echo "  raw pyautogui: $state"
     assert_eq "$state" "failed" "fcaptcha checkbox: raw pyautogui click fails" || return 1
 
-    echo "OK: FCaptcha checkbox verifies humanized clicks and rejects both robots"
+    _live_open "$LIVE_FCAPTCHA_URL" || return 1
+    _live_wait_fcaptcha_checkbox || return 1
+    _live_eval "(($LIVE_FC_CHECKBOX).click(), 1)" >/dev/null
+    state=$(_live_wait_fcaptcha_state)
+    echo "  synthetic DOM: $state"
+    assert_eq "$state" "failed" "fcaptcha checkbox: synthetic DOM click fails" || return 1
+
+    _live_open "$LIVE_FCAPTCHA_URL" || return 1
+    _live_wait_fcaptcha_checkbox || return 1
+    _live_wheel_to "$LIVE_FC_CHECKBOX" || return 1
+    _live_human_click "$LIVE_FC_CHECKBOX" || return 1
+    state=$(_live_wait_fcaptcha_state)
+    echo "  humanized: $state"
+    assert_eq "$state" "verified" "fcaptcha checkbox: humanized click verifies" || return 1
+
+    echo "OK: FCaptcha checkbox verifies humanized clicks and rejects both robot controls"
 }
 
 # "<risk> allowed|blocked", empty until the invisible check reports.

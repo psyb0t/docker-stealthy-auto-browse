@@ -47,6 +47,18 @@
   <div id="upload-result"></div>
   <div id="dom-list"></div>
 
+  <section id="browser-primitives">
+    <button id="role-button" type="button">Role target</button>
+    <button id="popup-button" type="button">Open popup</button>
+    <button id="mutation-button" type="button">Mutate DOM</button>
+    <div id="mutation-target" data-state="initial">initial</div>
+    <div id="shadow-host"></div>
+    <iframe id="primitive-frame" srcdoc="<!doctype html><button id='frame-button'>Frame target</button><script>document.getElementById('frame-button').onclick=function(){parent.postMessage('frame-clicked','*')}</script>"></iframe>
+    <div id="drag-source" draggable="true" style="width:80px;height:40px;background:#acf">drag</div>
+    <div id="drag-target" style="width:120px;height:60px;background:#cfa">drop</div>
+    <div id="primitive-result"></div>
+  </section>
+
   <!-- A local-only, dynamic challenge-shaped fixture for detection tests. -->
   <div id="challenge-fixture-host"></div>
 
@@ -354,6 +366,42 @@
     });
 
     document.getElementById("media-measure").addEventListener("click", writeVirtualMediaMeasurement);
+
+    var shadowRoot = document.getElementById("shadow-host").attachShadow({ mode: "open" });
+    var shadowButton = document.createElement("button");
+    shadowButton.id = "shadow-button";
+    shadowButton.textContent = "Shadow target";
+    shadowButton.addEventListener("click", function() {
+      document.getElementById("primitive-result").textContent = "shadow-clicked";
+    });
+    shadowRoot.appendChild(shadowButton);
+
+    window.addEventListener("message", function(event) {
+      if (event.data === "frame-clicked") {
+        document.getElementById("primitive-result").textContent = event.data;
+      }
+    });
+    document.getElementById("role-button").addEventListener("click", function() {
+      document.getElementById("primitive-result").textContent = "role-clicked";
+    });
+    document.getElementById("popup-button").addEventListener("click", function() {
+      window.open("about:blank", "primitive-popup");
+    });
+    document.getElementById("mutation-button").addEventListener("click", function() {
+      var target = document.getElementById("mutation-target");
+      target.textContent = "changed";
+      target.setAttribute("data-state", "changed");
+    });
+    document.getElementById("drag-source").addEventListener("dragstart", function(event) {
+      event.dataTransfer.setData("text/plain", "dragged");
+    });
+    document.getElementById("drag-target").addEventListener("dragover", function(event) {
+      event.preventDefault();
+    });
+    document.getElementById("drag-target").addEventListener("drop", function(event) {
+      event.preventDefault();
+      document.getElementById("primitive-result").textContent = event.dataTransfer.getData("text/plain");
+    });
   </script>
 </body>
 </html>

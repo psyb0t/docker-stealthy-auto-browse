@@ -138,6 +138,20 @@ assert "TEST_PUBLIC_KEY_DO_NOT_USE" not in json.dumps(data)
         return 1
     }
 
+    code=$(curl -s -o /dev/null -w "%{http_code}" "$base/events")
+    assert_eq "$code" "401" "auth: events no token returns 401" || {
+        stop_extra_container "$name"
+        return 1
+    }
+
+    code=$(curl -s -o /dev/null -w "%{http_code}" \
+        -H "Authorization: Bearer ${key}" \
+        "$base/events?after_id=999999")
+    assert_eq "$code" "400" "auth: authenticated events validates cursor" || {
+        stop_extra_container "$name"
+        return 1
+    }
+
     # MCP /mcp/ without auth must return 401
     code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$base/mcp/" \
         -H "Content-Type: application/json" \

@@ -88,12 +88,13 @@ Two input modes are available. Playwright actions such as `click` and `fill` are
 
 ## HTTP API
 
-Send `POST /` with an `action` and its parameters. The API covers navigation, DOM and system input, tabs, dialogs, cookies, storage, downloads, uploads, clipboard access, screenshots, recording, virtual media, challenge detection, waits, network logs, console logs, and JavaScript evaluation.
+Send `POST /` with an `action` and its parameters. The API covers navigation, iframe and open-shadow DOM targeting, accessibility lookup, stable element references, DOM and system pointer input, human handoff, tabs and windows, browser events, permissions, network interception and HAR, rich clipboard access, PNG capture, recording, virtual media, challenge detection, waits, logs, and JavaScript evaluation.
 
 Useful read endpoints:
 
 - `GET /health`
 - `GET /state`
+- `GET /events`
 - `GET /screenshot/browser`
 - `GET /screenshot/desktop`
 
@@ -127,7 +128,7 @@ The source skill is under [`.agents/skills/stealthy-auto-browse`](.agents/skills
 
 - **Script mode:** Pipe YAML to `docker run --rm -i ... --script` and receive JSON on stdout. Conditions, branches, bounded loops, and output references are supported. See [Script mode](docs/script-mode.md).
 - **Page loaders:** Run URL-matched YAML actions after navigation to handle repeated page cleanup. See [Page loaders](docs/page-loaders.md).
-- **Clipboard:** `set_clipboard` and `get_clipboard` use the real X11 text clipboard shared by Camoufox and noVNC. For substantial text, set the clipboard, focus the field, then paste with `send_key` and `ctrl+v`. See [Clipboard](docs/api.md#clipboard).
+- **Clipboard:** `set_clipboard` and `get_clipboard` use the real X11 clipboard shared by Camoufox and noVNC. They support UTF-8 text, HTML, PNG, and file URI lists. For substantial text, set the clipboard, focus the field, then paste with `send_key` and `ctrl+v`. See [Clipboard](docs/api.md#clipboard).
 - **Virtual camera and microphone:** Mount media under `/media` and configure static or dynamic sources for `getUserMedia()` tests. See [Virtual camera and microphone](docs/api.md#virtual-camera-and-microphone) and [Configuration](docs/configuration.md).
 - **Recording:** `start_recording` and `stop_recording` write collision-safe MP4 files to a mounted `/recordings` directory. See [Screen recording](docs/api.md#screen-recording).
 - **CAPTCHA solver providers:** Configure one supported provider through environment variables. Official Firefox extensions are checksum-verified before use. Anti-Captcha uses its official HTTP API. No provider is installed or contacted by default. See [CAPTCHA solver providers](docs/configuration.md#captcha-solver-providers).
@@ -173,7 +174,7 @@ make sec
 
 Observed results are not a promise for every site or future detector version. Test the exact image, proxy, timezone, and target flow you plan to use.
 
-The live suite checks fingerprint consistency on [liarjs.dev](https://liarjs.dev/) and compares humanized system input against Playwright and raw PyAutoGUI controls on DeviceAndBrowserInfo and FCaptcha. The deterministic suite also runs open-source behavioral detectors with robotic controls that must be caught. Current methods and observed results are in [Stealth and detection evasion](docs/stealth.md).
+The live suite checks fingerprint consistency on [liarjs.dev](https://liarjs.dev/) and compares humanized system input against Playwright, synthetic DOM, and raw PyAutoGUI controls on DeviceAndBrowserInfo and FCaptcha. The deterministic suite also runs open-source behavioral detectors with robotic controls that must be caught. Current methods and observed results are in [Stealth and detection evasion](docs/stealth.md).
 
 ## Documentation
 

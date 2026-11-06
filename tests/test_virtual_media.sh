@@ -157,18 +157,32 @@ assert state["dynamic"], state
     if ! assert_success "$response" "virtual_media: calibrate OS input"; then
         return 1
     fi
+    response=$(post_to "$base" '{"action":"eval","expression":"document.querySelector(\"#media-start\").scrollIntoView({block: \"center\"})"}')
+    if ! assert_success "$response" "virtual_media: scroll start button into view"; then
+        return 1
+    fi
     response=$(post_to "$base" '{"action": "get_element", "selector": "#media-start"}')
-    local button_x button_y
-    button_x=$(echo "$response" | python3 -c "import json, sys; rect=json.load(sys.stdin)['data']['boundingBox']; print(int(rect['x'] + rect['width'] / 2))")
-    button_y=$(echo "$response" | python3 -c "import json, sys; rect=json.load(sys.stdin)['data']['boundingBox']; print(int(rect['y'] + rect['height'] / 2))")
-    response=$(post_to "$base" "{\"action\": \"mouse_click\", \"x\": $button_x, \"y\": $button_y}")
+    local button_x button_y button_w button_h
+    read -r button_x button_y button_w button_h < <(echo "$response" | python3 -c '
+import json
+import sys
+
+rect = json.load(sys.stdin)["data"]["boundingBox"]
+print(
+    int(rect["x"] + rect["width"] / 2),
+    int(rect["y"] + rect["height"] / 2),
+    int(rect["width"]),
+    int(rect["height"]),
+)
+')
+    response=$(post_to "$base" "{\"action\": \"system_click\", \"x\": $button_x, \"y\": $button_y, \"w\": $button_w, \"h\": $button_h}")
     if ! assert_success "$response" "virtual_media: start fixture with OS input"; then
         stop_extra_container "$name"
         rm -rf "$media_dir"
         return 1
     fi
 
-    for _ in $(seq 1 15); do
+    for _ in $(seq 1 30); do
         response=$(post_to "$base" '{"action": "get_element", "selector": "#media-result"}') || break
         result=$(echo "$response" | python3 -c "import json, sys; print(json.load(sys.stdin)['data']['text'])")
         if [[ "$result" == *'"status":"ok"'* ]]; then
