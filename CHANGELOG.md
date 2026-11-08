@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.5.1] 2026-11-08
+
+### Fixed
+
+- Read and write persisted browser properties as UTF-8 regardless of the default text encoding.
+
 ## [3.5.0] 2026-11-06
 
 ### Added

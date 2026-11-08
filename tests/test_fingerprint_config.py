@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+from functools import partial
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -37,6 +38,46 @@ def test_non_object_persisted_config_is_rejected() -> None:
             for invalid_value in invalid_values:
                 config_path.write_text(json.dumps(invalid_value), encoding="utf-8")
                 assert browser._load_persisted_config() is None
+
+
+def test_persisted_config_loads_utf8_independently_of_default_encoding() -> None:
+    config = {"label": "caf\u00e9 \u4e2d\u6587", "nested": {"value": "\U0001f642"}}
+    with tempfile.TemporaryDirectory() as directory:
+        config_path = Path(directory) / "props.json"
+        for ensure_ascii in (False, True):
+            config_path.write_text(
+                json.dumps(config, ensure_ascii=ensure_ascii), encoding="utf-8"
+            )
+            with (
+                patch.object(browser, "BROWSER_PROPS_FILE", config_path),
+                patch("browser.open", partial(open, encoding="utf-16"), create=True),
+            ):
+                assert browser._load_persisted_config() == config
+
+
+def test_persisted_config_saves_utf8_independently_of_default_encoding() -> None:
+    configs = ({}, {"label": "ASCII"}, {"nested": ["caf\u00e9", "\U0001f642"]})
+    with tempfile.TemporaryDirectory() as directory:
+        config_path = Path(directory) / "nested" / "props.json"
+        with (
+            patch.object(browser, "BROWSER_PROPS_FILE", config_path),
+            patch("browser.open", partial(open, encoding="utf-16"), create=True),
+        ):
+            for config in configs:
+                browser._save_config(config)
+                saved_text = config_path.read_bytes().decode("utf-8")
+                assert json.loads(saved_text) == config
+                assert saved_text == json.dumps(config, indent=2)
+                assert browser._load_persisted_config() == config
+
+
+def test_missing_and_malformed_persisted_config_are_rejected() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        config_path = Path(directory) / "props.json"
+        with patch.object(browser, "BROWSER_PROPS_FILE", config_path):
+            assert browser._load_persisted_config() is None
+            config_path.write_text("{", encoding="utf-8")
+            assert browser._load_persisted_config() is None
 
 
 def test_known_persisted_webgl_identity_is_kept() -> None:
@@ -243,6 +284,9 @@ def test_finalized_environment_removes_partial_canvas_noise() -> None:
 
 def main_test() -> None:
     test_non_object_persisted_config_is_rejected()
+    test_persisted_config_loads_utf8_independently_of_default_encoding()
+    test_persisted_config_saves_utf8_independently_of_default_encoding()
+    test_missing_and_malformed_persisted_config_are_rejected()
     test_known_persisted_webgl_identity_is_kept()
     test_unknown_persisted_webgl_identity_is_dropped()
     test_identity_without_webgl_is_left_for_camoufox()
