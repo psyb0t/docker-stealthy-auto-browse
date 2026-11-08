@@ -1,3 +1,9 @@
+---
+title: HTTP API reference
+description: Browser actions, element targets, authentication, events, clipboard formats, recording, media sources, and request limits.
+nav_order: 3
+---
+
 # HTTP API reference
 
 ## Endpoints
@@ -9,12 +15,12 @@
 | `/screenshot/desktop` | GET    | Full virtual desktop as PNG (including browser chrome)   |
 | `/state`              | GET    | Current URL, page title, and window offset as JSON       |
 | `/events`             | GET    | Authenticated browser event stream as SSE                |
-| `/health`             | GET    | Returns `ok` when the browser is ready                   |
+| `/health`             | GET    | Returns `ok` while the HTTP server is serving; not a browser health probe. |
 | `/mcp/`               | POST   | MCP (Model Context Protocol) Streamable HTTP endpoint    |
 
 ## Authentication
 
-If `AUTH_TOKEN` is set, all requests (except `/health`) require authentication:
+If `AUTH_TOKEN` is set, all requests (except `/health`) require authentication. Query-string `auth_token` values are rejected. This authentication does not cover noVNC; see [installation and security](installation.md).
 
 ```
 Authorization: Bearer <token>
@@ -29,9 +35,9 @@ Every request gets a `trace_id` (logged on every line of the server's JSON log f
 
 ## Auto-recovery from browser crashes
 
-If Camoufox/Firefox dies mid-session (OOM, segfault, external SIGKILL), the next request triggers an automatic relaunch. The server tears down the dead context and runs `launch_persistent_context` again. The persistent profile (`/userdata` mount) survives, so cookies / fingerprint / sessions all stay. The recovery request itself takes ~4-5s extra (Camoufox cold start); subsequent requests run at full speed.
+If Camoufox/Firefox dies mid-session (OOM, segfault, external SIGKILL), the next browser-dependent request triggers an automatic relaunch. The server tears down the dead context and runs `launch_persistent_context` again using its profile. Persisted cookies and fingerprint data can survive; unsaved state and a usable login are not guaranteed after a crash. The recovery request includes browser startup time.
 
-Crash diagnostics land in the JSON log at `WARNING` whenever recovery fires: `dmesg` grep for OOM / Camoufox / Firefox kills, `/proc/meminfo` snapshot, `/proc/loadavg`, and the surviving process inventory. If your container hits this often, `dmesg` will usually point at the docker OOM-killer. Bump the container memory limit.
+Crash diagnostics land in the JSON log at `WARNING` whenever recovery fires: available kernel OOM messages, `/proc/meminfo`, `/proc/loadavg`, and the surviving process inventory. Kernel logs may be unavailable inside the container. Check memory limits and actual container state rather than assuming every crash is an OOM kill. Recovery handles a dead browser while the application remains alive; it does not restart a terminated container.
 
 ## Cluster mode restriction
 
@@ -39,7 +45,7 @@ When running in cluster mode (`NUM_REPLICAS > 1`), only `run_script`, `ping`, an
 
 ## Request serialization
 
-In single-instance mode, only one request runs at a time. Additional requests queue up and execute sequentially. `/health` and `/state` are never blocked.
+HTTP action requests and MCP actions share one execution lock per browser. Additional actions wait for it. Health, state, event streams, and screenshot routes are outside that lock; browser-dependent reads can still wait on browser RPCs or recovery.
 
 ## Request / response format
 
@@ -65,7 +71,11 @@ Content-Type: application/json
 
 The `data` field contains action-specific results (page text, element coordinates, cookie values, etc.).
 
-## Example: full login flow (undetectable)
+### Failure responses
+
+`POST /` expects a JSON object with an `action`. Most action failures use the same envelope with `success: false` and an `error` string while retaining HTTP 200. Authentication failures return HTTP 401. Invalid event-stream cursors return HTTP 400. Browser screenshots return HTTP 503 when no active page is available, HTTP 400 for conflicting selector/full-page options, or HTTP 500 when capture fails. Screenshot failures are plain text rather than the action envelope. Do not assume curl's HTTP success proves an action succeeded, or that arbitrary malformed request bodies share one error schema.
+
+## Example: login flow with OS-level input
 
 ```bash
 API=http://localhost:8080
@@ -93,7 +103,7 @@ curl -X POST $API -H 'Content-Type: application/json' \
 
 # 6. Type password
 curl -X POST $API -H 'Content-Type: application/json' \
-  -d '{"action": "system_type", "text": "secretpassword"}'
+  -d '{"action": "system_type", "text": "not-a-real-password"}'
 
 # 7. Press Enter to submit
 curl -X POST $API -H 'Content-Type: application/json' \
@@ -108,7 +118,7 @@ curl -X POST $API -H 'Content-Type: application/json' \
   -d '{"action": "get_text"}'
 ```
 
-Every interaction (clicks, typing, key presses) uses OS-level input. The site sees human mouse paths, key holds, and typing rhythm. No CDP signals. No automation fingerprints.
+The clicks, typing, and key presses in this example use OS-level input with modeled paths, holds, and rhythm. The coordinates are illustrative; resolve the real target positions before using them. This does not guarantee that the target site accepts the session or classifies it as human.
 
 ## Actions reference
 
@@ -129,7 +139,7 @@ Actions that operate on one element accept exactly one of `selector`, `element_i
 
 Navigation never relies on a Playwright default. Every attempt gets the app's explicit `timeout` of 30 seconds unless you set another value. `retry_count` defaults to 1, so a timed-out navigation gets one retry. Set it to 0 to disable retries. `retry_delay` defaults to 1 second and doubles before each further retry. `timeout` must be 0.1-120 seconds, `retry_count` 0-2, `retry_delay` 0-10 seconds, and the whole worst-case attempt sequence must fit within 120 seconds. Only Playwright navigation timeouts retry. Other navigation failures return immediately.
 
-### System input (OS-level, undetectable, last resort)
+### System input (OS-level)
 
 These actions drive the real X11 mouse and keyboard with timing modeled on how people actually move, click, type, and scroll. See [Humanized Input](#humanized-input) for the model, the defaults, and every tuning option.
 
@@ -365,13 +375,27 @@ Both actions work as HTTP actions, dedicated MCP tools, YAML script steps, and `
 
 ### Events and human handoff
 
+| Action | Parameters | Result and limits |
+| --- | --- | --- |
+| `get_events` | `after_id`, `types`, `limit` | Reads retained events. Defaults: cursor 0, all types, limit 100. Limit is 1 through 1,000. |
+| `wait_for_event` | `after_id`, `types`, `timeout` | Returns matching events or an empty list on timeout. Timeout defaults to 30 seconds and must be greater than 0 and at most 300. |
+| `begin_handoff` | none | Pauses mutating automation and starts page activity listeners. Fails if already active or no page exists. |
+| `handoff_status` | none | Returns active state, start time, and observed activity counts when active. |
+| `end_handoff` | none | Returns duration and activity, then resumes automation. Fails if no handoff is active. |
+
 `get_events` reads the bounded 1,000-record process-local event ring. `wait_for_event` waits without polling. Both accept `after_id`, an optional `types` list, and bounded result or timeout controls. Events include navigation, popup and page close, dialogs, downloads, console messages, requests, responses, and handoff state. A cursor older than retained history receives a `gap` record. A future cursor is rejected.
 
 `GET /events` streams the same records as server-sent events. Use repeated `type` query parameters to filter and `after_id` to resume. The stream uses the same Bearer authentication as the rest of the API. Event storage is process-local and is not shared across cluster replicas.
 
-`begin_handoff` blocks browser-mutating API and MCP actions while leaving noVNC input available. `handoff_status` reports trusted pointer, keyboard, and wheel activity observed since handoff began. `end_handoff` removes the listeners, returns the final counts, and resumes automation. Screenshot, page reads, event reads, state, and health remain available during handoff.
+`begin_handoff` blocks browser-mutating API and MCP actions while leaving noVNC input available. `handoff_status` reports trusted pointer, keyboard, and wheel activity observed by listeners on the document where handoff began. Navigation can replace those listeners. `end_handoff` removes them, returns the final counts, and resumes automation. Screenshot, page reads, event reads, state, and health remain available during handoff. Handoff does not configure viewer access or authentication.
 
 ### Permissions and geolocation
+
+| Action | Parameters | Result and limits |
+| --- | --- | --- |
+| `set_permissions` | `permissions`, optional `origin` | Grants a non-empty list from the supported values below. Origin must be bare HTTP(S), without credentials, query or fragment. |
+| `clear_permissions` | none | Clears browser permission grants and remembered grants. |
+| `set_geolocation` | `latitude`, `longitude`, `accuracy` | Latitude is -90 through 90, longitude -180 through 180, accuracy 0 through 100,000 meters. Accuracy defaults to 0. All values must be finite. Grant geolocation permission separately. |
 
 `set_permissions` grants a non-empty permission list, optionally for one bare HTTP(S) origin. Allowed values are `accessibility-events`, `accelerometer`, `ambient-light-sensor`, `background-sync`, `camera`, `clipboard-read`, `clipboard-write`, `geolocation`, `gyroscope`, `magnetometer`, `microphone`, `midi`, `midi-sysex`, `notifications`, and `payment-handler`. `clear_permissions` clears all grants. `set_geolocation` validates finite latitude, longitude, and accuracy before applying them. Configured permission and geolocation state is reapplied after an automatic browser relaunch.
 
@@ -392,7 +416,7 @@ This virtualizes `getUserMedia()` streams only. It does not add devices to `enum
 
 ### Screen recording
 
-ffmpeg `x11grab` against the Xvfb display. Captures actual rendered pixels including the OS-level mouse cursor (PyAutoGUI moves are visible). One active recording per container; a second `start_recording` while active returns an error. Requires `/recordings` mounted as a host volume. If it is not mounted (or not writable), `start_recording` fails fast.
+ffmpeg `x11grab` against the Xvfb display captures actual rendered pixels, including the OS-level mouse cursor by default. One recording can be active per container; a second `start_recording` returns an error. `/recordings` must exist and be writable. Mount it to retain files outside the container; the recorder checks directory existence and permissions, not whether it is a mount point.
 
 | Action              | Parameters     | What It Does                                                                                                                                                                                                                                                                              |
 | ------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -520,7 +544,7 @@ curl http://localhost:8080/screenshot/browser?whLargest=512 -o screenshot.png
 curl http://localhost:8080/screenshot/browser?width=800 -o screenshot.png
 
 # Exact 400x400 dimensions
-curl http://localhost:8080/screenshot/browser?width=400&height=400 -o screenshot.png
+curl 'http://localhost:8080/screenshot/browser?width=400&height=400' -o screenshot.png
 
 # Full desktop (includes browser chrome, taskbar, etc.)
 curl http://localhost:8080/screenshot/desktop?whLargest=512 -o desktop.png

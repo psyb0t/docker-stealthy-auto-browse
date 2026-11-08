@@ -1,3 +1,9 @@
+---
+title: Configuration
+description: Configure browser identity, proxies, display size, authentication, solver providers, virtual media, persistent profiles, and logging.
+nav_order: 2
+---
+
 # Configuration
 
 ## Environment variables
@@ -29,8 +35,13 @@
 | `REDIS_URL`        | unset           | Redis connection string for cross-instance cookie sync. See [cluster-mode.md](./cluster-mode.md).                                                                                                                                                                                                        |
 | `LOG_LEVEL`        | `INFO`          | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`. Filter what the JSON logger emits to stderr.                                                                                                                                                                                                                 |
 | `LOG_FILE`         | unset           | If set, also write JSON logs to this file with 10MB × 5 backup rotation (in addition to stderr). Useful when you want a persistent log alongside `docker logs`.                                                                                                                                          |
+| `PUID` | `1000` | UID used after the entrypoint repairs writable-directory ownership and drops privileges. |
+| `PGID` | value of `PUID` | GID used for ownership and the browser process. |
+| `NUM_REPLICAS` | `1` in a standalone container | Values greater than 1 restrict top-level HTTP actions and MCP tools to the cluster contract. The Compose deployment defaults to 5. |
 
-The cluster compose file defaults to five browser replicas and reads `NUM_REPLICAS`, `BROWSER_MEMORY_LIMIT` (default `5g`), and `BROWSER_MEMORY_RESERVATION` (default `512m`) to size the fleet. See [cluster mode](./cluster-mode.md#environment-variables).
+The entrypoint also honors `DISPLAY` when deciding whether to start Xvfb. Leave it unset or at `:99` for the supported bundled display; x11vnc targets `:99`. `XAUTHORITY` is an internal X11 authentication setting, not API authentication.
+
+The [cluster compose file](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/docker-compose.cluster.yml) defaults to five browser replicas and reads `NUM_REPLICAS`, `BROWSER_MEMORY_LIMIT` (default `5g`), and `BROWSER_MEMORY_RESERVATION` (default `512m`) to size the fleet. See [cluster mode](./cluster-mode.md#environment-variables). Setting `REDIS_URL` enables automatic cookie-jar reconciliation every second, including website changes and deletions. Other profile state is not shared.
 
 ## CAPTCHA solver providers
 
@@ -161,7 +172,7 @@ Dynamic mode remains file-backed. `set_virtual_media_source` accepts an existing
 
 ## Persistent profiles
 
-Mount a directory to `/userdata` to keep cookies, localStorage, browser sessions, and the generated fingerprint across container restarts. Without this, every restart is a fresh browser with a new identity.
+Mount a directory to `/userdata` to keep the Firefox profile, cookies, localStorage, and generated fingerprint across container removal and recreation. Restarting the same container retains its writable layer even without a mount. A profile mount does not preserve a live DOM, open workflow, or all sessionStorage state.
 
 ```bash
 docker run -d \

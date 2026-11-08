@@ -1,8 +1,14 @@
-# Stealth & detection evasion
+---
+title: Stealth and input behavior
+description: Understand Camoufox fingerprints, OS-level input models, DOM automation, behavioral controls, and detection-test limitations.
+nav_order: 8
+---
+
+# Stealth and input behavior
 
 ## Why this exists
 
-Every browser automation tool based on Chromium has the same fundamental problem: Chrome DevTools Protocol. CDP is how Playwright, Puppeteer, and Selenium talk to the browser, and it's also how bot detection services know you're automated. You can install stealth plugins, patch `navigator.webdriver`, and spoof fingerprints all day. CDP is still there, and services like Cloudflare, DataDome, PerimeterX, and Akamai will find it.
+This image uses Camoufox, a patched Firefox build, through Playwright's Firefox transport rather than Chromium CDP. That avoids CDP-specific signals, but detection can still use browser fingerprints, network reputation, session history, and behavior. No browser or input mode is universally undetectable.
 
 This container takes a different approach:
 
@@ -16,7 +22,7 @@ This container takes a different approach:
 
 Understanding the difference between these is key to not getting detected.
 
-### System input (undetectable)
+### System input (OS-level)
 
 Actions: `system_click`, `system_hover`, `system_double_click`, `system_right_click`, `system_mouse_down`, `system_mouse_up`, `system_drag`, `mouse_move`, `mouse_click`, `system_type`, `send_key`, `scroll`, `scroll_to_bottom_humanized`, `human_pause`
 
@@ -39,7 +45,7 @@ System input uses **viewport coordinates** (x, y pixel positions). Get these fro
 
 Actions: `click`, `fill`, `type`
 
-These use Playwright's DOM automation to find elements by **CSS selector or XPath** and dispatch events through the browser's API. Faster and easier (no coordinate math), but the event injection patterns are theoretically detectable by sophisticated behavioral analysis.
+These use Playwright's element automation with CSS, XPath, role, or reference targets. They are convenient and avoid manual coordinate handling, but their timing and behavior differ from the fitted OS-level planners. Do not assume every Playwright event is an untrusted JavaScript event; explicit synthetic DOM events are a separate test control.
 
 ### Which to use
 
@@ -51,9 +57,7 @@ These use Playwright's DOM automation to find elements by **CSS selector or XPat
 
 ## Bot detection test results
 
-Observed against major bot detection services. Results can change with the
-service version, network exit, timezone, browser build, and tested flow. Run
-your own check against the exact setup you plan to use.
+The following table preserves previously recorded observations, not current-release certifications. The original entries do not identify every test image or environment, so do not treat them as reproducible benchmarks or a guarantee. Results change with service version, network exit, timezone, browser build, and tested flow. Run a check against the exact setup you plan to use.
 
 | Service                                                                | Result                           | What They Check                                                         |
 | ---------------------------------------------------------------------- | -------------------------------- | ----------------------------------------------------------------------- |
@@ -89,21 +93,21 @@ Raw PyAutoGUI sends the same trusted OS-level events with straight instant moves
 
 `make test-real` runs the hosted checks above and the liarjs.dev font, canvas, worker, and WebGL checks. It asserts that the humanized run passes and every named negative control fails or scores clearly worse. The offline detectors run on every `make test` against a local probe page, and each check also plays a robotic session that must be caught. The default suite does not depend on a third-party service.
 
-## Why it actually works
+## What the implementation changes
 
-Most stealth tools try to **hide** automation signals. This container **doesn't have them in the first place**:
+The image combines these measures; none establishes a universal detection result:
 
 - **No CDP**. Firefox doesn't have Chrome DevTools Protocol. There's nothing to hide because it doesn't exist.
 - **Native fingerprint injection**. Camoufox applies the generated fingerprint
   below the page JavaScript layer. The persisted configuration keeps the main
   context, workers, bundled Linux font aliases, and WebGL cohort aligned across
   restarts.
-- **`navigator.webdriver` is `false`**. Nothing patches it to return false. It is false because Camoufox doesn't set it.
+- **Browser-level fingerprint behavior.** Camoufox controls navigator properties below page JavaScript. Validate exposed values on the build you deploy rather than assuming a property alone proves a session is human.
 - **Real input events**. PyAutoGUI generates OS-level mouse and keyboard events. No DOM event injection for the browser to detect, and the timing follows human motor data instead of straight lines and fixed intervals.
 
 ## AI agent integration
 
-This project ships a skill in [`.agents/skills/`](../.agents/skills/stealthy-auto-browse) and an MCP server at `/mcp`. Agents that read `.agents/skills/` pick the skill up directly, and Claude Code, Codex, and OpenClaw can install it as a plugin. Install commands are in [Agent integrations](../README.md#agent-integrations).
+This project ships a [skill](https://github.com/psyb0t/docker-stealthy-auto-browse/tree/main/.agents/skills/stealthy-auto-browse) and an MCP server at `/mcp/`. Install and configure them explicitly using [MCP and agent integrations](agents.md). Do not assume every agent automatically loads a repository skill directory.
 
 Point the agent at a running container:
 

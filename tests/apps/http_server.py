@@ -17,6 +17,25 @@ MIME_FALLBACK = "application/octet-stream"
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path in (
+            "/cookie-test/create",
+            "/cookie-test/update",
+            "/cookie-test/delete",
+        ):
+            value = "created" if self.path.endswith("create") else "updated"
+            suffix = "; Max-Age=0" if self.path.endswith("delete") else ""
+            body = b"<!doctype html><title>Cookie fixture</title><p>Cookie response</p>"
+            self.send_response(200)
+            self.send_header(
+                "Set-Cookie",
+                f"http_session={value}; Path=/; HttpOnly; SameSite=Lax{suffix}",
+            )
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         # /referer — echo back the Referer header as JSON
         if self.path == "/referer":
             referer = self.headers.get("Referer", "")

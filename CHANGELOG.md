@@ -6,11 +6,17 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Publish dark-themed documentation with searchable navigation, setup and security guidance, agent integration, development, and troubleshooting references.
+- Automatically synchronize website-created cookies, changes, expiry, and deletions across Redis-connected browsers.
 - Add a Buy Me a Coffee funding link and a README Sponsor section linked from the contents.
 
 ### Changed
 
 - Use `stealthy-auto-browse` as the README title.
+
+### Fixed
+
+- Correct cluster request examples, viewer authentication guidance, profile persistence claims, and detection guarantees in the documentation.
 
 ## [3.5.1] 2026-11-08
 

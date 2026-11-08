@@ -29,10 +29,10 @@ docker run -d --name browser \
   psyb0t/stealthy-auto-browse:latest
 ```
 
-**Verify:** `curl http://127.0.0.1:8080/health` returns `ok` when the browser is ready (~10s first boot).
+**Verify:** `curl http://127.0.0.1:8080/health` returns `ok` when the API is serving. Use `ping` or a browser action to verify browser functionality.
 **Watch the browser:** `http://127.0.0.1:5900/` in your own browser.
 
-## Recommended run (auth enabled, hardened)
+## Recommended local run (auth enabled)
 
 ```bash
 TOKEN=$(openssl rand -hex 32)
@@ -43,19 +43,16 @@ docker run -d --name browser \
   -p 127.0.0.1:8080:8080 \
   --env-file .env.browser \
   -e HTTP_LISTEN_HOST=0.0.0.0 \
-  --cap-drop=ALL \
-  --cap-add=SYS_ADMIN \
-  --security-opt=no-new-privileges \
-  --read-only \
-  --tmpfs /tmp:rw,noexec,nosuid \
+  --init \
+  -e PUID="$(id -u)" -e PGID="$(id -g)" \
   psyb0t/stealthy-auto-browse:latest
 ```
 
-Notes on the hardening flags:
+Notes:
 
 - `HTTP_LISTEN_HOST=0.0.0.0` makes the API reachable inside the container on all interfaces, but the `-p 127.0.0.1:8080:8080` mapping confines it to host loopback. This is the correct combination.
-- The embedded Firefox sandbox needs `SYS_ADMIN`; `--cap-drop=ALL` drops everything else.
-- Adjust `--read-only` if you need `/userdata` mounted (you'll have to mount that path writable).
+- The entrypoint starts as root for ownership repair and drops privileges through `gosu`. Dropping every capability or denying privilege changes without adapting this startup contract can prevent launch. Do not add `SYS_ADMIN` as a blanket workaround.
+- A read-only root filesystem needs writable paths for the browser profile, caches, and display services. Validate a deployment-specific hardening setup rather than assuming a `/tmp` mount alone is sufficient.
 - Same applies to `/recordings` if you use screen recording. Mount it writable, which means dropping or adjusting `--read-only` for that path too.
 - Dynamic virtual-media uploads also need a writable `VIRTUAL_MEDIA_DIR`; static virtual media may remain read-only.
 
@@ -138,8 +135,7 @@ docker run -d -p 127.0.0.1:8080:8080 \
   --env-file .env.browser \
   psyb0t/stealthy-auto-browse:latest
 
-# With screen recording. /recordings must be mounted writable or
-# start_recording fails fast
+# With screen recording. Mount writable output to retain the MP4 files.
 mkdir -p ./recordings
 docker run -d -p 127.0.0.1:8080:8080 \
   -v ./recordings:/recordings \
@@ -208,7 +204,7 @@ Keep `~/.openclaw/openclaw.json` mode `600` if it contains real tokens, or read 
 
 ## Cluster mode setup
 
-Run multiple browser instances behind HAProxy with request queuing, sticky sessions, and Redis cookie sync. `NUM_REPLICAS` sets the number of instances (default: 10).
+Run multiple browser instances behind HAProxy with request queuing, sticky sessions, and Redis cookie sync. `NUM_REPLICAS` sets the number of instances (default: 5).
 
 Download the compose file and read it before you start it. Don't pipe it straight into `docker compose`:
 
@@ -225,7 +221,9 @@ docker compose -f docker-compose.cluster.yml up -d
 
 Entry point is `http://127.0.0.1:8080`, with the same API and MCP endpoint as single-container mode. Bind HAProxy's published port to `127.0.0.1` in the compose file unless you have a deliberate reason for broader exposure.
 
-Set `STEALTHY_AUTO_BROWSE_URL=http://127.0.0.1:8080` and `AUTH_TOKEN=...` as usual.
+Set `STEALTHY_AUTO_BROWSE_URL=http://127.0.0.1:8080`. The stock Compose file does not pass `AUTH_TOKEN` to replicas; add it explicitly through an operator-owned override if you need API authentication. Bind the stats port to loopback too. API authentication never protects noVNC.
+
+With `REDIS_URL` set, website and API cookie changes reconcile automatically every second. Only cookies are shared, not localStorage, sessionStorage, tabs, or all login state. See the [cluster documentation](https://psyb0t.github.io/docker-stealthy-auto-browse/cluster-mode/) for conflict handling and startup behavior.
 
 ## Pre-installed extensions
 

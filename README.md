@@ -70,7 +70,7 @@ curl -X POST http://localhost:8080 \
   }'
 ```
 
-The server serializes requests in single-instance mode. Navigation has bounded retries and timeouts. See the [HTTP API reference](docs/api.md) for every action and parameter.
+The server serializes requests in single-instance mode. Navigation has bounded retries and timeouts. See the [HTTP API reference](https://psyb0t.github.io/docker-stealthy-auto-browse/api/) for every action and parameter.
 
 ## How it works
 
@@ -85,7 +85,7 @@ The server serializes requests in single-instance mode. Navigation has bounded r
 
 The image includes uBlock Origin, LocalCDN, ClearURLs, and Consent-O-Matic. Optional CAPTCHA solver integrations are disabled unless configured.
 
-Two input modes are available. Playwright actions such as `click` and `fill` are fast DOM operations. System actions such as `system_click`, `system_type`, `mouse_move`, and `scroll` send OS-level input with paths and timing fitted to published human input data. `human_pause` represents visible reading, review, or composition time without continuously jiggling the pointer. Use the system actions when trusted input or behavior matters. See [Stealth and detection evasion](docs/stealth.md) and [Humanized input](docs/api.md#humanized-input).
+Two input modes are available. Playwright actions such as `click` and `fill` are fast DOM operations. System actions such as `system_click`, `system_type`, `mouse_move`, and `scroll` send OS-level input with paths and timing fitted to published human input data. `human_pause` represents visible reading, review, or composition time without continuously jiggling the pointer. Use the system actions when trusted input or behavior matters. See [Stealth and detection evasion](https://psyb0t.github.io/docker-stealthy-auto-browse/stealth/) and [Humanized input](https://psyb0t.github.io/docker-stealthy-auto-browse/api/#humanized-input).
 
 ## HTTP API
 
@@ -99,50 +99,34 @@ Useful read endpoints:
 - `GET /screenshot/browser`
 - `GET /screenshot/desktop`
 
-`detect_challenge` reports bounded evidence for known challenge widgets without clicking or solving them. Set `scroll_into_view: true` to bring the first visible match into the viewport for a noVNC handoff. See [Challenge detection](docs/api.md#challenge-detection).
+`detect_challenge` reports bounded evidence for known challenge widgets without clicking or solving them. Set `scroll_into_view: true` to bring the first visible match into the viewport for a noVNC handoff. See [Challenge detection](https://psyb0t.github.io/docker-stealthy-auto-browse/api/#challenge-detection).
 
 ## MCP and agent integrations
 
 The Streamable HTTP MCP server lives at `http://localhost:8080/mcp/`. It exposes dedicated tools for common actions plus `browser_action` and `run_script` for the complete API.
 
-Install the published integrations:
-
-```bash
-# Claude Code
-claude plugin marketplace add psyb0t/agents
-claude plugin install stealthy-auto-browse@psyb0t
-
-# Codex
-codex plugin marketplace add psyb0t/agents
-codex plugin add stealthy-auto-browse@psyb0t
-
-# OpenClaw skill
-openclaw skills install @psyb0t/stealthy-auto-browse
-
-# OpenClaw MCP bridge
-openclaw plugins install clawhub:@psyb0t/stealthy-auto-browse
-```
+Published integrations are available for Claude Code, Codex, and OpenClaw. See [MCP and agent integrations](https://psyb0t.github.io/docker-stealthy-auto-browse/agents/) for installation, authentication, dedicated tools, and cluster behavior.
 
 The source skill is under [`.agents/skills/stealthy-auto-browse`](.agents/skills/stealthy-auto-browse). Set `STEALTHY_AUTO_BROWSE_URL` and `AUTH_TOKEN` where the client integration requires them.
 
 ## Optional features
 
-- **Script mode:** Pipe YAML to `docker run --rm -i ... --script` and receive JSON on stdout. Conditions, branches, bounded loops, and output references are supported. See [Script mode](docs/script-mode.md).
-- **Page loaders:** Run URL-matched YAML actions after navigation to handle repeated page cleanup. See [Page loaders](docs/page-loaders.md).
-- **Clipboard:** `set_clipboard` and `get_clipboard` use the real X11 clipboard shared by Camoufox and noVNC. They support UTF-8 text, HTML, PNG, and file URI lists. For substantial text, set the clipboard, focus the field, then paste with `send_key` and `ctrl+v`. See [Clipboard](docs/api.md#clipboard).
-- **Virtual camera and microphone:** Mount media under `/media` and configure static or dynamic sources for `getUserMedia()` tests. See [Virtual camera and microphone](docs/api.md#virtual-camera-and-microphone) and [Configuration](docs/configuration.md).
-- **Recording:** `start_recording` and `stop_recording` write collision-safe MP4 files to a mounted `/recordings` directory. See [Screen recording](docs/api.md#screen-recording).
-- **CAPTCHA solver providers:** Configure one supported provider through environment variables. Official Firefox extensions are checksum-verified before use. Anti-Captcha uses its official HTTP API. No provider is installed or contacted by default. See [CAPTCHA solver providers](docs/configuration.md#captcha-solver-providers).
+- **Script mode:** Pipe YAML to `docker run --rm -i ... --script` and receive JSON on stdout. Conditions, branches, bounded loops, and output references are supported. See [Script mode](https://psyb0t.github.io/docker-stealthy-auto-browse/script-mode/).
+- **Page loaders:** Run URL-matched YAML actions after navigation to handle repeated page cleanup. See [Page loaders](https://psyb0t.github.io/docker-stealthy-auto-browse/page-loaders/).
+- **Clipboard:** `set_clipboard` and `get_clipboard` use the real X11 clipboard shared by Camoufox and noVNC. They support UTF-8 text, HTML, PNG, and file URI lists. For substantial text, set the clipboard, focus the field, then paste with `send_key` and `ctrl+v`. See [Clipboard](https://psyb0t.github.io/docker-stealthy-auto-browse/api/#clipboard).
+- **Virtual camera and microphone:** Mount media under `/media` and configure static or dynamic sources for `getUserMedia()` tests. See [Virtual camera and microphone](https://psyb0t.github.io/docker-stealthy-auto-browse/api/#virtual-camera-and-microphone) and [Configuration](https://psyb0t.github.io/docker-stealthy-auto-browse/configuration/).
+- **Recording:** `start_recording` and `stop_recording` write collision-safe MP4 files to a mounted `/recordings` directory. See [Screen recording](https://psyb0t.github.io/docker-stealthy-auto-browse/api/#screen-recording).
+- **CAPTCHA solver providers:** Configure one supported provider through environment variables. Official Firefox extensions are checksum-verified before use. Anti-Captcha uses its official HTTP API. No provider is installed or contacted by default. See [CAPTCHA solver providers](https://psyb0t.github.io/docker-stealthy-auto-browse/configuration/#captcha-solver-providers).
 
 ## Cluster mode
 
-`docker-compose.cluster.yml` runs several browsers behind HAProxy with request queuing, sticky sessions, and Redis cookie sync. The default is five browser replicas with a 5 GB memory limit each. When `NUM_REPLICAS > 1`, HTTP and MCP accept atomic `run_script` requests plus `ping` and `sleep`, which keeps every sequence on one browser.
+`docker-compose.cluster.yml` runs several browsers behind HAProxy with request queuing, sticky sessions, and Redis cookie sync. The default is five browser replicas with a 5 GB memory limit each. When `NUM_REPLICAS > 1`, MCP exposes only `run_script`; HTTP also permits `ping` and `sleep`. Each script keeps its sequence on one browser.
 
-See [Cluster mode](docs/cluster-mode.md) for setup, scaling, health checks, and resource controls.
+See [Cluster mode](https://psyb0t.github.io/docker-stealthy-auto-browse/cluster-mode/) for setup, scaling, health checks, and resource controls.
 
 ## Configuration and security
 
-Set `AUTH_TOKEN` to require a Bearer token on every endpoint except `/health`:
+Set `AUTH_TOKEN` to require a Bearer token on HTTP and MCP endpoints except `/health`. This does not authenticate noVNC:
 
 ```bash
 docker run -d \
@@ -154,7 +138,7 @@ docker run -d \
 
 Keep the API and noVNC ports on loopback unless a trusted network or authenticated reverse proxy protects them. Match `TZ` to the proxy exit location. Persist `/userdata` when browser identity and session state must survive restarts.
 
-The [configuration reference](docs/configuration.md) covers every environment variable, proxies, persistent profiles, extensions, virtual media, VNC, and solver providers.
+The [configuration reference](https://psyb0t.github.io/docker-stealthy-auto-browse/configuration/) covers every environment variable, proxies, persistent profiles, extensions, virtual media, VNC, and solver providers.
 
 ## Development
 
@@ -175,16 +159,18 @@ make sec
 
 Observed results are not a promise for every site or future detector version. Test the exact image, proxy, timezone, and target flow you plan to use.
 
-The live suite checks fingerprint consistency on [liarjs.dev](https://liarjs.dev/) and compares humanized system input against Playwright, synthetic DOM, and raw PyAutoGUI controls on DeviceAndBrowserInfo and FCaptcha. The deterministic suite also runs open-source behavioral detectors with robotic controls that must be caught. Current methods and observed results are in [Stealth and detection evasion](docs/stealth.md).
+The live suite checks fingerprint consistency on [liarjs.dev](https://liarjs.dev/) and compares humanized system input against Playwright, synthetic DOM, and raw PyAutoGUI controls on DeviceAndBrowserInfo and FCaptcha. The deterministic suite also runs open-source behavioral detectors with robotic controls that must be caught. Current methods and observed results are in [Stealth and detection evasion](https://psyb0t.github.io/docker-stealthy-auto-browse/stealth/).
 
 ## Documentation
 
-- [HTTP API reference](docs/api.md)
-- [Configuration](docs/configuration.md)
-- [Script mode](docs/script-mode.md)
-- [Page loaders](docs/page-loaders.md)
-- [Cluster mode](docs/cluster-mode.md)
-- [Stealth and detection evasion](docs/stealth.md)
+[Full documentation](https://psyb0t.github.io/docker-stealthy-auto-browse/) covers installation, the complete action reference, agent integrations, configuration, workflows, clusters, testing, and troubleshooting.
+
+- [HTTP API reference](https://psyb0t.github.io/docker-stealthy-auto-browse/api/)
+- [Configuration](https://psyb0t.github.io/docker-stealthy-auto-browse/configuration/)
+- [Script mode](https://psyb0t.github.io/docker-stealthy-auto-browse/script-mode/)
+- [Page loaders](https://psyb0t.github.io/docker-stealthy-auto-browse/page-loaders/)
+- [Cluster mode](https://psyb0t.github.io/docker-stealthy-auto-browse/cluster-mode/)
+- [Stealth and input behavior](https://psyb0t.github.io/docker-stealthy-auto-browse/stealth/)
 - [Changelog](CHANGELOG.md)
 
 ## Sponsor

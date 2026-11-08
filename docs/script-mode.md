@@ -1,3 +1,9 @@
+---
+title: Script mode
+description: Run YAML browser workflows with environment substitution, collected outputs, error policies, bounded loops, and conditions.
+nav_order: 5
+---
+
 # Script mode (run & exit)
 
 Run a YAML script at container startup. The container executes the steps, prints the results as JSON on stdout, and exits. No HTTP server, no long-running process. Good for CI, cron jobs, one-shot scraping, or anything where you want to automate a sequence and get the output.
@@ -198,7 +204,7 @@ cat screenshot.yaml | docker run --rm -i -e URL=https://example.com \
   python3 -c "import sys,json,base64; d=json.load(sys.stdin); open('out.png','wb').write(base64.b64decode(d['outputs']['screenshot'].split(',')[1]))"
 ```
 
-See `scripts/example_script.yaml` in the repo for a full example.
+See [scripts/example_script.yaml](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/scripts/example_script.yaml) for a full example.
 
 ## Example: record a flow
 

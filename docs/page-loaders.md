@@ -1,3 +1,9 @@
+---
+title: Page loaders
+description: Match navigation URLs to local YAML action sequences, reload loaders without restarting, and customize page preparation.
+nav_order: 6
+---
+
 # Page loaders (URL-triggered automation)
 
 Page loaders are like **Greasemonkey/Tampermonkey userscripts** but for the HTTP API. You define a set of actions that automatically run whenever the browser navigates to a matching URL. Instead of manually sending a sequence of commands every time you visit a site, you write it once as a YAML file and the container handles it.
@@ -51,15 +57,14 @@ All match fields are **optional**, but at least one is required. If you specify 
 
 ## The `${url}` Placeholder
 
-In any string value within a step, `${url}` is replaced with the original URL that was passed to `goto`. This lets you navigate to the URL with custom wait settings, or pass it to JavaScript:
+In a top-level string field within a loader step, `${url}` is replaced with the original URL passed to `goto`. This substitution is not recursive into nested objects. Use it in a navigation field; do not interpolate an untrusted URL directly into JavaScript source.
 
 ```yaml
 steps:
   - action: goto
     url: "${url}"
     wait_until: networkidle
-  - action: eval
-    expression: "console.log('Loaded:', '${url}')"
+  - action: get_page_info
 ```
 
 ## Practical example: clean scraping
@@ -70,7 +75,7 @@ Say you're scraping a news site that has cookie popups, newsletter modals, and l
 # loaders/news_site.yaml
 name: News Site Cleanup
 match:
-  domain: news-site.com
+  domain: news.example
 steps:
   # Navigate with full network wait so everything loads
   - action: goto
@@ -99,7 +104,9 @@ steps:
     duration: 1
 ```
 
-Now when you `goto` any URL on `news-site.com`, all of this happens automatically.
+Now when you `goto` any URL on `news.example`, all of this happens automatically.
+
+Files are reloaded on each matching navigation and checked in filename order. Only the first matching loader runs. A failed step stops that loader's sequence; inspect `last_result.success`, because the wrapper response reports that the loader ran even when its final step failed. Mount only YAML you trust: loaders can execute JavaScript and change page state.
 
 ## Response when a loader triggers
 

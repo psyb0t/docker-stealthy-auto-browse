@@ -463,7 +463,7 @@ Entry point is `http://127.0.0.1:8080`, with the same API. HAProxy queues reques
 
 **Sticky sessions:** HAProxy sets an `INSTANCEID` cookie. Send it back on subsequent requests to keep routing to the same browser instance. All browser state (tabs, DOM, JS, local storage) lives on that specific container. Only cookies sync via Redis.
 
-**Redis cookie sync:** Cookies set on any instance propagate to all others instantly via PubSub. Authenticate once against your own test target and the whole fleet shares the session.
+**Redis cookie sync:** With `REDIS_URL` configured, cookies created, changed, or deleted by websites and API calls reconcile through Redis on a one-second observation cycle. Propagation is eventual. Only cookies are shared, not localStorage, tabs, or device-bound session state, so a usable cross-replica login is not guaranteed. Upgrade all replicas together.
 
 ## Script mode
 

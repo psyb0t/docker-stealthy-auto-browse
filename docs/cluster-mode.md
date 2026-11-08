@@ -1,18 +1,26 @@
+---
+title: Cluster mode
+description: Run browser replicas behind HAProxy with queued requests, sticky routing, Redis cookie synchronization, and memory controls.
+nav_order: 7
+---
+
 # Cluster mode
 
-Run a fleet of browser instances behind HAProxy with automatic queuing, sticky sessions, and Redis cookie sync. Useful when you need to handle concurrent requests. Each browser handles one request at a time, and the proxy queues the rest until a slot opens.
+Run a fleet of browser instances behind HAProxy with automatic queuing, sticky sessions, and Redis cookie sync. Each browser serializes actions, and the ordinary HTTP backend queues connections when its per-browser slots are occupied.
+
+Automatic website-cookie reconciliation was added after v3.5.1. Images tagged v3.5.1 or older only publish explicit cookie API writes. Use an image built from the updated source, or `latest` after its successful build, for automatic sharing.
 
 ## What you get
 
 - **Multiple browser containers** (default 5, configurable via `NUM_REPLICAS`) behind a single entry point on port 8080
 - **HAProxy queue-proxy** that holds incoming requests when all instances are busy, instead of returning errors
 - **Sticky sessions** via `INSTANCEID` cookie. Once HAProxy routes a client to a browser instance, it stays there
-- **Redis cookie sync**: cookies set on one instance propagate to all others via PubSub. New instances joining the cluster load existing cookies from Redis on startup
-- **Script-only enforcement**: both HTTP API and MCP restrict to `run_script` (plus `ping` and `sleep`) when `NUM_REPLICAS > 1`
+- **Redis cookie sync**: website and API cookie changes reconcile through Redis. New instances load shared cookies on startup.
+- **Script-only enforcement**: MCP exposes only `run_script` when `NUM_REPLICAS > 1`; HTTP also permits `ping` and `sleep`.
 
 ## Script-only mode (v1.0.0+)
 
-When `NUM_REPLICAS > 1`, both the HTTP API and MCP server **reject** individual actions like `goto`, `get_text`, `click`. They allow only `run_script`, `ping`, and `sleep`.
+When `NUM_REPLICAS > 1`, both the HTTP API and MCP server **reject** individual actions like `goto`, `get_text`, and `click`. MCP exposes only `run_script`. HTTP allows `run_script`, `ping`, and `sleep`.
 
 **Why:** Sequential calls (goto → get_text → click) may hit different browser instances if the client or MCP gateway doesn't maintain session stickiness (e.g., LiteLLM doesn't propagate the `Mcp-Session-Id` header between tool calls). This causes stale content bugs where `get_text` returns the previous page's content because it landed on a different instance that never navigated.
 
@@ -39,7 +47,9 @@ curl -X POST http://localhost:8080 \
 
 The MCP server exposes only the `run_script` tool in cluster mode, with a description that documents every available action and its parameters so LLMs know what steps to include in their scripts.
 
-**Recording in cluster mode:** `start_recording` and `stop_recording` must live in the **same** `run_script` call so both steps hit the same browser instance (one request = one routing decision). Splitting them across two `run_script` calls breaks because the stop would likely land on a different instance with no active recording. Mount `/recordings` on every browser container in `docker-compose.cluster.yml` (one shared host directory is fine, since your caller namespaces slugs, not the instance).
+Interactive handoff is intended for a standalone browser. If a cluster script leaves `begin_handoff` active when it returns, a later `run_script` is itself blocked by the handoff guard, while standalone `end_handoff` is rejected by the cluster action restriction. Do not leave handoff active across cluster requests. Use a separately controlled standalone browser for an interactive manual session.
+
+**Recording in cluster mode:** `start_recording` and `stop_recording` must live in the same `run_script` call so both steps hit the same browser instance. Mount `/recordings` on every browser container in [docker-compose.cluster.yml](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/docker-compose.cluster.yml). Prefer per-replica storage or globally unique caller slugs; filename collision handling is local to each recorder, not a distributed naming service.
 
 ## Quick start
 
@@ -76,7 +86,7 @@ docker compose -f docker-compose.cluster.yml logs -f queue-proxy
 
 ## HAProxy queue-proxy
 
-HAProxy sits in front of all browser instances and enforces a concurrency limit of 1 per instance (`maxconn 1` per server). When all instances are handling requests, new requests queue up instead of failing. The `leastconn` balancing algorithm routes to whichever instance has been idle longest.
+HAProxy's ordinary HTTP backend limits each browser server to one connection (`maxconn 1`). When those slots are occupied, requests queue until the configured timeout. `leastconn` chooses a server with the fewest active connections, not the oldest idle server. The separate MCP backend omits `maxconn 1` to support persistent protocol connections. Each browser still serializes action execution internally.
 
 ### Endpoints
 
@@ -91,7 +101,7 @@ HAProxy exposes a stats dashboard on port **8081**. Open `http://localhost:8081/
 
 ## Sticky sessions
 
-HAProxy sets an `INSTANCEID` cookie on every response, containing the name of the server that handled the request (e.g. `browser1`, `browser3`).
+HAProxy's ordinary browser backend adds an `INSTANCEID` response cookie containing the server name (for example `browser1` or `browser3`). Send that cookie on subsequent HTTP action requests. The separate MCP backend uses the `Mcp-Session-Id` header instead; queue-health and stats responses do not assign a browser instance.
 
 **Not sending `INSTANCEID` is intentional for self-contained requests.** If you POST a full script (navigate to a site, type something, press enter, get the HTML), HAProxy picks any free browser and the whole thing happens in one shot. You don't care which instance handled it, and not sending the cookie means you get proper load balancing across the fleet.
 
@@ -103,7 +113,7 @@ HAProxy sets an `INSTANCEID` cookie on every response, containing the name of th
 # First request: capture the INSTANCEID from the response
 INSTANCEID=$(curl -sS -D - -o /dev/null -X POST http://localhost:8080 \
   -H 'Content-Type: application/json' \
-  -d '{"action": "goto", "url": "https://example.com"}' \
+  -d '{"action":"run_script","steps":[{"action":"goto","url":"https://example.com"}]}' \
   | grep -i 'set-cookie:.*INSTANCEID' \
   | sed 's/.*INSTANCEID=\([^;]*\).*/\1/' | tr -d '\r')
 
@@ -111,7 +121,7 @@ INSTANCEID=$(curl -sS -D - -o /dev/null -X POST http://localhost:8080 \
 curl -X POST http://localhost:8080 \
   -H 'Content-Type: application/json' \
   -H "Cookie: INSTANCEID=$INSTANCEID" \
-  -d '{"action": "get_text"}'
+  -d '{"action":"run_script","steps":[{"action":"get_text","output_id":"text"}]}'
 ```
 
 **Target a specific instance directly:**
@@ -120,20 +130,21 @@ curl -X POST http://localhost:8080 \
 curl -X POST http://localhost:8080 \
   -H 'Content-Type: application/json' \
   -H 'Cookie: INSTANCEID=browser3' \
-  -d '{"action": "get_text"}'
+  -d '{"action":"run_script","steps":[{"action":"get_text","output_id":"text"}]}'
 ```
 
 ## Redis cookie sync
 
-When `REDIS_URL` is set, all cookie operations sync across instances via Redis PubSub:
+When `REDIS_URL` is set, each browser observes its cookie jar every second. Website `Set-Cookie` responses, JavaScript `document.cookie` changes, HttpOnly cookies, API changes, individual deletions, and expiry are reconciled with the shared Redis hash. No extra `get_cookies` call on the source browser is required.
 
-- `set_cookie` publishes the cookie to the `SABROWSE:UPDATE` channel. All other instances receive it immediately and apply it to their browser context.
-- `delete_cookies` publishes a clear event. All instances clear their cookies.
-- On startup, each instance loads all existing cookies from Redis (`SABROWSE:COOKIES` hash) before handling any requests.
+- Cookie identity is the combination of name, domain, and path. A changed cookie replaces that identity; a deletion does not clear unrelated cookies.
+- A Redis transaction updates `SABROWSE:COOKIES` and publishes on `SABROWSE:UPDATE`. Peers reconcile the authoritative hash after notifications and on their regular poll, so missed notifications can recover.
+- Received changes update the local observation baseline and are not republished as new website changes. Expired records are removed rather than reinstalled.
+- Concurrent independent cookie changes merge. If the shared value changed since a replica's last successful observation, that committed value wins over a conflicting stale browser snapshot. Explicit API `set_cookie` writes are intentional and can replace that value at their Redis serialization point. This is eventual consistency, not a distributed browser transaction.
+- On startup, shared cookies override matching profile cookies. Profile-only cookies seed missing shared entries. An old profile can therefore reintroduce a cookie absent from Redis; use clean profiles when starting a fleet whose shared session was deliberately cleared.
+- Browser detach and shutdown do not publish an empty jar. Redis or browser errors retry without advancing the last successful observation, and diagnostics omit cookie values and Redis credentials.
 
-This means an auth session (like a login cookie) set on `browser1` is immediately available in `browser2`, `browser3`, etc., without any navigation or re-login. If you log into a site on one instance, all instances are logged in.
-
-**Practical consequence:** run a single login sequence on any instance, and the whole fleet is authenticated.
+Cookie-based sessions can become usable on other replicas after propagation. There is no instantaneous handoff guarantee. Sites may also require localStorage, sessionStorage, device-bound state, or another server-side session condition. Those are not synchronized. Cookies created and removed entirely between observations may never be seen. Upgrade all replicas together; older releases do not implement automatic jar reconciliation.
 
 Redis uses append-only file (AOF) persistence with a named volume, so synced cookies survive Redis restarts and `docker compose down`/`up` cycles.
 
@@ -171,6 +182,10 @@ configs:
       ...
 ```
 
-Each browser container defaults to a 5GB RAM limit and 512MB reservation, with 8GB swap available. Override `BROWSER_MEMORY_LIMIT` and `BROWSER_MEMORY_RESERVATION` when sizing the fleet for your host and display resolution. A 512MB hard limit can OOM-kill Camoufox at the default 1920×1080 display.
+Each browser container defaults to a 5 GB RAM limit and 512 MB reservation. `memswap_limit: 8g` is the combined RAM-plus-swap ceiling, not an extra 8 GB of swap; swap also depends on the host. Override `BROWSER_MEMORY_LIMIT` and `BROWSER_MEMORY_RESERVATION` when sizing the fleet. A 512 MB hard limit can OOM-kill Camoufox at the default display size.
 
 All services share a `browse` Docker network. The compose file does not expose browser containers directly. All traffic goes through the queue-proxy.
+
+## Exposure and persistence limits
+
+The provided [docker-compose.cluster.yml](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/docker-compose.cluster.yml) publishes ports 8080 and 8081 on all host interfaces. It does not pass `AUTH_TOKEN` into browser replicas, mount persistent per-browser profiles, or publish noVNC viewers. Add an operator-owned override to bind those ports to loopback or a protected network and configure authentication before exposing the API. The stats dashboard has no built-in authentication. Redis holds sensitive cookies and all replicas sharing that database belong to one trust boundary.

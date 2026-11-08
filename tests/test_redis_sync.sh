@@ -114,6 +114,51 @@ print(f'{a},{b}')
     fi
     echo "  OK: Redis keys cleaned up after delete"
 
+    # Page mutations must propagate without calling the source cookie API.
+    local expected attempt matched expression
+    for expected in created updated DELETED; do
+        expression="document.cookie = 'website_cookie=$expected; path=/'; true"
+        if [ "$expected" = DELETED ]; then
+            expression="document.cookie = 'website_cookie=; path=/; max-age=0'; true"
+        fi
+        resp=$(post_to "http://$b1_ip:8080" "$(jq -nc --arg expression "$expression" '{action:"eval", expression:$expression}')")
+        assert_success "$resp" "redis sync: website writes $expected" || return 1
+        matched=false
+        for attempt in $(seq 1 15); do
+            expression="document.cookie.split('; ').find(value => value.startsWith('website_cookie='))?.split('=')[1] || 'DELETED'"
+            resp=$(post_to "http://$b2_ip:8080" "$(jq -nc --arg expression "$expression" '{action:"eval", expression:$expression}')")
+            found=$(echo "$resp" | jq -r '.data.result // "ERROR"')
+            if [ "$found" = "$expected" ]; then
+                matched=true
+                break
+            fi
+            sleep 1
+        done
+        assert_eq "$matched" true "redis sync: website cookie converges to $expected after $attempt checks" || return 1
+    done
+
+    for expected in created updated DELETED; do
+        local route=create
+        [ "$expected" != updated ] || route=update
+        [ "$expected" != DELETED ] || route=delete
+        resp=$(post_to "http://$b1_ip:8080" "$(jq -nc --arg url "$WEB_BASE/cookie-test/$route" '{action:"goto",url:$url}')")
+        assert_success "$resp" "redis sync: HTTP response sets $expected cookie" || return 1
+        matched=false
+        for attempt in $(seq 1 15); do
+            resp=$(post_to "http://$b2_ip:8080" '{"action":"get_cookies"}')
+            found=$(echo "$resp" | jq -r '[.data.cookies[] | select(.name == "http_session" and .httpOnly == true)][0].value // "DELETED"')
+            if [ "$found" = "$expected" ]; then
+                matched=true
+                break
+            fi
+            sleep 1
+        done
+        assert_eq "$matched" true "redis sync: HttpOnly cookie converges to $expected after $attempt checks" || return 1
+    done
+
+    docker exec -i -e "REDIS_TEST_URL=redis://$redis_ip:6379/1" "$_RS_BROWSER1" \
+        python - --integration < "$WORKDIR/tests/test_redis_sync.py" || return 1
+
     echo "OK: redis_cookie_sync (set, update, multi, delete all sync)"
 
     stop_extra_container "$_RS_BROWSER1"
