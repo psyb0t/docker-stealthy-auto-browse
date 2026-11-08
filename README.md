@@ -1,4 +1,4 @@
-# docker-stealthy-auto-browse
+# stealthy-auto-browse
 
 [![CI](https://github.com/psyb0t/docker-stealthy-auto-browse/actions/workflows/pipeline.yml/badge.svg?branch=main)](https://github.com/psyb0t/docker-stealthy-auto-browse/actions/workflows/pipeline.yml)
 [![version](https://raw.githubusercontent.com/psyb0t/docker-stealthy-auto-browse/badges/version.svg)](https://github.com/psyb0t/docker-stealthy-auto-browse/releases)

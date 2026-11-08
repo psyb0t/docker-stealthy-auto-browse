@@ -8,6 +8,10 @@ All notable changes to this project are documented in this file.
 
 - Add a Buy Me a Coffee funding link and a README Sponsor section linked from the contents.
 
+### Changed
+
+- Use `stealthy-auto-browse` as the README title.
+
 ## [3.5.1] 2026-11-08
 
 ### Fixed
