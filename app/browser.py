@@ -591,7 +591,7 @@ def _load_persisted_config() -> dict[str, Any] | None:
         return None
 
     try:
-        with open(BROWSER_PROPS_FILE) as f:
+        with open(BROWSER_PROPS_FILE, encoding="utf-8") as f:
             config = json.load(f)
     except (json.JSONDecodeError, OSError):
         return None
@@ -601,7 +601,7 @@ def _load_persisted_config() -> dict[str, Any] | None:
 def _save_config(config: dict[str, Any]) -> None:
     """Save Camoufox config to file for persistence."""
     BROWSER_PROPS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(BROWSER_PROPS_FILE, "w") as f:
+    with open(BROWSER_PROPS_FILE, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
 
 
