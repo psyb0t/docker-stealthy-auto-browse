@@ -6,7 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
-- Add a Buy Me a Coffee funding link and README button.
+- Add a Buy Me a Coffee funding link and a README Sponsor section linked from the contents.
 
 ## [3.5.1] 2026-11-08
 
