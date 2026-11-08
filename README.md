@@ -9,6 +9,8 @@ Stealth browser automation that actually works. One Docker container runs Camouf
 
 The image avoids Chromium CDP signals and keeps its generated Linux font and WebGL fingerprints internally consistent. Detection results still depend on the site, network exit, timezone, browser build, and test date.
 
+<a href="https://www.buymeacoffee.com/psyb0t"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-blue.png" alt="Buy Me a Coffee" height="60" width="217"></a>
+
 ## Contents
 
 - [Quick start](#quick-start)

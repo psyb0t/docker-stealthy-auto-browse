@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Add a Buy Me a Coffee funding link and README button.
+
 ## [3.5.1] 2026-11-08
 
 ### Fixed
