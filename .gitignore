@@ -64,3 +64,6 @@ node_modules/
 .venv/
 target/
 vendor/
+
+# Local agent and editor settings.
+*.local.json
