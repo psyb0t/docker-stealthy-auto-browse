@@ -50,7 +50,12 @@ _DRIFT_RANGE_PX = (5.0, 60.0)
 _DRIFT_TARGET_PX = 80.0
 _DRIFT_MIN_TARGET_PX = 4.0
 _MOUSE_BUTTONS = frozenset({"left", "middle", "right"})
-_DOUBLE_CLICK_GAP_RANGE_S = (0.08, 0.2)
+# Firefox counts two presses as a double-click only within the toolkit's
+# double-click time (GTK default 400 ms). The first hold plus the gap must
+# stay well inside it, or a slow draw and CI scheduling jitter turn the
+# double-click into two single clicks.
+_DOUBLE_CLICK_GAP_RANGE_S = (0.06, 0.14)
+_DOUBLE_CLICK_FIRST_HOLD_MAX_S = 0.14
 
 
 class InputError(Exception):
@@ -279,7 +284,7 @@ class System:
         time.sleep(first.pre_press_s)
         px, py = (int(value) for value in self._pyautogui.position())
         self._pyautogui.mouseDown(px, py)
-        time.sleep(first.hold_s)
+        time.sleep(min(first.hold_s, _DOUBLE_CLICK_FIRST_HOLD_MAX_S))
         self._pyautogui.mouseUp(px, py)
         time.sleep(self._rng.uniform(*_DOUBLE_CLICK_GAP_RANGE_S))
         self._pyautogui.mouseDown(px, py)

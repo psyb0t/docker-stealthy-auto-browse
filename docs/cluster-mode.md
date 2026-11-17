@@ -8,7 +8,7 @@ nav_order: 7
 
 Run a fleet of browser instances behind HAProxy with automatic queuing, sticky sessions, and Redis cookie sync. Each browser serializes actions, and the ordinary HTTP backend queues connections when its per-browser slots are occupied.
 
-Automatic website-cookie reconciliation was added after v3.5.1. Images tagged v3.5.1 or older only publish explicit cookie API writes. Use an image built from the updated source, or `latest` after its successful build, for automatic sharing.
+Automatic website-cookie reconciliation was added in v3.6.0. Images tagged v3.5.1 or older only publish explicit cookie API writes.
 
 ## What you get
 

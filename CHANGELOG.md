@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [3.6.0] 2026-11-17
 
 ### Added
 
@@ -13,10 +13,13 @@ All notable changes to this project are documented in this file.
 ### Changed
 
 - Use `stealthy-auto-browse` as the README title.
+- Load the visitor analytics script on every documentation page.
+- Run lint, tests and the security scan on pushes to every branch. Images still build only from `main` and tags.
 
 ### Fixed
 
 - Correct cluster request examples, viewer authentication guidance, profile persistence claims, and detection guarantees in the documentation.
+- Keep `system_double_click` presses inside the browser's double-click time. A long first hold plus the gap between clicks could register as two single clicks.
 
 ## [3.5.1] 2026-11-08
 

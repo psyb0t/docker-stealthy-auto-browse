@@ -67,3 +67,4 @@ vendor/
 
 # Local agent and editor settings.
 *.local.json
+.plan/
