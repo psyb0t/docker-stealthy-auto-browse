@@ -18,7 +18,7 @@ from typing import Any
 from urllib.parse import urlparse as _urlparse
 from xml.sax.saxutils import escape as _xml_escape
 
-from logger import get_logger
+from autolinuxdesk.logger import get_logger
 from captcha_solver import (
     CaptchaSolverConfig,
     CaptchaSolverError,

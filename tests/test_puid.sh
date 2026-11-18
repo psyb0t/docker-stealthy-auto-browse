@@ -1,16 +1,16 @@
 #!/bin/bash
 # tests/test_puid.sh - PUID/PGID user override tests
 
-# Get the UID of the python main.py process inside a container
+# Get the UID of the server process (python -m autolinuxdesk) inside a container
 _app_uid() {
     docker exec "$1" \
-        ps -o uid= -p "$(docker exec "$1" pgrep -f 'python main.py')" \
+        ps -o uid= -p "$(docker exec "$1" pgrep -f 'python -m autolinuxdesk')" \
         | tr -d ' '
 }
 
 _app_gid() {
     docker exec "$1" \
-        stat -c '%g' "/proc/$(docker exec "$1" pgrep -f 'python main.py')" \
+        stat -c '%g' "/proc/$(docker exec "$1" pgrep -f 'python -m autolinuxdesk')" \
         2>/dev/null | tr -d ' '
 }
 

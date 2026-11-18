@@ -10,7 +10,7 @@ import re
 import time
 from typing import Any
 
-from logger import get_logger
+from autolinuxdesk.logger import get_logger
 from redis.asyncio import from_url as redis_from_url
 from redis.exceptions import WatchError
 

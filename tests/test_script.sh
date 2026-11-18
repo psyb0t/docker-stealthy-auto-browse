@@ -51,46 +51,6 @@ test_script_basic() {
     echo "OK: script_basic (5 steps, outputs: screenshot + text + title)"
 }
 
-test_script_on_error_continue() {
-    local out
-    out=$(_script_run on_error_continue.yaml)
-
-    local success
-    success=$(echo "$out" | json_get "['success']")
-    assert_eq "$success" "False" "script_on_error_continue: overall success=False" || return 1
-
-    local steps_executed
-    steps_executed=$(echo "$out" | json_get "['steps_executed']")
-    assert_eq "$steps_executed" "3" "script_on_error_continue: all 3 steps ran" || return 1
-
-    # Step 2 failed but step 3 still collected output
-    local title
-    title=$(echo "$out" | json_get "['outputs']['title']['result']")
-    assert_eq "$title" "Test Page" "script_on_error_continue: title collected after error" || return 1
-
-    echo "OK: script_on_error_continue (continued past error, collected output)"
-}
-
-test_script_on_error_stop() {
-    local out
-    out=$(_script_run on_error_stop.yaml)
-
-    local success
-    success=$(echo "$out" | json_get "['success']")
-    assert_eq "$success" "False" "script_on_error_stop: overall success=False" || return 1
-
-    local steps_executed
-    steps_executed=$(echo "$out" | json_get "['steps_executed']")
-    assert_eq "$steps_executed" "2" "script_on_error_stop: stopped at step 2" || return 1
-
-    # should_not_run output must not exist
-    local has_output
-    has_output=$(echo "$out" | python3 -c "import sys,json; print('yes' if 'should_not_run' in json.load(sys.stdin).get('outputs', {}) else 'no')")
-    assert_eq "$has_output" "no" "script_on_error_stop: skipped step not in outputs" || return 1
-
-    echo "OK: script_on_error_stop (stopped after error, skipped remaining)"
-}
-
 test_script_save_to_file() {
     local out
     out=$(_script_run save_to_file.yaml)
@@ -110,66 +70,6 @@ test_script_save_to_file() {
     assert_eq "$ss_prefix" "data:image/png;base64," "script_save_to_file: also in outputs" || return 1
 
     echo "OK: script_save_to_file (file path + base64 output)"
-}
-
-test_script_exit_code_success() {
-    _script_run basic.yaml >/dev/null
-    local code=$?
-    assert_eq "$code" "0" "script_exit_code_success: exit 0" || return 1
-    echo "OK: script_exit_code_success (exit code 0)"
-}
-
-test_script_exit_code_failure() {
-    _script_run on_error_stop.yaml >/dev/null
-    local code=$?
-    assert_eq "$code" "1" "script_exit_code_failure: exit 1" || return 1
-    echo "OK: script_exit_code_failure (exit code 1)"
-}
-
-test_script_env_substitution() {
-    local out
-    out=$(_script_run basic.yaml)
-
-    # The goto step used ${env.TEST_URL} - verify it resolved
-    local url
-    url=$(echo "$out" | json_get "['step_results'][0]['data']['url']")
-    if ! echo "$url" | grep -q "index.html"; then
-        echo "  FAIL: script_env_substitution: url=$url"
-        return 1
-    fi
-    echo "OK: script_env_substitution (\${env.TEST_URL} resolved to $url)"
-}
-
-test_script_clean_stdout() {
-    local raw
-    raw=$(_script_run basic.yaml)
-
-    # First char must be '{' (clean JSON, no noise)
-    local first_char
-    first_char=$(echo "$raw" | head -c1)
-    assert_eq "$first_char" "{" "script_clean_stdout: starts with {" || return 1
-
-    # Must be valid JSON
-    echo "$raw" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null
-    local code=$?
-    assert_eq "$code" "0" "script_clean_stdout: valid JSON" || return 1
-
-    echo "OK: script_clean_stdout (pure JSON on stdout)"
-}
-
-test_script_desktop_screenshot() {
-    local out
-    out=$(_script_run desktop_screenshot.yaml)
-
-    local success
-    success=$(echo "$out" | json_get "['success']")
-    assert_eq "$success" "True" "script_desktop_screenshot: success" || return 1
-
-    local ss_prefix
-    ss_prefix=$(echo "$out" | python3 -c "import sys,json; print(json.load(sys.stdin)['outputs']['desktop'][:22])")
-    assert_eq "$ss_prefix" "data:image/png;base64," "script_desktop_screenshot: is base64" || return 1
-
-    echo "OK: script_desktop_screenshot (desktop type screenshot as base64)"
 }
 
 test_script_screenshot_resize() {
@@ -200,22 +100,6 @@ print(sum(1 for k in ['full','resized_largest','resized_width','resized_both'] i
     assert_eq "$count" "4" "script_screenshot_resize: all 4 are base64 PNGs" || return 1
 
     echo "OK: script_screenshot_resize (full + 3 resize modes)"
-}
-
-test_script_no_outputs() {
-    local out
-    out=$(_script_run no_outputs.yaml)
-
-    local success
-    success=$(echo "$out" | json_get "['success']")
-    assert_eq "$success" "True" "script_no_outputs: success" || return 1
-
-    # outputs key should not be present
-    local has_outputs
-    has_outputs=$(echo "$out" | python3 -c "import sys,json; print('yes' if 'outputs' in json.load(sys.stdin) else 'no')")
-    assert_eq "$has_outputs" "no" "script_no_outputs: no outputs key" || return 1
-
-    echo "OK: script_no_outputs (no outputs key when no output_id used)"
 }
 
 test_script_multi_action() {
@@ -315,16 +199,6 @@ test_script_loaders() {
     assert_eq "$marker" "loader-executed" "script_loaders: loader fired" || return 1
 
     echo "OK: script_loaders (page loader triggered in script mode)"
-}
-
-test_script_runner_unit() {
-    docker run --rm \
-        -e PYTHONDONTWRITEBYTECODE=1 \
-        -v "$WORKDIR/tests/test_script_runner.py:/tests/test_script_runner.py:ro" \
-        --entrypoint python \
-        "$IMAGE_NAME:$TEST_TAG" \
-        /tests/test_script_runner.py || return 1
-    echo "OK: script_runner_unit (validation and control-flow semantics)"
 }
 
 test_challenge_detector_unit() {
@@ -436,57 +310,14 @@ assert mobile_extensions.isdisjoint(fingerprint["webgl"]["extensions"])
     echo "OK: script_fingerprint_consistency (font and WebGL surfaces agree)"
 }
 
-test_script_clipboard() {
-    local out actual
-    out=$(_script_run clipboard.yaml)
-    if [[ -z "$out" ]]; then
-        echo "  FAIL: script_clipboard: no output"
-        return 1
-    fi
-
-    actual=$(echo "$out" | json_get "['outputs']['clipboard']['text']")
-    assert_eq "$actual" "script clipboard λ" "script_clipboard: exact text" || return 1
-    echo "OK: script_clipboard"
-}
-
-test_script_human_pause() {
-    local out
-    out=$(_script_run human_pause.yaml)
-    if [[ -z "$out" ]]; then
-        echo "  FAIL: script_human_pause: no output"
-        return 1
-    fi
-    echo "$out" | python3 -c '
-import json
-import sys
-
-data = json.load(sys.stdin)
-assert data["success"] is True
-assert data["outputs"]["pause"]["duration"] == 0.1
-assert data["outputs"]["pause"]["drifts"] == 0
-' || return 1
-    echo "OK: script_human_pause"
-}
-
 ALL_TESTS+=(
     test_script_basic
-    test_script_on_error_continue
-    test_script_on_error_stop
     test_script_save_to_file
-    test_script_exit_code_success
-    test_script_exit_code_failure
-    test_script_env_substitution
-    test_script_clean_stdout
-    test_script_desktop_screenshot
     test_script_screenshot_resize
-    test_script_no_outputs
     test_script_multi_action
     test_script_loaders
-    test_script_runner_unit
     test_challenge_detector_unit
     test_script_control_flow
     test_script_challenge_detection
     test_script_fingerprint_consistency
-    test_script_clipboard
-    test_script_human_pause
 )

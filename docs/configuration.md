@@ -20,6 +20,7 @@ nav_order: 2
 | `HTTP_LISTEN_HOST` | `0.0.0.0`       | Host address the HTTP API binds to.                                                                                                                                                                                                                                                                      |
 | `HTTP_LISTEN_PORT` | `8080`          | Port the HTTP API listens on.                                                                                                                                                                                                                                                                            |
 | `AUTH_TOKEN`       | unset           | If set, all requests (except `/health`) require an `Authorization: Bearer <token>` header. Applies to both HTTP API and MCP.                                                                                                                                                                             |
+| `DESK_EXEC_ENABLED` | `false` | `true` turns on `run_command` and `launch_app`, which run any command or program in the container as the browser user. Off by default so the API never gains shell access by itself. Set `AUTH_TOKEN` before turning it on. See [Desktop actions](api.md#desktop-actions). |
 | `CAPTCHA_SOLVER_PROVIDER` | unset | Optional provider: `nopecha`, `capsolver`, `capmonster`, `nocaptchaai`, `yescaptcha`, `2captcha`, or `anticaptcha`. Selecting a provider enables it. |
 | `CAPTCHA_SOLVER_ENABLED` | unset | Optional strict `true` or `false` switch. A selected provider already enables support. `false` conflicts with a provider or key. |
 | `CAPTCHA_SOLVER_API_KEY` | unset | Provider API key. Mutually exclusive with `CAPTCHA_SOLVER_API_KEY_FILE`. Environment values are visible through `docker inspect`. NopeCHA alone permits no key. |
@@ -210,7 +211,7 @@ Want to add more? Mount a persistent profile and install them through the browse
 
 ## Window manager
 
-Openbox runs by default as the X11 window manager. It adds title bars and resize handles to popup windows (e.g. OAuth login dialogs) that would otherwise be too small to interact with. The main browser window is sized to fit under its title bar, so the whole page is on screen and the page reports the window's real size and position. Openbox is configured with one desktop, so wheel input over an uncovered screen edge cannot switch away from the browser. No stealth impact, because the WM operates at the X11 display level, not the browser fingerprint level. Visible through VNC.
+Openbox runs by default as the X11 window manager. It adds title bars and resize handles to popup windows (e.g. OAuth login dialogs) that would otherwise be too small to interact with. The main browser window is sized to fit under its title bar, so the whole page is on screen and the page reports the window's real size and position. Openbox is configured with one desktop, so wheel input over an uncovered screen edge cannot switch away from the browser. It also has keyboard shortcuts for a terminal, half-screen tiling and window states; `desktop_keybindings` lists them (see [Desktop actions](api.md#desktop-actions)). No stealth impact, because the WM operates at the X11 display level, not the browser fingerprint level. Visible through VNC.
 
 ## VNC access
 

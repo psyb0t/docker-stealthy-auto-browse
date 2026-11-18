@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, "/app")
 
-import main
+import browser_actions
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 
@@ -39,7 +39,7 @@ class FakePage:
 
 def assert_value_error(command: dict[str, Any], expected: str) -> None:
     try:
-        main._navigation_options(command)
+        browser_actions._navigation_options(command)
     except ValueError as error:
         assert expected in str(error)
         return
@@ -47,17 +47,17 @@ def assert_value_error(command: dict[str, Any], expected: str) -> None:
 
 
 def test_navigation_option_defaults_and_limits() -> None:
-    defaults = main._navigation_options({})
-    assert defaults.timeout_seconds == main.NAVIGATION_TIMEOUT_DEFAULT_SECONDS
-    assert defaults.retry_count == main.NAVIGATION_RETRY_COUNT_DEFAULT
-    assert defaults.retry_delay_seconds == main.NAVIGATION_RETRY_DELAY_DEFAULT_SECONDS
+    defaults = browser_actions._navigation_options({})
+    assert defaults.timeout_seconds == browser_actions.NAVIGATION_TIMEOUT_DEFAULT_SECONDS
+    assert defaults.retry_count == browser_actions.NAVIGATION_RETRY_COUNT_DEFAULT
+    assert defaults.retry_delay_seconds == browser_actions.NAVIGATION_RETRY_DELAY_DEFAULT_SECONDS
     assert (
         defaults.timeout_milliseconds
-        == main.NAVIGATION_TIMEOUT_DEFAULT_SECONDS
-        * main._MILLISECONDS_PER_SECOND
+        == browser_actions.NAVIGATION_TIMEOUT_DEFAULT_SECONDS
+        * browser_actions._MILLISECONDS_PER_SECOND
     )
 
-    assert main._navigation_options(
+    assert browser_actions._navigation_options(
         {"timeout": 60, "retry_count": 0, "retry_delay": 0}
     ).retry_count == 0
 
@@ -85,16 +85,16 @@ async def test_navigation_timeout_retries_with_exponential_backoff() -> None:
             None,
         ]
     )
-    options = main._navigation_options(
+    options = browser_actions._navigation_options(
         {"timeout": 10, "retry_count": 2, "retry_delay": 2}
     )
 
-    with patch.object(main.asyncio, "sleep", new=AsyncMock()) as sleep:
-        await main._navigate(page, "https://example.com/", options, wait_until="load")
+    with patch.object(browser_actions.asyncio, "sleep", new=AsyncMock()) as sleep:
+        await browser_actions._navigate(page, "https://example.com/", options, wait_until="load")
 
     assert len(page.goto_calls) == 3
     assert [call[1]["timeout"] for call in page.goto_calls] == [
-        10 * main._MILLISECONDS_PER_SECOND
+        10 * browser_actions._MILLISECONDS_PER_SECOND
     ] * 3
     assert [call[1]["wait_until"] for call in page.goto_calls] == ["load"] * 3
     assert [call.args[0] for call in sleep.await_args_list] == [2, 4]
@@ -102,11 +102,11 @@ async def test_navigation_timeout_retries_with_exponential_backoff() -> None:
 
 async def test_navigation_does_not_retry_when_disabled_or_not_timed_out() -> None:
     no_retry_page = FakePage([PlaywrightTimeoutError("timeout")])
-    no_retry_options = main._navigation_options(
+    no_retry_options = browser_actions._navigation_options(
         {"timeout": 10, "retry_count": 0, "retry_delay": 0}
     )
     try:
-        await main._navigate(no_retry_page, "https://example.com/", no_retry_options)
+        await browser_actions._navigate(no_retry_page, "https://example.com/", no_retry_options)
     except PlaywrightTimeoutError:
         pass
     else:
@@ -114,9 +114,9 @@ async def test_navigation_does_not_retry_when_disabled_or_not_timed_out() -> Non
     assert len(no_retry_page.goto_calls) == 1
 
     error_page = FakePage([RuntimeError("certificate error")])
-    options = main._navigation_options({"timeout": 10, "retry_count": 1})
+    options = browser_actions._navigation_options({"timeout": 10, "retry_count": 1})
     try:
-        await main._navigate(error_page, "https://example.com/", options)
+        await browser_actions._navigate(error_page, "https://example.com/", options)
     except RuntimeError as error:
         assert str(error) == "certificate error"
     else:
@@ -137,11 +137,11 @@ async def test_dispatch_action_passes_explicit_controls_to_goto_and_refresh() ->
         "retry_delay": 0,
     }
     with (
-        patch.object(main, "find_loader", return_value=None),
-        patch.object(main, "get_active_page", get_page),
+        patch.object(browser_actions, "find_loader", return_value=None),
+        patch.object(browser_actions, "get_active_page", get_page),
     ):
-        goto_result = await main.dispatch_action(command)
-        refresh_result = await main.dispatch_action(
+        goto_result = await browser_actions.dispatch_action(command)
+        refresh_result = await browser_actions.dispatch_action(
             {
                 "action": "refresh",
                 "timeout": 2.5,
@@ -157,14 +157,14 @@ async def test_dispatch_action_passes_explicit_controls_to_goto_and_refresh() ->
         {
             "wait_until": "load",
             "referer": "https://referrer.example/",
-            "timeout": 2.5 * main._MILLISECONDS_PER_SECOND,
+            "timeout": 2.5 * browser_actions._MILLISECONDS_PER_SECOND,
         },
     )
     assert page.goto_calls[1] == (
         "https://example.com/",
         {
             "wait_until": "domcontentloaded",
-            "timeout": 2.5 * main._MILLISECONDS_PER_SECOND,
+            "timeout": 2.5 * browser_actions._MILLISECONDS_PER_SECOND,
         },
     )
 
@@ -172,10 +172,10 @@ async def test_dispatch_action_passes_explicit_controls_to_goto_and_refresh() ->
 async def test_dispatch_action_passes_the_app_default_timeout() -> None:
     page = FakePage()
     with (
-        patch.object(main, "find_loader", return_value=None),
-        patch.object(main, "get_active_page", new=AsyncMock(return_value=page)),
+        patch.object(browser_actions, "find_loader", return_value=None),
+        patch.object(browser_actions, "get_active_page", new=AsyncMock(return_value=page)),
     ):
-        result = await main.dispatch_action(
+        result = await browser_actions.dispatch_action(
             {"action": "goto", "url": "https://example.com/"}
         )
 
@@ -186,8 +186,8 @@ async def test_dispatch_action_passes_the_app_default_timeout() -> None:
             {
                 "wait_until": "domcontentloaded",
                 "timeout": (
-                    main.NAVIGATION_TIMEOUT_DEFAULT_SECONDS
-                    * main._MILLISECONDS_PER_SECOND
+                    browser_actions.NAVIGATION_TIMEOUT_DEFAULT_SECONDS
+                    * browser_actions._MILLISECONDS_PER_SECOND
                 ),
             },
         )
@@ -205,11 +205,11 @@ async def test_new_tab_uses_explicit_navigation_controls() -> None:
         apply_color_scheme=AsyncMock(),
     )
     with (
-        patch.object(main, "browser", fake_browser),
-        patch.object(main, "_setup_page_handlers"),
-        patch.object(main, "_focus_active_tab", new=AsyncMock()),
+        patch.object(browser_actions, "browser", fake_browser),
+        patch.object(browser_actions, "_setup_page_handlers"),
+        patch.object(browser_actions, "_focus_active_tab", new=AsyncMock()),
     ):
-        result = await main.dispatch_action(
+        result = await browser_actions.dispatch_action(
             {
                 "action": "new_tab",
                 "url": "https://example.com/",
@@ -226,7 +226,7 @@ async def test_new_tab_uses_explicit_navigation_controls() -> None:
             "https://example.com/",
             {
                 "wait_until": "domcontentloaded",
-                "timeout": 3 * main._MILLISECONDS_PER_SECOND,
+                "timeout": 3 * browser_actions._MILLISECONDS_PER_SECOND,
             },
         )
     ]

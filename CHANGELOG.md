@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.7.0] 2026-11-18
+
+The image is now built on [auto-linux-desk](https://github.com/psyb0t/docker-auto-linux-desk), which provides the desktop, VNC, the HTTP and MCP server, script mode, recording, the clipboard and the humanized input. The browser is a plugin of that server. Action names, parameters and responses, MCP tools and their schemas, HTTP routes, ports, environment variables, the `browser` user at UID 1000, `/home/browser`, `/userdata` persistence and script-mode output are unchanged; a snapshot of the old and new images differs only in the additions listed here.
+
+### Added
+
+- `paste_text` action and MCP tool: enters text the way people do. It puts the text on the clipboard, clicks the field with the real mouse when given an element target or coordinates, then presses `ctrl+a`, `backspace` and `ctrl+v` with human timing and irregular pauses between the keys. `replace: false` pastes at the caret.
+- The desktop actions from auto-linux-desk work over HTTP and in scripts: `desktop_list_windows`, `desktop_focus_window`, `desktop_move_resize_window`, `desktop_set_window_state`, `desktop_close_window`, `desktop_keybindings`, `desktop_screenshot`, `list_actions`, `list_launched` and `kill_launched`. Openbox now has keyboard shortcuts for a terminal, half-screen tiling and window states.
+- `run_command` and `launch_app` exist but are refused unless `DESK_EXEC_ENABLED=true`, because they run any command or program in the container. Deployments without `AUTH_TOKEN` do not gain shell access on upgrade.
+- `GET /state` also reports the screen resolution, whether a handoff is active, the input surface and the loaded plugins.
+- `get_resolution`, `list_actions`, `desktop_screenshot`, `desktop_list_windows`, `desktop_keybindings` and `list_launched` also run during a human handoff.
+
+### Changed
+
+- The MCP instructions, the agent skill, the README and the API and script-mode docs tell agents to enter text with `paste_text` and keep `system_type` for a few characters: a word, a short search, a small edit, or a field that blocks pasting. The `system_type`, `set_clipboard` and `run_script` tool descriptions say the same.
+- The API reference links to the auto-linux-desk documentation for the humanized input model and options, events, recording, the clipboard and the script format, and keeps what is specific to the browser: viewport coordinates, element targets, typo safety in page fields and page conditions.
+- `sleep` rejects a `duration` below 0 or above 3600 seconds, and the screenshot endpoints reject a size outside 1 to 20000 pixels with HTTP 400 instead of failing with 500. `GET /screenshot/browser` answers 400 rather than 503 in the rare case that no page can be opened.
+- The noVNC viewer keeps redrawing the pointer when viewers send no input; x11vnc previously stopped updating it after about 30 idle seconds.
+
 ## [3.6.0] 2026-11-17
 
 ### Added

@@ -99,9 +99,9 @@ try:
     r = mcp_request(2, "tools/list", {})
     tools = r.get("result", {}).get("tools", [])
     names = [t["name"] for t in tools]
-    ok = len(tools) == 28
-    results.append((f"2. tools/list ({len(tools)} tools, expect 28)", ok, f"got: {names}" if not ok else ""))
-    expected = ["goto","get_text","get_html","set_clipboard","get_clipboard","set_clipboard_data","get_events","wait_for_event","begin_handoff","handoff_status","end_handoff","detect_challenge","solve_captcha","screenshot","system_click","human_pause","eval_js","browser_action","run_script"]
+    ok = len(tools) == 29
+    results.append((f"2. tools/list ({len(tools)} tools, expect 29)", ok, f"got: {names}" if not ok else ""))
+    expected = ["goto","get_text","get_html","set_clipboard","get_clipboard","set_clipboard_data","get_events","wait_for_event","begin_handoff","handoff_status","end_handoff","detect_challenge","solve_captcha","screenshot","system_click","human_pause","eval_js","browser_action","run_script","paste_text"]
     missing = [n for n in expected if n not in names]
     ok2 = len(missing) == 0
     results.append(("2b. expected tools present", ok2, f"missing: {missing}" if missing else ""))
@@ -277,6 +277,43 @@ try:
     results.append(("10b. clipboard tools", ok, json.dumps(get_data) if not ok else ""))
 except Exception as e:
     results.append(("10b. clipboard tools", False, str(e)))
+
+# 10ba. paste_text clicks the field and replaces its text
+try:
+    tool_call(
+        120,
+        "eval_js",
+        {
+            "expression": "(() => { const field=document.createElement('textarea'); field.id='mcp-paste-target'; field.value='old text'; field.style.cssText='position:fixed;top:40px;left:40px;width:300px;height:80px;z-index:99999'; document.body.appendChild(field); return true })()",
+        },
+    )
+    paste_data = challenge_data(
+        tool_text(
+            tool_call(
+                121,
+                "paste_text",
+                {"selector": "#mcp-paste-target", "text": "pasted by MCP"},
+            )
+        )
+    )
+    value = json.loads(
+        tool_text(
+            tool_call(
+                122,
+                "eval_js",
+                {"expression": "document.getElementById('mcp-paste-target').value"},
+            )
+        )
+    )["data"]["result"]
+    ok = (
+        paste_data["pasted_len"] == len("pasted by MCP")
+        and paste_data["replaced"] is True
+        and "landed_at" in paste_data
+        and value == "pasted by MCP"
+    )
+    results.append(("10ba. paste_text tool", ok, json.dumps([paste_data, value]) if not ok else ""))
+except Exception as e:
+    results.append(("10ba. paste_text tool", False, str(e)))
 
 # 10bb. Rich clipboard, event, and handoff tools
 try:

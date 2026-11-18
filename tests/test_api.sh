@@ -358,19 +358,6 @@ test_get_interactive_elements() {
     echo "OK: get_interactive_elements ($elements elements found)"
 }
 
-test_get_resolution() {
-    local resp w h
-    resp=$(post '{"action": "get_resolution"}')
-    assert_success "$resp" "get_resolution" || return 1
-
-    # Default container runs at 1920x1080
-    w=$(echo "$resp" | json_get "['data']['width']")
-    h=$(echo "$resp" | json_get "['data']['height']")
-    assert_eq "$w" "1920" "get_resolution: width" || return 1
-    assert_eq "$h" "1080" "get_resolution: height" || return 1
-    echo "OK: get_resolution (1920x1080 verified)"
-}
-
 test_single_workspace() {
     local desktop_count current_desktop
     desktop_count=$(docker exec --user browser -e DISPLAY=:99 "$CONTAINER_NAME" \
@@ -454,7 +441,6 @@ ALL_TESTS+=(
     test_detect_challenge_scroll_into_view
     test_detect_challenge_raw_dom_selectors
     test_get_interactive_elements
-    test_get_resolution
     test_single_workspace
     test_calibrate
     test_eval_world

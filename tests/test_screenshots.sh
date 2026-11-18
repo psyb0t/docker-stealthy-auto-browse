@@ -12,16 +12,6 @@ test_screenshot_browser() {
     assert_eq "$w" "1920" "screenshot/browser: width"
 }
 
-test_screenshot_desktop() {
-    local tmpdir="$TESTDATA_DIR/screenshots"
-    mkdir -p "$tmpdir"
-    curl -sf "$BASE/screenshot/desktop" -o "$tmpdir/desktop.png"
-    # Verify it's a valid PNG with 1920x1080 dimensions (default resolution)
-    local dims
-    dims=$(png_dimensions "$tmpdir/desktop.png")
-    assert_eq "$dims" "1920x1080" "screenshot/desktop: dimensions"
-}
-
 test_screenshot_resize() {
     local tmpdir="$TESTDATA_DIR/screenshots"
     mkdir -p "$tmpdir"
@@ -66,6 +56,5 @@ test_screenshot_resize() {
 
 ALL_TESTS+=(
     test_screenshot_browser
-    test_screenshot_desktop
     test_screenshot_resize
 )

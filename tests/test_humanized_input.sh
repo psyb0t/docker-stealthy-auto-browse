@@ -25,15 +25,12 @@ readonly HI_PAUSE_SECONDS=14
 readonly HI_PAUSE_DRIFT_INTERVAL=2.5
 readonly HI_PAUSE_DRIFT_DISTANCE=30
 readonly HI_ROBOT_JIGGLE_INTERVAL=0.5
-readonly HI_HEALTH_MAX_SECONDS=1.0
-readonly HI_HEALTH_POLLS=5
 readonly HI_TARGET_IDS=(target-0 target-1 target-2 target-3 target-4 target-5 target-6 target-7)
 readonly HI_TYPED_TEXT=$'Hello World, THIS is a test: 42% done (ok?)\nCafé ñandú costs €5 & more!'
 # Three sentences: at the 2% typo rate the chance of no typo at all is ~1e-4.
 readonly HI_TYPO_SENTENCE="the quick brown fox jumps over the lazy dog while the busy farmer counts sheep near the old stone bridge and hums a quiet song about rivers mountains forests and distant summer evenings"
 readonly HI_TYPO_TEXT="$HI_TYPO_SENTENCE $HI_TYPO_SENTENCE $HI_TYPO_SENTENCE"
 readonly HI_TYPO_INTERVAL=0.06
-readonly HI_LONG_TEXT="steady typing keeps the request lock busy while health checks still answer quickly because input runs in a worker thread and never blocks the event loop of the server at all"
 readonly HI_X_ENV=(-u browser -e DISPLAY=:99 -e XAUTHORITY=/home/browser/.Xauthority)
 
 # --- Helpers ---
@@ -309,36 +306,6 @@ test_humanized_typing() {
     echo "OK: humanized typing (exact text, typo safety, robotic control caught)"
 }
 
-test_humanized_input_off_event_loop() {
-    local browser_name="stealthy-auto-browse-test-hi-loop"
-    local base typing_pid i elapsed slow=0
-    base=$(_hi_start_browser "$browser_name") || return 1
-    assert_success "$(_hi_post "$(_hi_json "{'action': 'goto', 'url': '$TEST_PAGE'}")" "$base")" "goto" >/dev/null || return 1
-    assert_success "$(_hi_post '{"action": "click", "selector": "#sys-input"}' "$base")" "focus" >/dev/null || return 1
-
-    _hi_type "$base" "$HI_LONG_TEXT" >/dev/null &
-    typing_pid=$!
-    sleep 1
-    for ((i = 0; i < HI_HEALTH_POLLS; i++)); do
-        if ! kill -0 "$typing_pid" 2>/dev/null; then
-            echo "  FAIL: typing finished before health polling ended; text too short to prove anything"
-            return 1
-        fi
-        elapsed=$(curl -sf -o /dev/null -w '%{time_total}' "$base/health")
-        echo "  /health answered in ${elapsed}s while typing"
-        if ! python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) <= float(sys.argv[2]) else 1)' "$elapsed" "$HI_HEALTH_MAX_SECONDS"; then
-            slow=$((slow + 1))
-        fi
-        sleep 0.5
-    done
-    wait "$typing_pid"
-    assert_eq "$slow" "0" "health stays responsive during system_type" || return 1
-    assert_eq "$(_hi_eval_js "$base" "document.getElementById('sys-input').value")" "$HI_LONG_TEXT" "long text typed exactly" || return 1
-
-    stop_extra_container "$browser_name"
-    echo "OK: humanized input runs off the event loop"
-}
-
 test_humanized_scroll() {
     local det_name="stealthy-auto-browse-test-hi-scroll-det"
     local browser_name="stealthy-auto-browse-test-hi-scroll"
@@ -409,79 +376,6 @@ _hi_in_range() {
     return 1
 }
 
-test_humanized_overrides() {
-    local det_name="stealthy-auto-browse-test-hi-overrides-det"
-    local browser_name="stealthy-auto-browse-test-hi-overrides"
-    local det base probe id cx cy w h resp median
-    mkdir -p "$HI_RESULTS_DIR"
-
-    det=$(_hi_start_detectors "$det_name") || return 1
-    base=$(_hi_start_browser "$browser_name") || return 1
-    probe="$det$HI_PROBE_PATH"
-
-    # click_hold: the page sees the requested hold.
-    _hi_open_probe "$base" "$probe" || return 1
-    # Bounds below are ~3 standard deviations of the sample median.
-    for id in target-0 target-4 target-2 target-6 target-5 target-1 target-7 target-3 target-0 target-5 target-2 target-6; do
-        read -r cx cy w h <<<"$(_hi_target_rect "$base" "$id")"
-        resp=$(_hi_post "$(_hi_json "{'action': 'system_click', 'x': $cx, 'y': $cy, 'w': $w, 'h': $h, 'click_hold': 0.5, 'speed': 1.5}")" "$base")
-        assert_success "$resp" "system_click with overrides" >/dev/null || return 1
-    done
-    _hi_harvest "$base" "$HI_RESULTS_DIR/overrides-click.json"
-    median=$(_hi_median "$HI_RESULTS_DIR/overrides-click.json" "[u['t'] - d['t'] for d, u in zip([e for e in events if e['type'] == 'mousedown'], [e for e in events if e['type'] == 'mouseup'])]")
-    _hi_in_range "$median" 330 760 "median click hold ms with click_hold=0.5" || return 1
-
-    # key_hold: every key is held around the requested time.
-    _hi_open_probe "$base" "$probe" || return 1
-    _hi_click_target "$base" text-input || return 1
-    # A wide interval keeps 0.25 s holds from colliding with the next key.
-    resp=$(_hi_type "$base" "override check text" '{"key_hold": 0.25, "interval": 0.6}')
-    assert_success "$resp" "system_type with overrides" >/dev/null || return 1
-    assert_eq "$(_hi_field_value "$base" text-input)" "override check text" "typed exactly with overrides" || return 1
-    _hi_harvest "$base" "$HI_RESULTS_DIR/overrides-typing.json"
-    median=$(python3 -c '
-import json, statistics, sys
-events = json.load(open(sys.argv[1]))["events"]
-downs, holds = {}, []
-for e in events:
-    if e["type"] == "keydown":
-        downs[e["code"]] = e["t"]
-    elif e["type"] == "keyup" and e["code"] in downs:
-        holds.append(e["t"] - downs.pop(e["code"]))
-print(round(statistics.median(holds), 1))
-' "$HI_RESULTS_DIR/overrides-typing.json")
-    _hi_in_range "$median" 180 340 "median key hold ms with key_hold=0.25" || return 1
-
-    # instant: send_key falls back to a raw press with no hold.
-    _hi_open_probe "$base" "$probe" || return 1
-    _hi_click_target "$base" text-input || return 1
-    assert_success "$(_hi_post '{"action": "send_key", "key": "x", "instant": true}' "$base")" "send_key instant" >/dev/null || return 1
-    _hi_harvest "$base" "$HI_RESULTS_DIR/overrides-instant.json"
-    median=$(_hi_median "$HI_RESULTS_DIR/overrides-instant.json" "(lambda d, u: [b['t'] - a['t'] for a, b in zip(d, u)])([e for e in events if e['type'] == 'keydown'], [e for e in events if e['type'] == 'keyup'])")
-    _hi_in_range "$median" 0 15 "key hold ms with instant=true" || return 1
-
-    # notch_gap: wheel notches arrive around the requested spacing.
-    _hi_open_probe "$base" "$probe" || return 1
-    assert_success "$(_hi_post '{"action": "mouse_move", "x": 600, "y": 700, "w": 400, "h": 200}' "$base")" "pointer over page" >/dev/null || return 1
-    for _ in 1 2 3; do
-        resp=$(_hi_post '{"action": "scroll", "amount": -4, "notch_gap": 0.3}' "$base")
-        assert_success "$resp" "scroll with notch_gap" >/dev/null || return 1
-        sleep 1.2
-    done
-    _hi_harvest "$base" "$HI_RESULTS_DIR/overrides-scroll.json"
-    # Gaps over 1 s are the breaks between the three requests.
-    median=$(_hi_median "$HI_RESULTS_DIR/overrides-scroll.json" "(lambda w: [b - a for a, b in zip(w, w[1:]) if b - a < 1000])([e['t'] for e in events if e['type'] == 'wheel'])")
-    _hi_in_range "$median" 190 480 "median notch gap ms with notch_gap=0.3" || return 1
-
-    # Out-of-range overrides are rejected before any input happens.
-    resp=$(_hi_post '{"action": "system_click", "x": 10, "y": 10, "speed": 50}' "$base")
-    assert_eq "$(echo "$resp" | json_get "['error']")" "speed must be between 0.1 and 10.0" "speed out of range rejected" || return 1
-
-    stop_extra_container "$browser_name"
-    stop_extra_container "$det_name"
-    echo "OK: humanized input overrides reach the page"
-}
-
 test_human_pause_detector() {
     local det_name="stealthy-auto-browse-test-hi-pause-det"
     local browser_name="stealthy-auto-browse-test-hi-pause"
@@ -524,10 +418,8 @@ test_human_pause_detector() {
 }
 
 ALL_TESTS+=(
-    test_humanized_overrides
     test_humanized_mouse
     test_humanized_typing
-    test_humanized_input_off_event_loop
     test_humanized_scroll
     test_human_pause_detector
 )

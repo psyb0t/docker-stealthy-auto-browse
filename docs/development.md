@@ -31,17 +31,21 @@ The complete and live test targets mount the Docker socket to launch sibling con
 
 ## Source map
 
+The image is built on [auto-linux-desk](https://psyb0t.github.io/docker-auto-linux-desk/), which provides the entrypoint, the display and VNC services, the HTTP and MCP server, script mode, events, handoff, recording, the clipboard and the humanized input planners and executor. This repository adds the browser as a plugin of that server.
+
 | Source | Responsibility |
 | --- | --- |
-| [entrypoint.sh](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/entrypoint.sh) | UID/GID switch, display, window manager, VNC services, and application lifecycle. |
-| [app/main.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/main.py) | HTTP routes, action dispatch, serialization, events, and handoff. |
-| [app/mcp_server.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/mcp_server.py) | MCP schemas and the shared dispatcher bridge. |
+| [Dockerfile](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/Dockerfile) | The pinned base, the `browser` user, Camoufox, Playwright and the extensions. |
+| [docker/entrypoint.d](https://github.com/psyb0t/docker-stealthy-auto-browse/tree/main/docker/entrypoint.d) | Root hooks the base entrypoint runs before dropping privileges. |
+| [app/stealthy_plugin.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/stealthy_plugin.py) | Registers the browser actions, MCP tools, state, browser screenshots, startup and shutdown with the base. |
+| [app/browser_actions.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/browser_actions.py) | Browser session, page event handlers and every browser action. |
+| [app/browser_input.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/browser_input.py) | Viewport coordinates for humanized input, and the typo guard. |
+| [app/mcp_server.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/mcp_server.py) | MCP tools and instructions. |
 | [app/browser.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/browser.py) | Camoufox startup, persistent identity, recovery, windows, and virtual media. |
-| [app/input_actions.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/input_actions.py) | Input parameter validation and worker-thread dispatch. |
-| [app/human_mouse.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/human_mouse.py), [human_keyboard.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/human_keyboard.py), [human_scroll.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/human_scroll.py) | Seedable timing and path planners. |
-| [app/system.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/system.py) | X11 input replay. |
 | [app/redis_sync.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/redis_sync.py) | Shared cookie state and reconciliation. |
-| [tests](https://github.com/psyb0t/docker-stealthy-auto-browse/tree/main/tests) | Local fixtures, unit tests, browser integration tests, and opt-in external checks. |
+| [tests](https://github.com/psyb0t/docker-stealthy-auto-browse/tree/main/tests) | Local fixtures, unit tests, browser integration tests, opt-in external checks, and the contract snapshot. |
+
+Humanized input timing lives in the base; change it there and bump the pinned base. Pass `BASE_IMAGE=psyb0t/auto-linux-desk:local` to `make build`, `make dev-image` or `make build-test` to build on a local base image.
 
 ## Test evidence and browser upgrades
 

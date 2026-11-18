@@ -1,43 +1,17 @@
-# Base image pinned by digest — tags are mutable, digests aren't. Re-resolve
-# with: docker buildx imagetools inspect python:3.12-slim-bookworm --format '{{.Manifest.Digest}}'
-FROM python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b
+# The desktop, VNC, humanized input and the HTTP/MCP/script server come from
+# auto-linux-desk. This image adds the browser and loads it as a plugin.
+#
+# The base is pinned by tag and digest; tags are mutable, digests are not.
+# Bump both together, then re-resolve the digest with:
+#   docker buildx imagetools inspect psyb0t/auto-linux-desk:vX.Y.Z --format '{{.Manifest.Digest}}'
+# For a local base build, pass --build-arg BASE_IMAGE=psyb0t/auto-linux-desk:local.
+ARG BASE_IMAGE=psyb0t/auto-linux-desk:v0.2.3@sha256:f10772a5d49d067526d03dca6413dc917416e7a36212ee7b9fb3a518ba028eb3
+FROM ${BASE_IMAGE}
 
-# MCP Registry ownership label
+# MCP Registry ownership label (replaces the base image's).
 LABEL io.modelcontextprotocol.server.name="io.github.psyb0t/stealthy-auto-browse"
 
-# Prevent interactive prompts
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Timezone - override with -e TZ=Your/Timezone
-ENV TZ=UTC
-
-# Install tzdata for proper timezone support
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    tzdata \
-    && rm -rf /var/lib/apt/lists/*
-
-# Base utils
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget curl gnupg ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# X11 and display
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    xvfb xauth dbus dbus-x11 x11-xserver-utils xcvt \
-    && rm -rf /var/lib/apt/lists/*
-
-# VNC
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    x11vnc novnc websockify \
-    && rm -rf /var/lib/apt/lists/*
-
-# Window manager (title bars + resize handles for popup windows)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    openbox \
-    && rm -rf /var/lib/apt/lists/*
-
-# noVNC auto-connect redirect
-RUN echo '<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=vnc.html?autoconnect=true&resize=scale"></head></html>' > /usr/share/novnc/index.html
+USER root
 
 # Firefox/Camoufox dependencies - install firefox-esr to pull correct GTK deps for any arch
 RUN apt-get update \
@@ -47,16 +21,6 @@ RUN apt-get update \
         fonts-liberation \
         fonts-urw-base35 \
     && apt-get remove -y --purge firefox-esr \
-    && rm -rf /var/lib/apt/lists/*
-
-# UI automation tools
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    xdotool xclip scrot python3-tk python3-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Screen recording (ffmpeg x11grab + libx264)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python packages (system-level, needs root).
@@ -82,7 +46,7 @@ RUN dpkg-query -W -f='${Package}\n' | sort > /tmp/packages-before \
     && pip install --no-cache-dir \
         "camoufox[geoip]==0.5.8" \
         "playwright==1.62.0" \
-        pyautogui fastapi uvicorn fastmcp Pillow pyyaml "redis[hiredis]" \
+        "redis[hiredis]" \
     && apt-get purge -y $(comm -13 /tmp/packages-before /tmp/packages-after) \
     && rm -rf /var/lib/apt/lists/* /tmp/packages-before /tmp/packages-after
 
@@ -91,12 +55,20 @@ RUN dpkg-query -W -f='${Package}\n' | sort > /tmp/packages-before \
 # browser user only ever reads it.
 RUN python -c 'from camoufox.fpgen_model import ensure_fpgen_model; ensure_fpgen_model()'
 
-# Create non-root user and directories
-RUN groupadd -g 1000 browser && useradd -u 1000 -g 1000 -m browser
-RUN mkdir -p /app /userdata /loaders /recordings && chown -R browser:browser /app /userdata /loaders /recordings
+# The base user is desk (UID/GID 1000, /home/desk). Rename it to browser and
+# move its home, keeping the IDs, so /home/browser and the browser user stay
+# what they have always been. The Openbox config moves with the home.
+RUN usermod -l browser -d /home/browser -m desk \
+    && groupmod -n browser desk \
+    && mkdir -p /app /loaders \
+    && chown browser:browser /app /loaders
 
 # Allow browser user to write GeoIP db into camoufox package dir
 RUN chown -R browser:browser /usr/local/lib/python3.12/site-packages/camoufox/
+
+# Under PUID/PGID, hand the GeoIP database files to that UID before the
+# entrypoint drops privileges.
+COPY --chmod=644 docker/entrypoint.d/10-camoufox-geoip.sh /etc/auto-linux-desk/entrypoint.d/10-camoufox-geoip.sh
 
 # Switch to non-root user for the Camoufox archive and extensions
 USER browser
@@ -139,30 +111,24 @@ RUN python /scripts/install_extensions.py
 # Copy app
 COPY --chown=browser:browser app/ /app/
 
-# Set working directory
 WORKDIR /app
 
-# Install gosu for privilege dropping in entrypoint
 USER root
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gosu \
-    && rm -rf /var/lib/apt/lists/*
 
-# Keep the browser on one desktop. Openbox defaults to four, and wheel input
-# over an uncovered screen edge otherwise switches away from the browser.
-RUN install -d -o browser -g browser /home/browser/.config/openbox \
-    && sed '0,/<number>4<\/number>/s//<number>1<\/number>/' \
-        /etc/xdg/openbox/rc.xml > /home/browser/.config/openbox/rc.xml \
-    && chown browser:browser /home/browser/.config/openbox/rc.xml
+# The entrypoint is the base one. /entrypoint.sh stays as a path for anyone
+# who calls it directly.
+RUN ln -s /usr/local/bin/auto-linux-desk-entrypoint /entrypoint.sh
 
-# Copy entrypoint (runs as root, drops to target user)
-COPY --chmod=755 entrypoint.sh /entrypoint.sh
+# The base entrypoint reads these. run_command and launch_app ship disabled:
+# the browser API never had shell access, and deployments without AUTH_TOKEN
+# must not gain it on upgrade. Set DESK_EXEC_ENABLED=true to turn them on.
+ENV DESK_HOME=/home/browser \
+    DESK_WRITABLE_DIRS="/userdata /loaders /recordings" \
+    DESK_BANNER="STEALTHY AUTO-BROWSE" \
+    DESK_EXEC_ENABLED=false \
+    AUTO_LINUX_DESK_PLUGINS=stealthy_plugin \
+    PYTHONPATH=/app
 
-# Environment variables
-ENV XVFB_RESOLUTION=1920x1080
-ENV XVFB_DEPTH=24
-
-# Expose ports (VNC and session HTTP)
 EXPOSE 5900 8080
 
 ENTRYPOINT ["/entrypoint.sh"]

@@ -338,7 +338,7 @@ Call `handle_dialog` **before** the action that triggers the dialog.
 
 These actions use the real X11 clipboard shared by Camoufox and noVNC. Formats are `text`, `html`, `image/png`, and `files`. Clipboard payloads are bounded and are not written to request logs.
 
-For substantial text, prefer `set_clipboard`, focus the field, then call `send_key` with `key: "ctrl+v"`. Use `system_type` for short edits, fields that reject paste, or work that specifically needs per-keystroke behavior.
+People paste far more than they type. Enter text with `paste_text`: it puts the text on the clipboard, clicks the field when given a target or coordinates, and presses `ctrl+a`, `backspace` and `ctrl+v` with human timing. Use `system_type` only for a few characters: a word, a short search, a small edit, or a field that blocks pasting.
 
 ```json
 {"action": "set_clipboard", "text": "paste me"}

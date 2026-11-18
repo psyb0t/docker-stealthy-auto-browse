@@ -8,6 +8,9 @@ DEV_IMAGE := $(IMAGE_NAME):dev
 PROJECT_ROOT := $(CURDIR)
 DOCS_IMAGE := ghcr.io/actions/jekyll-build-pages:v1.0.13@sha256:6791ebfd912185ed59bfb5fb102664fa872496b79f87ff8b9cfba292a7345041
 TEST_ARGS ?=
+# Override the pinned auto-linux-desk base, e.g. BASE_IMAGE=psyb0t/auto-linux-desk:local.
+BASE_IMAGE ?=
+BASE_BUILD_ARG := $(if $(BASE_IMAGE),--build-arg BASE_IMAGE=$(BASE_IMAGE),)
 PYTHON_SOURCES := app/*.py tests/*.py tests/apps/*.py scripts/*.py
 
 UID := $(shell id -u)
@@ -59,24 +62,24 @@ help: ## Show supported development commands.
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 dev-image: ## Build the sandboxed development image.
-	docker build -t $(DEV_BASE_IMAGE) .
+	docker build $(BASE_BUILD_ARG) -t $(DEV_BASE_IMAGE) .
 	docker build --build-arg BASE_IMAGE=$(DEV_BASE_IMAGE) -f Dockerfile.dev -t $(DEV_IMAGE) .
 
 shell: dev-image ## Open a shell in the development image.
 	$(DEV_RUN_WRITE) bash
 
 build: ## Build the production image.
-	docker build -t $(IMAGE_NAME):$(TAG) .
+	docker build $(BASE_BUILD_ARG) -t $(IMAGE_NAME):$(TAG) .
 
 build-test: ## Build the test-tagged production image.
-	docker build -t $(IMAGE_NAME):$(TEST_TAG) .
+	docker build $(BASE_BUILD_ARG) -t $(IMAGE_NAME):$(TEST_TAG) .
 
 format: dev-image ## Format Python source files.
 	$(DEV_RUN_WRITE) python -m ruff format $(PYTHON_SOURCES)
 
 lint: dev-image ## Run Python and shell checks in Docker.
 	$(DEV_RUN) python -m ruff check --ignore E402 $(PYTHON_SOURCES)
-	$(DEV_RUN) shellcheck entrypoint.sh test.sh tests/*.sh scripts/*.sh
+	$(DEV_RUN) shellcheck test.sh tests/*.sh scripts/*.sh docker/entrypoint.d/*.sh
 
 lint-fix: dev-image ## Apply safe Python lint fixes and formatting.
 	$(DEV_RUN_WRITE) python -m ruff check --ignore E402 --fix $(PYTHON_SOURCES)
@@ -100,10 +103,7 @@ test-unit: dev-image ## Run in-process Python unit tests.
 	$(DEV_RUN) python tests/test_addon_exclusion.py
 	$(DEV_RUN) python tests/test_captcha_solver.py
 	$(DEV_RUN) python tests/test_fingerprint_config.py
-	$(DEV_RUN) python tests/test_recorder.py
-	$(DEV_RUN) python tests/test_clipboard.py
 	$(DEV_RUN) python tests/test_browser_primitives.py
-	$(DEV_RUN) python tests/test_human_input.py
 
 sec: dev-image ## Write security findings to sec.sarif for GitHub Security.
 	$(DEV_RUN_WRITE) bash scripts/sec.sh

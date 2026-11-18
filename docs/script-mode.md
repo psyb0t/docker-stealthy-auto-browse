@@ -6,6 +6,8 @@ nav_order: 5
 
 # Script mode (run & exit)
 
+Script mode and `run_script` come from auto-linux-desk; its [script mode page](https://psyb0t.github.io/docker-auto-linux-desk/script-mode/) documents the format and limits. This page shows it with browser steps, and adds the page conditions and loaders that need a browser.
+
 Run a YAML script at container startup. The container executes the steps, prints the results as JSON on stdout, and exits. No HTTP server, no long-running process. Good for CI, cron jobs, one-shot scraping, or anything where you want to automate a sequence and get the output.
 
 ## Usage
@@ -83,7 +85,7 @@ The JSON printed to stdout looks like this:
 
 Use `human_pause` only when a visible task naturally includes reading, reviewing, or composing. It keeps the pointer mostly still and can make sparse bounded drifts. Use `sleep` for ordinary waits, and do not add `human_pause` between every step.
 
-For substantial text, write the real X11 clipboard, focus the field, and paste with `Ctrl+V`. Use `system_type` for short edits, paste-hostile fields, or tests that need per-keystroke behavior.
+People paste far more than they type. Enter text with `paste_text`: it writes the real X11 clipboard, clicks the field, then presses `Ctrl+A`, `Backspace` and `Ctrl+V` with human timing. Use `system_type` only for a few characters, paste-hostile fields, or tests that need per-keystroke behavior.
 
 ```yaml
 steps:
@@ -93,12 +95,9 @@ steps:
     duration: 4
     drift: true
     drift_interval: 12
-  - action: set_clipboard
-    text: ${env.MESSAGE}
-  - action: click
+  - action: paste_text
     selector: "textarea"
-  - action: send_key
-    key: ctrl+v
+    text: ${env.MESSAGE}
 ```
 
 ## Control flow

@@ -1,7 +1,8 @@
-"""MCP server for browser automation via Streamable HTTP transport.
+"""MCP tools for browser automation.
 
 Exposes browser actions as MCP tools so AI agents can drive the browser
-over the Model Context Protocol. Mounted at /mcp on the main HTTP server.
+over the Model Context Protocol. auto-linux-desk serves them at /mcp on the
+HTTP port; register() replaces the base tools with these.
 
 When NUM_REPLICAS > 1 (cluster mode), the server exposes only run_script so
 all steps execute on the same browser instance behind the load balancer.
@@ -9,16 +10,14 @@ all steps execute on the same browser instance behind the load balancer.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
-from typing import Any, Callable, Coroutine
+from collections.abc import Awaitable, Callable
+from typing import Any
 
-from fastmcp import FastMCP
+from autolinuxdesk.logger import get_logger
 from fastmcp.tools import ToolResult
 from fastmcp.utilities.types import Image
-from clipboard import redact_clipboard_params
-from logger import get_logger
 from mcp.types import TextContent
 
 log = get_logger(__name__)
@@ -39,9 +38,11 @@ _INSTRUCTIONS_SINGLE = (
     "CLICKING: always use click() with a CSS selector first. It is fast and reliable. "
     "Only use system_click() as a last resort when the site detects DOM event injection. "
     "Use get_interactive_elements to find selectors and coordinates. "
-    "TEXT INPUT: for substantial text, use set_clipboard(), focus the field, then "
-    "send_key('ctrl+v'). Use system_type() for short edits, paste-hostile fields, or "
-    "tasks where per-key behavior matters. "
+    "TEXT INPUT: people paste far more than they type. Enter text with paste_text(): "
+    "it puts the text on the clipboard, clicks the field when given a selector or "
+    "coordinates, and presses ctrl+a, backspace and ctrl+v with human timing. "
+    "Use system_type() only for a few characters: a word, a short search, a small "
+    "edit, or a field that blocks pasting. "
     "VISIBLE PAUSES: use human_pause() only when the task naturally needs reading, "
     "review, or composition time. Do not put it between every action or use it as sleep. "
     "Use run_script to execute multi-step workflows atomically."
@@ -55,44 +56,47 @@ _INSTRUCTIONS_CLUSTER = (
     "See the run_script tool documentation for all available actions and their parameters."
 )
 
-mcp = FastMCP(
-    "stealthy-auto-browse",
-    instructions=_INSTRUCTIONS_CLUSTER if _cluster_mode else _INSTRUCTIONS_SINGLE,
-)
-
-_dispatch: Callable[[dict], Coroutine[Any, Any, dict]] | None = None
-_lock: asyncio.Lock | None = None
+MCP_SERVER_NAME = "stealthy-auto-browse"
 
 
-def set_dispatcher(
-    fn: Callable[[dict], Coroutine[Any, Any, dict]],
-    lock: asyncio.Lock | None = None,
-) -> None:
-    """Register the dispatch_action function and request lock from main.py."""
-    global _dispatch, _lock
-    _dispatch = fn
-    _lock = lock
+class _ToolCollector:
+    """Collect the tool functions below, in order, for register()."""
+
+    def __init__(self) -> None:
+        self.tools: list[Callable[..., Any]] = []
+
+    def tool(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        self.tools.append(fn)
+        return fn
+
+
+mcp = _ToolCollector()
+
+# registry.call: dispatches under the base request lock and drops None params.
+_caller: Callable[..., Awaitable[dict]] | None = None
+
+
+def register(registry: Any) -> None:
+    """Replace the base MCP tools and instructions with the browser ones."""
+    global _caller
+    _caller = registry.call
+    for name in list(registry.mcp_tools):
+        registry.remove_mcp_tool(name)
+    for fn in mcp.tools:
+        registry.register_mcp_tool(fn)
+    registry.set_mcp_identity(
+        MCP_SERVER_NAME,
+        _INSTRUCTIONS_CLUSTER if _cluster_mode else _INSTRUCTIONS_SINGLE,
+    )
+    if _cluster_mode:
+        registry.set_mcp_mode("script_only")
 
 
 async def _call(action: str, **params: Any) -> dict:
-    """Call dispatch_action with an action and params."""
-    if not _dispatch:
+    """Run an action through the base dispatcher under the request lock."""
+    if _caller is None:
         return {"success": False, "error": "Browser not ready"}
-    filtered = {k: v for k, v in params.items() if v is not None}
-    logged_params = redact_clipboard_params(action, filtered)
-    log.info(">> %s %s", action, logged_params if logged_params else "")
-    cmd: dict[str, Any] = {"action": action}
-    cmd.update(filtered)
-    if _lock:
-        async with _lock:
-            result = await _dispatch(cmd)
-    else:
-        result = await _dispatch(cmd)
-    if result.get("success", False):
-        log.info("<< %s OK", action)
-    else:
-        log.warning("<< %s FAIL: %s", action, result.get("error", "?"))
-    return result
+    return await _caller(action, **params)
 
 
 def _text_result(result: dict) -> str:
@@ -238,10 +242,16 @@ async def run_script(
         system_drag: Trusted source-to-target drag with humanized movement.
 
     TEXT INPUT:
-        For substantial text, prefer set_clipboard, focus the field, then
-        send_key with "ctrl+v". This matches normal browser use and avoids an
-        unnecessarily long synthetic typing trace. Use system_type for short
-        edits, fields that block paste, and tasks where per-key behavior matters.
+        People paste far more than they type. Enter text with paste_text. Use
+        system_type only for a few characters: a word, a short search, a small
+        edit, or a field that blocks pasting.
+        paste_text: Put text on the clipboard, click the field when a target is
+            given, then press ctrl+a, backspace and ctrl+v with human timing.
+            For GUI text fields; terminals bind those keys differently.
+            - text (str, required): Up to 1 MiB.
+            - selector / element_id / role / name / frames, or x and y with
+              optional w and h: The field to click first.
+            - replace (bool): Default true. False pastes at the caret.
         fill: Set input field value instantly (clears first, no keystrokes).
             - selector (str, required): CSS selector of input element.
             - value (str, required): Value to set.
@@ -518,7 +528,11 @@ if not _cluster_mode:
 
     @mcp.tool
     async def set_clipboard(text: str) -> str:
-        """Replace the real X11 clipboard with UTF-8 text up to 1 MiB."""
+        """Replace the real X11 clipboard with UTF-8 text up to 1 MiB.
+
+        To enter text into a field, use paste_text, which sets the clipboard
+        and pastes with human timing in one call.
+        """
         return _text_result(await _call("set_clipboard", text=text))
 
     @mcp.tool
@@ -771,7 +785,11 @@ if not _cluster_mode:
         key_hold: float | None = None,
         rollover: float | None = None,
     ) -> str:
-        """Type text with real OS-level keystrokes (undetectable).
+        """Type a few characters with real OS-level keystrokes.
+
+        For short input only: a word, a short search, a small edit, or a
+        field that blocks pasting. People rarely type anything longer; they
+        paste it. Use paste_text for everything else.
 
         Holds and releases keys with human timing: rhythm that depends on
         the key pair, overlapping keys for fast typists, and Shift pressed
@@ -800,6 +818,59 @@ if not _cluster_mode:
                 typo_rate=typo_rate,
                 key_hold=key_hold,
                 rollover=rollover,
+            )
+        )
+
+    @mcp.tool
+    async def paste_text(
+        text: str,
+        selector: str | None = None,
+        element_id: str | None = None,
+        role: str | None = None,
+        name: str | None = None,
+        frames: list[str] | None = None,
+        x: int | None = None,
+        y: int | None = None,
+        w: int | None = None,
+        h: int | None = None,
+        replace: bool = True,
+    ) -> str:
+        """Enter text the way people do: paste it, with human key timing.
+
+        The default way to put text into a field. Puts the text on the real
+        X11 clipboard, clicks the field when a target or coordinates are
+        given, then presses ctrl+a, backspace and ctrl+v with human timing and
+        irregular pauses between them. Use system_type only for a few
+        characters.
+
+        Args:
+            text: The text to enter, up to 1 MiB.
+            selector: Field selector to click first.
+            element_id: Stable element reference to click first.
+            role: Accessible role of the field to click first.
+            name: Optional accessible name used with role.
+            frames: Ordered iframe selector chain for selector or role targeting.
+            x: Viewport X of the field to click first, instead of a target.
+            y: Viewport Y of the field to click first.
+            w: Field width; the click lands at a human offset inside it.
+            h: Field height.
+            replace: Select all and clear before pasting (default true).
+                False pastes at the caret.
+        """
+        return _text_result(
+            await _call(
+                "paste_text",
+                text=text,
+                selector=selector,
+                element_id=element_id,
+                role=role,
+                name=name,
+                frames=frames,
+                x=x,
+                y=y,
+                w=w,
+                h=h,
+                replace=replace,
             )
         )
 

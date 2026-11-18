@@ -35,7 +35,6 @@ MAIN_TESTS=(
     test_live_fcaptcha_checkbox_behavior
     test_live_fcaptcha_invisible_behavior
     test_get_interactive_elements
-    test_get_resolution
     test_single_workspace
     test_calibrate
     test_eval_world
@@ -66,10 +65,7 @@ MAIN_TESTS=(
     test_selector_input
     test_click
     # test_clipboard.sh
-    test_clipboard_roundtrip
     test_clipboard_browser_copy_paste
-    test_clipboard_validation
-    test_clipboard_run_script
     # test_browser_primitives.sh
     test_dom_targets_and_references
     test_pointer_handoff_and_windows
@@ -86,15 +82,9 @@ MAIN_TESTS=(
     # test_run_script.sh
     test_run_script_json_steps
     test_run_script_yaml
-    test_run_script_human_pause
-    test_run_script_on_error_stop
-    test_run_script_on_error_continue
-    test_run_script_no_steps
     test_run_script_control_flow
-    test_request_lock
     # test_screenshots.sh
     test_screenshot_browser
-    test_screenshot_desktop
     test_screenshot_resize
     # test_tabs.sh
     test_list_tabs
@@ -111,14 +101,8 @@ MAIN_TESTS=(
     # test_waits.sh
     test_waits
     # test_recording.sh
-    test_recording_basic
-    test_recording_stop_without_start
-    test_recording_double_start
-    test_recording_bad_slug
     test_recording_viewport_uses_calibration
     test_recording_viewport_follows_fullscreen
-    test_recording_hide_cursor
-    test_recording_slug_collision
     # test_recovery.sh
     test_recovery_camoufox_crash
     test_recovery_last_tab_closed
@@ -165,10 +149,8 @@ _ts() {
 HEAVY_TESTS=(
     test_mcp_cluster_mode
     test_cluster
-    test_humanized_overrides
     test_humanized_mouse
     test_humanized_typing
-    test_humanized_input_off_event_loop
     test_humanized_scroll
     test_human_pause_detector
 )

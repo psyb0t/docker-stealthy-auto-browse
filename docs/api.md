@@ -13,7 +13,7 @@ nav_order: 3
 | `/`                   | POST   | Execute any browser action (see Actions Reference below) |
 | `/screenshot/browser` | GET    | Browser viewport as PNG (what the page looks like)       |
 | `/screenshot/desktop` | GET    | Full virtual desktop as PNG (including browser chrome)   |
-| `/state`              | GET    | Current URL, page title, and window offset as JSON       |
+| `/state`              | GET    | Current URL, page title, and window offset as JSON, plus the resolution, handoff state and input surface |
 | `/events`             | GET    | Authenticated browser event stream as SSE                |
 | `/health`             | GET    | Returns `ok` while the HTTP server is serving; not a browser health probe. |
 | `/mcp/`               | POST   | MCP (Model Context Protocol) Streamable HTTP endpoint    |
@@ -344,16 +344,19 @@ Capture `console.log`, `console.error`, `console.warn`, and other console output
 
 ### Clipboard
 
+The clipboard actions and `paste_text` come from auto-linux-desk ([clipboard reference](https://psyb0t.github.io/docker-auto-linux-desk/api/#clipboard), [entering text](https://psyb0t.github.io/docker-auto-linux-desk/api/#entering-text)); here `paste_text` also accepts an element target.
+
 The clipboard actions use the real X11 `CLIPBOARD` selection shared by Camoufox and noVNC. Browser copy operations are visible to `get_clipboard`, and text written by `set_clipboard` can be pasted into the page with `Ctrl+V`. Clipboard contents are not written to request logs.
 
-For substantial text, prefer `set_clipboard`, focus the target field, then call `send_key` with `key: "ctrl+v"`. Use `system_type` for short edits, fields that reject paste, or tests that specifically need per-keystroke behavior.
+People paste far more than they type. Enter text with `paste_text`: it puts the text on the clipboard, clicks the field when given a target or coordinates, and presses `ctrl+a`, `backspace` and `ctrl+v` with human timing. Use `system_type` only for a few characters: a word, a short search, a small edit, a field that blocks pasting, or a test that needs per-keystroke behavior.
 
 | Action | Parameters | What It Does |
 | ------ | ---------- | ------------ |
 | `set_clipboard` | `format`, `text`, `content_base64`, `files` | Replaces one clipboard target. `format` defaults to `text`. Use `text` for `text` and `html`, strict base64 PNG in `content_base64` for `image/png`, or up to 32 absolute existing regular file paths in `files`. Text and clipboard payloads are limited to 1 MiB. File lists reject symlinks and more than 1 GiB of aggregate file size. |
 | `get_clipboard` | `format` | Reads `text`, `html`, `image/png`, or `files`. PNG content returns as base64. File content is not returned. |
+| `paste_text` | `text`, element target or `x`, `y`, `w`, `h`, `replace`, plus [pointer options](#pointer-options) | Enters text the way people do. Puts `text` (up to 1 MiB) on the clipboard, clicks the field with the real mouse when a target or coordinates are given, then presses `ctrl+a`, `backspace` and `ctrl+v` with human timing and irregular pauses between them. `replace: false` skips select-all and clear and pastes at the caret. Returns `pasted_len`, `replaced`, and `clicked_at` and `landed_at` when it clicked. For page text fields; a terminal binds those keys differently. |
 
-Both actions work as HTTP actions, dedicated MCP tools, YAML script steps, and `run_script` steps. Cluster mode exposes only `run_script`, so place clipboard operations in the same script when they must run on one browser instance.
+All three work as HTTP actions, dedicated MCP tools, YAML script steps, and `run_script` steps. Cluster mode exposes only `run_script`, so place clipboard operations in the same script when they must run on one browser instance.
 
 ### Scrolling
 
@@ -373,7 +376,24 @@ Both actions work as HTTP actions, dedicated MCP tools, YAML script steps, and `
 | `save_screenshot` | `output_id`, `path`, `type`, element target, `full_page`, `width`, `height`, `whLargest` | Captures PNG only. `type` is `browser` or `desktop`. Browser capture can select one element or the full page. Element and full-page capture cannot be combined. Optional `path` writes the PNG. `output_id` collects base64 in script mode. |
 | `get_virtual_media_state` | none | Reports virtual-media configuration and, in dynamic mode, each active source basename and source revision. |
 
+### Desktop actions
+
+The desktop, the HTTP and MCP server and the humanized input come from [auto-linux-desk](https://psyb0t.github.io/docker-auto-linux-desk/), so its desktop actions also work here over HTTP and in scripts. They use screen pixels, not viewport coordinates. They have no dedicated MCP tools in this image.
+
+| Action | What It Does |
+| ------ | ------------ |
+| `desktop_list_windows` | Lists top-level X11 windows with ID, title, WM_CLASS, PID, geometry and focus. |
+| `desktop_focus_window`, `desktop_move_resize_window`, `desktop_set_window_state`, `desktop_close_window` | Focus, move, resize, maximize, minimize, fullscreen or close one window, picked by `id`, `title`, `wm_class` or `pid`. |
+| `desktop_keybindings` | Lists the Openbox keyboard shortcuts, each with the `send_key` value that presses it. |
+| `desktop_screenshot` | The whole screen as PNG, the same as `GET /screenshot/desktop`. |
+| `list_actions` | Every registered action name. |
+| `run_command`, `launch_app`, `list_launched`, `kill_launched` | Run a shell command, or start, list and stop a program. `run_command` and `launch_app` are refused unless `DESK_EXEC_ENABLED=true` (see [Configuration](configuration.md#environment-variables)), because they run anything in the container. |
+
+See the [auto-linux-desk actions reference](https://psyb0t.github.io/docker-auto-linux-desk/api/) for every parameter and return field.
+
 ### Events and human handoff
+
+These come from auto-linux-desk; see its [events and handoff reference](https://psyb0t.github.io/docker-auto-linux-desk/api/#events-and-handoff) for the event shape and the `/events` stream. This image adds browser events and counts page input during a handoff.
 
 | Action | Parameters | Result and limits |
 | --- | --- | --- |
@@ -415,6 +435,8 @@ Both actions require dynamic mode. Uploads also require a writable `VIRTUAL_MEDI
 This virtualizes `getUserMedia()` streams only. It does not add devices to `enumerateDevices()`. If a request asks for a kind without a configured virtual source, it fails with `NotFoundError` instead of using a native device. Virtual tracks retain the configured file's format and do not emulate incompatible exact media constraints. Use `get_virtual_media_state` to confirm the configured source types and dynamic source state.
 
 ### Screen recording
+
+Recording comes from auto-linux-desk; its [screen reference](https://psyb0t.github.io/docker-auto-linux-desk/api/#screen) has every parameter and return field. Here `window` records the Camoufox window, and `viewport` crops to the page.
 
 ffmpeg `x11grab` against the Xvfb display captures actual rendered pixels, including the OS-level mouse cursor by default. One recording can be active per container; a second `start_recording` returns an error. `/recordings` must exist and be writable. Mount it to retain files outside the container; the recorder checks directory existence and permissions, not whether it is a mount point.
 
@@ -462,59 +484,24 @@ Notes:
 
 ## Humanized input
 
-The OS-level actions above plan every movement and keystroke from published human motor data, then replay it through X11 with each event on its own schedule. Defaults are tuned to look like one consistent person per container; every option below is per request and optional.
+The OS-level actions plan every movement and keystroke from published human motor data, then replay it through X11 with each event on its own schedule. Each container behaves like one consistent person, and every timing option is per request and optional. The input comes from auto-linux-desk: [Humanized input](https://psyb0t.github.io/docker-auto-linux-desk/humanized-input/) there explains the mouse, click, typing, wheel and pause model and lists every option with its range and default. What this image adds:
 
-**Mouse.** Each move is a sum of overlapping sigma-lognormal strokes. A curved main stroke lands a little off, a mid-course re-aim sometimes follows, and one or two corrections finish exactly on the target. Movement time follows Fitts's law (longer moves and smaller targets take longer), speed peaks about a third of the way in, roughly a third of moves overshoot and correct, and a sub-pixel hand tremor rides on top. Events go out at a 125 Hz USB-mouse rate. The defaults were fitted to the SapiMouse dataset of 120 people.
-
-**Clicks.** After arriving, the press waits a short human pause (usually ~40 ms, sometimes a few hundred while "checking" the target), holds the button ~85-125 ms, and occasionally slips 1-2 px while pressed (Balabit dataset). The aim point is scattered inside the target, never its exact centre.
-
-**Typing.** Gaps between key presses are right-skewed (lognormal), shorter for common letter pairs and alternating hands, longer for the same finger and at word starts, with a slow drift in pace. Every key has its own hold, so fast typists press the next key before releasing the last; the same key never overlaps itself. Shift is pressed with the opposite hand well before the capital and held across runs of capitals. Each container picks a typist speed between slow and very fast (Aalto 136M keystrokes study).
-
-**Wheel.** Scrolling happens in gestures of slow controlled notches or fast flicks that speed up and slow down. Two notches are never less than 15 ms apart.
-
-**Pauses.** `human_pause` models time spent reading, reviewing, or composing while the page is visible. The pointer stays still most of the time. Optional drifts use the same fitted mouse path planner as other pointer actions, while their sparse, right-skewed timing avoids a periodic jiggle. Use it only when the task naturally includes visible thinking time. It is not a generic delay and should not be inserted between every action.
+- **Viewport coordinates.** `x` and `y` are page viewport pixels. The browser window's position on screen is re-measured (`mozInnerScreenX/Y`) before every pointer move, so coordinates stay right after fullscreen, new tab windows and browser relaunches. `calibrate` reports the current offset.
+- **Element targets.** Pointer actions accept an [element target](#element-targets) instead of coordinates; the element's current box becomes the target, with its width and height.
+- **Typo safety** for browser fields, below.
+- **Page scrolling.** `scroll_to_bottom_humanized` reads the page's scroll position, so it is available here.
 
 ### Pointer options
 
-Accepted by `system_click`, `mouse_click`, `mouse_move`, and `human_pause` where listed (the click options apply to clicks only).
-
-| Option        | Range       | Default            | Effect |
-| ------------- | ----------- | ------------------ | ------ |
-| `w`, `h`      | > 0         | small control      | Target size in px. The landing point is scattered inside it and movement time follows its size. |
-| `duration`    | > 0         | Fitts's law        | Rescale the whole move to this many seconds. Wins over `speed`. |
-| `speed`       | 0.1-10      | 1 (session pace)   | Speed multiplier; 2 moves twice as fast. |
-| `curvature`   | 0-5         | 1                  | How much the main stroke bends; 0 makes it straight. Corrections keep their own small bend. |
-| `tremor`      | 0-5 px      | 0.35               | Hand tremor amplitude. |
-| `click_hold`  | 0.01-5 s    | session ~85-125 ms | Median time the button stays down. |
-| `click_delay` | 0-10 s      | human mix          | Median pause between arriving and pressing. |
+`w`, `h`, `duration`, `speed`, `curvature`, `tremor`, `click_hold` and `click_delay`. See [pointer options](https://psyb0t.github.io/docker-auto-linux-desk/humanized-input/#pointer-options) for ranges and defaults.
 
 ### Pause options
 
-Accepted by `human_pause`. With no rectangle, drift stays within the current viewport. When `x` and `y` are supplied, both are required and identify the centre of the safe rectangle. `w` and `h` default to 80 px.
-
-| Option             | Range       | Default | Effect |
-| ------------------ | ----------- | ------- | ------ |
-| `duration`         | 0.1-300 s   | 1 s     | Time spent in the pause after any initial parking move. |
-| `x`, `y`           | viewport coordinates | current pointer | Optional centre of the safe rectangle. |
-| `w`, `h`           | 4-10000 px  | 80 px   | Safe rectangle size, intersected with the viewport. |
-| `drift`            | true/false  | true    | Allow sparse pointer drifts during the pause. |
-| `drift_interval`   | 1-120 s     | 12 s    | Median interval used by the right-skewed drift schedule. |
-| `drift_distance`   | 0-500 px    | 60 px   | Maximum distance of each drift within the safe rectangle. Zero keeps the pointer still. |
-| `speed`            | 0.1-10      | 1       | Speed multiplier for each drift path. |
-| `curvature`        | 0-5         | 1       | Curvature of each drift path. |
-| `tremor`           | 0-5 px      | 0.35    | Tremor amplitude on each drift path. |
+`duration`, `x`, `y`, `w`, `h`, `drift`, `drift_interval`, `drift_distance`, `speed`, `curvature` and `tremor`, with `x` and `y` in viewport coordinates. See [pause options](https://psyb0t.github.io/docker-auto-linux-desk/humanized-input/#pause-options).
 
 ### Typing options
 
-Accepted by `system_type`. `send_key` accepts `key_hold` (default median 100 ms, held 50-250 ms), or `instant: true` to skip human timing entirely; the two cannot be combined.
-
-| Option      | Range      | Default              | Effect |
-| ----------- | ---------- | -------------------- | ------ |
-| `interval`  | > 0 s      | session typist speed | Median gap between key presses; also picks the matching typist's spread and key overlap. |
-| `key_hold`  | 0.01-2 s   | session ~75-145 ms   | Median time each key is held. |
-| `rollover`  | 0-1        | by typist speed      | When the next key comes before the last one is released, the chance of keeping that overlap instead of releasing first. |
-| `typos`     | true/false | false                | Make and correct occasional typos. |
-| `typo_rate` | 0-0.2      | 0.02 when typos      | Typos per letter. Setting it turns typos on; `typos: false` with a non-zero `typo_rate` is an error. |
+`interval`, `key_hold`, `rollover`, `typos` and `typo_rate` for `system_type`; `key_hold` or `instant` for `send_key`. See [typing options](https://psyb0t.github.io/docker-auto-linux-desk/humanized-input/#typing-options).
 
 #### Typos
 
@@ -522,15 +509,7 @@ Typos are always corrected. A neighbouring key, a swapped pair, or a doubled or 
 
 ### Wheel options
 
-| Option        | Actions                                   | Range       | Default          | Effect |
-| ------------- | ----------------------------------------- | ----------- | ---------------- | ------ |
-| `notch_gap`   | `scroll`, `scroll_to_bottom_humanized`    | 0.015-5 s   | flick/controlled | Median seconds between wheel notches. |
-| `scroll_back` | `scroll_to_bottom_humanized`              | 0-1         | 0.06             | Chance per gesture of scrolling back up a little (at most twice per page). |
-| `drift`       | `scroll_to_bottom_humanized`              | 0-1         | 0.4              | Chance per reading pause of drifting the pointer. |
-
-Out-of-range values are rejected with an error naming the option before any input is sent. Existing input options accept numeric strings such as `"250"`; `human_pause` numeric fields require JSON numbers. Boolean options must be JSON booleans; `"true"` is rejected.
-
-OS-level input runs in a worker thread, so `/health`, screenshots, and MCP stay responsive while a long `system_type` or scroll plays. Actions themselves still run one at a time.
+`notch_gap` for `scroll` and `scroll_to_bottom_humanized`; `scroll_back` and `drift` for `scroll_to_bottom_humanized`. See [wheel options](https://psyb0t.github.io/docker-auto-linux-desk/humanized-input/#wheel-options).
 
 ## Screenshots
 
