@@ -181,4 +181,4 @@ The live suite checks fingerprint consistency on [liarjs.dev](https://liarjs.dev
 
 ## License
 
-**WTFPL** (Do What The Fuck You Want To Public License)
+Copyright (C) 2026 Ciprian Mandache. Licensed under the [GNU Affero General Public License v3.0 only](LICENSE) (AGPL-3.0-only). If you run a modified version as a network service, you must offer its source to the people who use it. Releases up to 3.7.0 were published under the WTFPL and keep it. The browser and extensions in the image keep their own licenses; see [THIRD_PARTY.md](THIRD_PARTY.md). The OpenClaw plugin in `.agents/plugins/stealthy-auto-browse` is MIT.

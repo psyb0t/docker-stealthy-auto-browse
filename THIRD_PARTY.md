@@ -1,6 +1,6 @@
 # Third-party software
 
-stealthy-auto-browse's own code (this repo) is [WTFPL](LICENSE)-licensed. The
+stealthy-auto-browse's own code (this repo) is licensed under the [AGPL-3.0-only](LICENSE). The
 **published Docker image** bakes in a browser and browser extensions
 at build time (`Dockerfile`: the pinned Camoufox release archive and
 `RUN python /scripts/install_extensions.py`) that ship under their own licenses.
@@ -25,4 +25,4 @@ LGPL-3.0 (ClearURLs) components, the corresponding source is available at each
 component's URL above, and their license texts are included under
 [`LICENSES/`](LICENSES/). None of these are linked into or combined with
 stealthy-auto-browse's own code. They run as a separate browser process
-(aggregation), so the repo's own source stays WTFPL.
+(aggregation), so they keep their own licenses and the repo's own source is AGPL-3.0-only.

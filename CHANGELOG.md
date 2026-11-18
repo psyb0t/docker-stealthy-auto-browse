@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.8.0] 2026-11-18
+
+### Changed
+
+- The license is now the GNU Affero General Public License v3.0 only (AGPL-3.0-only) instead of the WTFPL. Releases up to 3.7.0 keep the WTFPL. Anyone who runs a modified version as a network service must offer its source to its users. The bundled browser and extensions keep their own licenses, and the OpenClaw plugin stays MIT.
+
 ## [3.7.0] 2026-11-18
 
 The image is now built on [auto-linux-desk](https://github.com/psyb0t/docker-auto-linux-desk), which provides the desktop, VNC, the HTTP and MCP server, script mode, recording, the clipboard and the humanized input. The browser is a plugin of that server. Action names, parameters and responses, MCP tools and their schemas, HTTP routes, ports, environment variables, the `browser` user at UID 1000, `/home/browser`, `/userdata` persistence and script-mode output are unchanged; a snapshot of the old and new images differs only in the additions listed here.
