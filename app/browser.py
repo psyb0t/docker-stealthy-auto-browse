@@ -562,6 +562,22 @@ def _virtual_media_enabled() -> bool:
     raise BrowserError("VIRTUAL_MEDIA_DYNAMIC must be true or false")
 
 
+# DESK_DARK_MODE is the base image's switch for a dark desktop; its accepted
+# values match the base entrypoint, which already refuses anything else.
+_DARK_MODE_ON = frozenset({"true", "1", "yes", "on"})
+_DARK_MODE_OFF = frozenset({"false", "0", "no", "off"})
+
+
+def _dark_mode_enabled() -> bool:
+    """Parse DESK_DARK_MODE: on makes pages start in the dark color scheme."""
+    value = os.environ.get("DESK_DARK_MODE")
+    if value is None or value in _DARK_MODE_OFF:
+        return False
+    if value in _DARK_MODE_ON:
+        return True
+    raise BrowserError("DESK_DARK_MODE must be true/1/yes/on or false/0/no/off")
+
+
 def _virtual_media_upload_max_bytes() -> int:
     """Parse the bounded dynamic upload size at startup."""
     raw_value = os.environ.get(
@@ -854,6 +870,7 @@ class BrowserConfig:
     virtual_media_dynamic: bool = False
     virtual_media_upload_max_bytes: int = VIRTUAL_MEDIA_UPLOAD_MAX_BYTES_DEFAULT
     captcha_solver: CaptchaSolverConfig = field(default_factory=CaptchaSolverConfig)
+    dark_mode: bool = False
 
     @classmethod
     def from_environment(cls) -> "BrowserConfig":
@@ -865,6 +882,7 @@ class BrowserConfig:
             virtual_media_dynamic=virtual_media_dynamic,
             virtual_media_upload_max_bytes=_virtual_media_upload_max_bytes(),
             captcha_solver=CaptchaSolverConfig.from_environment(),
+            dark_mode=_dark_mode_enabled(),
         )
 
 
@@ -888,7 +906,8 @@ class Browser:
         self._virtual_media_revision = 0
         # Emulated prefers-color-scheme, or None for the browser's own value.
         # Kept here so it survives a relaunch and reaches pages opened later.
-        self._color_scheme: str | None = None
+        # DESK_DARK_MODE starts it at dark, as set_color_scheme("dark") would.
+        self._color_scheme: str | None = "dark" if self.config.dark_mode else None
 
     @property
     def color_scheme(self) -> str:

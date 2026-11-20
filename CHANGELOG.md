@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.9.0] 2026-11-20
+
+The image now builds on auto-linux-desk 0.5.0 instead of 0.2.3.
+
+### Added
+
+- **`DESK_DARK_MODE=true` turns the browser and the desktop dark.** The browser's toolbar, xterm, window title bars and the background go dark, and every tab starts in the dark color scheme, as `set_color_scheme` with `dark` does, so sites that follow the system theme open dark from the first page. `set_color_scheme` still changes the tabs at runtime. Off by default; a malformed value stops startup. See [configuration](https://psyb0t.github.io/docker-stealthy-auto-browse/configuration/#environment-variables).
+- `desktop_accessibility_tree`, `desktop_accessibility_find` and `desktop_accessibility_action` read and act on desktop app controls over AT-SPI2, from the base image. See the base image's [accessibility tree](https://psyb0t.github.io/docker-auto-linux-desk/accessibility/).
+- `KEYBINDINGS_FILE` replaces the window manager's key map at startup, and `DESK_SUDO_ENABLED=true` gives the browser user passwordless sudo, both off unless set.
+
+### Changed
+
+- **Window manager shortcuts moved from the Super key to `ctrl+alt`.** The old `win+` shortcuts (`win+left` and `win+right` tiling, `win+return` for a terminal, `win+f`, `win+h`, `win+c`, `win+d` and the `win+shift` moves) are gone, because the Super key leaked into VNC viewers and opened their start menus. Tiling is now `ctrl+alt+left` and `ctrl+alt+right`, with quarters, focusing the browser (`ctrl+alt+b`), the terminal (`ctrl+alt+t`) or a window by number (`ctrl+alt+1` to `ctrl+alt+9`), and window states on `ctrl+alt` too. `desktop_keybindings` lists the current map. See [configuration](https://psyb0t.github.io/docker-stealthy-auto-browse/configuration/#window-manager).
+- `AGENTS.md`, the guide for coding agents working on this repository, is now part of the repository, with `CLAUDE.md` and `.claude` linking to `AGENTS.md` and `.agents`.
+
 ## [3.8.0] 2026-11-18
 
 ### Changed

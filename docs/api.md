@@ -386,6 +386,7 @@ The desktop, the HTTP and MCP server and the humanized input come from [auto-lin
 | `desktop_focus_window`, `desktop_move_resize_window`, `desktop_set_window_state`, `desktop_close_window` | Focus, move, resize, maximize, minimize, fullscreen or close one window, picked by `id`, `title`, `wm_class` or `pid`. |
 | `desktop_keybindings` | Lists the Openbox keyboard shortcuts, each with the `send_key` value that presses it. |
 | `desktop_screenshot` | The whole screen as PNG, the same as `GET /screenshot/desktop`. |
+| `desktop_accessibility_tree`, `desktop_accessibility_find`, `desktop_accessibility_action` | Read the controls desktop apps expose over AT-SPI2 (role, name, states, bounds, actions, text), filter them, and run a control's action or set its text without moving the mouse. See [Accessibility tree](https://psyb0t.github.io/docker-auto-linux-desk/accessibility/). |
 | `list_actions` | Every registered action name. |
 | `run_command`, `launch_app`, `list_launched`, `kill_launched` | Run a shell command, or start, list and stop a program. `run_command` and `launch_app` are refused unless `DESK_EXEC_ENABLED=true` (see [Configuration](configuration.md#environment-variables)), because they run anything in the container. |
 

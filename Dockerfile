@@ -5,7 +5,7 @@
 # Bump both together, then re-resolve the digest with:
 #   docker buildx imagetools inspect psyb0t/auto-linux-desk:vX.Y.Z --format '{{.Manifest.Digest}}'
 # For a local base build, pass --build-arg BASE_IMAGE=psyb0t/auto-linux-desk:local.
-ARG BASE_IMAGE=psyb0t/auto-linux-desk:v0.2.3@sha256:f10772a5d49d067526d03dca6413dc917416e7a36212ee7b9fb3a518ba028eb3
+ARG BASE_IMAGE=psyb0t/auto-linux-desk:v0.5.0@sha256:17ee3cec9127ea8d7b3effdb9bfcadf8a3f2f629842cd654584678e706f1bb24
 FROM ${BASE_IMAGE}
 
 # MCP Registry ownership label (replaces the base image's).

@@ -2,7 +2,6 @@
 __pycache__
 .research_files
 app/profile
-CLAUDE.md
 screenshot.png
 .testdata
 .git-update.sh
@@ -13,7 +12,6 @@ research_files
 reply.txt
 git-update.sh
 git-update.sh.debot
-.claude
 lasttest.log
 tests/results/
 plan.md
@@ -28,7 +26,7 @@ plan.md
 sec.sarif
 
 # Codex and agent scratch
-AGENTS.md
+CLAUDE.local.md
 CODEX.local.md
 .agent_notes/
 .agent_knowledge/
@@ -68,3 +66,4 @@ vendor/
 # Local agent and editor settings.
 *.local.json
 .plan/
+scheduled_tasks.lock
