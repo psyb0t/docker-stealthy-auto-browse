@@ -107,6 +107,9 @@ docker run -d -p 127.0.0.1:8080:8080 \
 # For a private pr0xteus (v0.11.0+) HTTP proxy, allocate a lease, read its
 # proxies.http URL, and pass that as PROXY_URL (Camoufox can't reliably do authenticated SOCKS5).
 # The working allocation-to-browser command sequence is in docs/configuration.md.
+# A lease lasts 15 minutes and PROXY_URL is read once at start, so allocate right before
+# the run and start a new container with a new lease next time. A pr0xteus on another
+# machine returns URLs on its Tailscale name, which needs no host network.
 
 # Custom resolution
 docker run -d -p 127.0.0.1:8080:8080 \

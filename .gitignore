@@ -67,3 +67,5 @@ vendor/
 *.local.json
 .plan/
 scheduled_tasks.lock
+
+.tutorial-video/

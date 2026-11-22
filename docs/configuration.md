@@ -125,6 +125,28 @@ unset token allocation proxy_url
 
 The browser API is now on `http://127.0.0.1:8090`. `proxy_url` is a short-lived `http://<lease-id>:<lease-secret>@127.0.0.1:8080` credential targeting pr0xteus's controller, which forwards to the selected WireGuard cell. Keep it out of logs and expect it to expire.
 
+When pr0xteus runs on another machine and serves its proxies on a Tailscale name (its [Tailscale sidecar](https://github.com/psyb0t/pr0xteus/blob/main/docs/deploy.md)), the returned URL already points at that name, so the browser needs no host network:
+
+```bash
+allocation="$(
+  curl --fail-with-body --request POST \
+    --header "Authorization: Bearer $token" \
+    --header 'Content-Type: application/json' \
+    --data '{"country":"US"}' \
+    http://pr0xteus.<tailnet>.ts.net/v1/proxies
+)"
+proxy_url="$(jq -er '.proxies.http' <<<"$allocation")"
+
+docker run -d --name browser \
+  -p 127.0.0.1:8080:8080 \
+  -e PROXY_URL="$proxy_url" \
+  psyb0t/stealthy-auto-browse
+
+unset token allocation proxy_url
+```
+
+The Docker host must be on the same tailnet. A lease lasts 15 minutes by default (`TUNNEL_POOL_PROXY_LEASE_TTL`), and `PROXY_URL` is read once when the browser starts, so allocate the lease right before the run and start a new container with a new lease for the next one. This is also the way out when a site refuses after a few signups or requests from one IP: each lease can land on a different exit. Firefox does not send `localhost` through the proxy.
+
 Both proxy URLs default to host loopback, so `--network host` is the simplest way for the browser container to reach them. If you can't share the host network, publish pr0xteus's HTTP proxy on an address the browser container can reach (`PR0XTEUS_HTTP_PROXY_HOST_PORT` / `PR0XTEUS_HTTP_PROXY_PUBLIC_ADDRESS`), or use its Tailscale sidecar, then pass that `.proxies.http` URL as `PROXY_URL`. See pr0xteus's [deploy docs](https://github.com/psyb0t/pr0xteus/blob/main/docs/deploy.md). Request a country/pool that actually matches your configured WireGuard node, then set `TZ`, locale, and other browser settings consistently with that exit. Add `AUTH_TOKEN` before letting another local process control the browser.
 
 **Custom resolution:**

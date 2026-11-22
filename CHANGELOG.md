@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.9.1] 2026-11-22
+
+### Changed
+
+- The proxy docs show pr0xteus on another machine reached over its Tailscale name, with no host network, and say that a lease lasts 15 minutes and `PROXY_URL` is read once at start, so each run needs a new container with a new lease. A new lease is also the way past a site that refuses after a few signups from one IP. See [configuration](https://psyb0t.github.io/docker-stealthy-auto-browse/configuration/#environment-variables).
+
+### Fixed
+
+- The example page loader `loaders/00_example.yaml` failed on the current example.com, which no longer has an `h1`: its first `eval` threw and `goto` returned `success: false`. It now adds the heading and paragraph when the page has none, so the banner, heading and text appear again. See [page loaders](https://psyb0t.github.io/docker-stealthy-auto-browse/page-loaders/).
+
 ## [3.9.0] 2026-11-20
 
 The image now builds on auto-linux-desk 0.5.0 instead of 0.2.3.

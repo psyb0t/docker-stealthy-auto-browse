@@ -7,16 +7,29 @@ steps:
     url: "${url}"
     wait_until: domcontentloaded
 
-  # Replace the heading text
+  # Replace the heading text, adding a heading when the page has none
   - action: eval
     expression: |
-      document.querySelector('h1').textContent = 'Hello from Loader!'
+      (() => {
+        let heading = document.querySelector('h1');
+        if (!heading) {
+          heading = document.createElement('h1');
+          document.body.prepend(heading);
+        }
+        heading.textContent = 'Hello from Loader!';
+      })()
 
-  # Replace the paragraph text
+  # Replace the first paragraph's text, adding a paragraph when the page has none
   - action: eval
     expression: |
-      document.querySelector('p').textContent =
-        'This page was modified by the example loader.'
+      (() => {
+        let paragraph = document.querySelector('p');
+        if (!paragraph) {
+          paragraph = document.createElement('p');
+          document.querySelector('h1').after(paragraph);
+        }
+        paragraph.textContent = 'This page was modified by the example loader.';
+      })()
 
   # Inject a styled banner at the top
   - action: eval

@@ -25,3 +25,5 @@ research_files
 .telemetry/
 scripts/sec.sh
 .plan/
+
+.tutorial-video/
