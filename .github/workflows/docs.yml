@@ -1,0 +1,20 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  docs:
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: psyb0t/reusable-github-workflows/.github/workflows/pages-workflow.yml@master
+    with:
+      site_dir: website/build
+      build_command: make docs

@@ -6,7 +6,6 @@ TEST_TAG ?= $(TAG)-test
 DEV_BASE_IMAGE := $(IMAGE_NAME):dev-base
 DEV_IMAGE := $(IMAGE_NAME):dev
 PROJECT_ROOT := $(CURDIR)
-DOCS_IMAGE := ghcr.io/actions/jekyll-build-pages:v1.0.13@sha256:6791ebfd912185ed59bfb5fb102664fa872496b79f87ff8b9cfba292a7345041
 TEST_ARGS ?=
 # Override the pinned auto-linux-desk base, e.g. BASE_IMAGE=psyb0t/auto-linux-desk:local.
 BASE_IMAGE ?=
@@ -56,7 +55,11 @@ DEV_RUN_DIND := docker run --rm --init --read-only \
 	$(DEV_IMAGE)
 
 .DEFAULT_GOAL := help
-.PHONY: help dev-image shell build build-test lint lint-fix format test test-real test-unit sec generate clean docs-build
+
+# Documentation site targets (docs, docs-preview, docs-lock, docs-audit).
+-include website/docs.mk
+
+.PHONY: help dev-image shell build build-test lint lint-fix format test test-real test-unit sec generate clean
 
 help: ## Show supported development commands.
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -111,12 +114,6 @@ sec: dev-image ## Write security findings to sec.sarif for GitHub Security.
 
 generate: ## This repository has no generated source.
 	@:
-
-docs-build: ## Build the GitHub Pages documentation locally.
-	docker run --rm --user $(UID):$(GID) -e HOME=/tmp -e GITHUB_WORKSPACE=/work \
-		-e GITHUB_REPOSITORY=psyb0t/docker-stealthy-auto-browse \
-		-e INPUT_SOURCE=docs -e INPUT_DESTINATION=.testing/docs-site \
-		-e INPUT_VERBOSE=false -v "$(PROJECT_ROOT):/work" $(DOCS_IMAGE)
 
 clean: ## Remove only this project's local images.
 	docker image rm $(DEV_IMAGE) $(DEV_BASE_IMAGE) $(IMAGE_NAME):$(TAG) $(IMAGE_NAME):$(TEST_TAG)

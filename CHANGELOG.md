@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.9.2] 2026-11-24
+
+### Changed
+
+- The README links the video walkthrough, which starts the container, watches it in noVNC, drives it over HTTP with real OS-level input, and runs the bundled examples: <https://www.youtube.com/watch?v=EtlkxOHKnc8>.
+- The documentation site is built with Docusaurus instead of Jekyll and has full-text search. Page URLs and heading anchors are unchanged.
+- The docs now match the code in places where they were wrong. During a human handoff only a short list of read actions runs, so `detect_challenge`, `eval` and the waits are refused too. `run_script` reports top-level `success: true` even when a step failed, so check `data.success`. In cluster mode, `QUEUE_TIMEOUT` only bounds the queue wait, and HAProxy cuts off a request after 10 minutes with no response data, so a `run_script` that runs longer than that is cut off. `XVFB_DEPTH=32` does not start. `VIRTUAL_MEDIA_UPLOAD_MAX_BYTES` takes plain bytes. With `REDIS_URL` set, `delete_cookies` clears the cookies of every replica. Switching tabs moves the pointer and clicks with no human timing and briefly adds an element to the page. See [HTTP API reference](https://psyb0t.github.io/docker-stealthy-auto-browse/api/).
+
 ## [3.9.1] 2026-11-22
 
 ### Changed

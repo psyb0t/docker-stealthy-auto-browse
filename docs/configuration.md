@@ -1,7 +1,7 @@
 ---
 title: Configuration
 description: Configure browser identity, proxies, display size, authentication, solver providers, virtual media, persistent profiles, and logging.
-nav_order: 2
+sidebar_position: 3
 ---
 
 # Configuration
@@ -11,12 +11,12 @@ nav_order: 2
 | Variable           | Default         | What it does                                                                                                                                                                                                                                                                                             |
 | ------------------ | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `XVFB_RESOLUTION`  | `1920x1080`     | Virtual display resolution. The browser runs at this size and the Xvfb framebuffer is allocated to match, so any width/height works (e.g. `1280x720`, `1920x1920`, `2560x1440`). Larger framebuffers use more memory and are slower to software-render, but there is no hard cap. Screen recording captures this exact size. Set a square/tall resolution here if that's what you need to record. |
-| `XVFB_DEPTH`       | `24`            | Color depth of the virtual display (16, 24, or 32 bit). 24 is fine for everything.                                                                                                                                                                                                                       |
+| `XVFB_DEPTH`       | `24`            | Color depth of the virtual display: 16 or 24. Xvfb has no 32-bit screen depth, so `32` stops startup. 24 is fine for everything.                                                                                                                                                                                                                       |
 | `TZ`               | `UTC`           | **Timezone. This one matters for stealth.** Bot detectors compare your browser's timezone against your IP's geographic location. If your IP says you're in Romania but your timezone says UTC, that's a red flag. Set this to match your IP: `Europe/Bucharest`, `America/New_York`, `Asia/Tokyo`, etc. |
 | `LANG`             | `en_US.UTF-8`   | Browser locale/language. Override with `-e LANG=fr_FR.UTF-8` etc. to change the browser's locale.                                                                                                                                                                                                        |
 | `USE_VIEWPORT`     | `false`         | Enables Playwright viewport control. Required if you need widths below ~450px (Firefox minimum without it). **Reduces stealth** because it adds Playwright viewport management. Only use for mobile layout testing on sites that don't have bot detection.                                               |
 | `LOADERS_DIR`      | `/loaders`      | Directory the container scans for page loader YAML files. See [page-loaders.md](./page-loaders.md).                                                                                                                                                                                                      |
-| `PROXY_URL`        | unset           | Routes all browser traffic through a proxy. Both `http://user:pass@host:port` and `socks5://host:port` work, but **Camoufox (Firefox) does not reliably support _authenticated_ SOCKS5** (username/password). For any exit that needs credentials, use an HTTP proxy. Unauthenticated SOCKS5 is fine. Use an authorized exit whose location matches the browser fingerprint you are testing. |
+| `PROXY_URL`        | unset           | Routes all browser traffic through a proxy. Both `http://user:pass@host:port` and `socks5://host:port` work, but **Camoufox (Firefox) does not reliably support _authenticated_ SOCKS5** (username/password). For any exit that needs credentials, use an HTTP proxy. Unauthenticated SOCKS5 is fine. Include the port: a URL without one does not work. Write credentials unencoded: percent-escapes are passed through literally. The password may contain `@` and `:`; the username may not contain `:`; neither may contain `/`, `?` or `#`. Use an authorized exit whose location matches the browser fingerprint you are testing. |
 | `HTTP_LISTEN_HOST` | `0.0.0.0`       | Host address the HTTP API binds to.                                                                                                                                                                                                                                                                      |
 | `HTTP_LISTEN_PORT` | `8080`          | Port the HTTP API listens on.                                                                                                                                                                                                                                                                            |
 | `AUTH_TOKEN`       | unset           | If set, all requests (except `/health`) require an `Authorization: Bearer <token>` header. Applies to both HTTP API and MCP.                                                                                                                                                                             |
@@ -25,19 +25,19 @@ nav_order: 2
 | `DESK_SUDO_ENABLED` | `false` | `true` gives the browser user passwordless sudo inside the container. See the base image's [passwordless sudo](https://psyb0t.github.io/docker-auto-linux-desk/installation/#passwordless-sudo). |
 | `KEYBINDINGS_FILE` | unset | Path to a key map that replaces the window manager's whole keyboard map at startup. See the base image's [keyboard shortcuts](https://psyb0t.github.io/docker-auto-linux-desk/keyboard/#replacing-the-key-map). |
 | `CAPTCHA_SOLVER_PROVIDER` | unset | Optional provider: `nopecha`, `capsolver`, `capmonster`, `nocaptchaai`, `yescaptcha`, `2captcha`, or `anticaptcha`. Selecting a provider enables it. |
-| `CAPTCHA_SOLVER_ENABLED` | unset | Optional strict `true` or `false` switch. A selected provider already enables support. `false` conflicts with a provider or key. |
+| `CAPTCHA_SOLVER_ENABLED` | unset | Optional `true` or `false` switch (case-insensitive). A selected provider already enables support, and `true` still needs a provider. `false` conflicts with a provider or key. |
 | `CAPTCHA_SOLVER_API_KEY` | unset | Provider API key. Mutually exclusive with `CAPTCHA_SOLVER_API_KEY_FILE`. Environment values are visible through `docker inspect`. NopeCHA alone permits no key. |
 | `CAPTCHA_SOLVER_API_KEY_FILE` | unset | Path to a UTF-8 file containing the provider API key, typically a mounted Docker secret. |
-| `VIRTUAL_MEDIA_DIR` | `/media` | Directory containing virtual media files. Configured source paths and dynamic source names must resolve inside this directory. Mount it read-only for static media; dynamic uploads require it to be writable. |
+| `VIRTUAL_MEDIA_DIR` | `/media` | Directory containing virtual media files. Configured source paths and dynamic source names must resolve inside this directory. Mount it read-only for static media; dynamic uploads require it to be writable by `PUID`/`PGID`, and the entrypoint does not repair its ownership. |
 | `VIRTUAL_CAMERA_FILE` | unset | Video file to return as the video track from page `getUserMedia()`. Absolute or relative to `VIRTUAL_MEDIA_DIR`; validated at startup. |
 | `VIRTUAL_MICROPHONE_FILE` | unset | Audio file to return as the audio track from page `getUserMedia()`. Absolute or relative to `VIRTUAL_MEDIA_DIR`; validated at startup. |
-| `VIRTUAL_MEDIA_DYNAMIC` | `false` | Enables runtime selection and bounded upload of file-backed virtual camera and microphone sources. Existing static-media behavior is unchanged when false. Uploads require a safe filename with a declared video/audio type matching the requested kind. The service stores them under generated collision-safe basenames and checks them with `ffprobe` for the requested stream before storage or activation. |
-| `VIRTUAL_MEDIA_UPLOAD_MAX_BYTES` | `50 MiB` | Maximum decoded upload size accepted by `upload_virtual_media` when dynamic mode is enabled. |
+| `VIRTUAL_MEDIA_DYNAMIC` | `false` | Enables runtime selection and bounded upload of file-backed virtual camera and microphone sources. Accepts `true`, `1`, `yes` and `false`, `0`, `no` (not `on` or `off`); any other value stops startup. Existing static-media behavior is unchanged when false. Uploads require a safe filename with a declared video/audio type matching the requested kind. The service stores them under generated collision-safe basenames and checks them with `ffprobe` for the requested stream before storage or activation. |
+| `VIRTUAL_MEDIA_UPLOAD_MAX_BYTES` | `52428800` (50 MiB) | Maximum decoded upload size accepted by `upload_virtual_media` when dynamic mode is enabled. A positive integer number of bytes; a unit suffix such as `100MiB` stops startup. |
 | `VNC_LISTEN_HOST`  | `0.0.0.0`       | Host address VNC (noVNC + x11vnc) binds to.                                                                                                                                                                                                                                                              |
 | `VNC_LISTEN_PORT`  | `5900`          | Port the noVNC web viewer listens on.                                                                                                                                                                                                                                                                    |
 | `VNC_SHOW_CURSOR`  | `true`          | Shows the actual X11 pointer position in the noVNC framebuffer, including automated pointer moves. Set to `false` to hide it. Only `true` and `false` are accepted.                                                                                                                                       |
 | `REDIS_URL`        | unset           | Redis connection string for cross-instance cookie sync. See [cluster-mode.md](./cluster-mode.md).                                                                                                                                                                                                        |
-| `LOG_LEVEL`        | `INFO`          | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`. Filter what the JSON logger emits to stderr.                                                                                                                                                                                                                 |
+| `LOG_LEVEL`        | `INFO`          | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Filter what the JSON logger emits to stderr. An unknown value falls back to `INFO` without an error.                                                                                                                                                                                                                 |
 | `LOG_FILE`         | unset           | If set, also write JSON logs to this file with 10MB × 5 backup rotation (in addition to stderr). Useful when you want a persistent log alongside `docker logs`.                                                                                                                                          |
 | `PUID` | `1000` | UID used after the entrypoint repairs writable-directory ownership and drops privileges. |
 | `PGID` | value of `PUID` | GID used for ownership and the browser process. |
@@ -45,7 +45,7 @@ nav_order: 2
 
 The entrypoint also honors `DISPLAY` when deciding whether to start Xvfb. Leave it unset or at `:99` for the supported bundled display; x11vnc targets `:99`. `XAUTHORITY` is an internal X11 authentication setting, not API authentication.
 
-The [cluster compose file](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/docker-compose.cluster.yml) defaults to five browser replicas and reads `NUM_REPLICAS`, `BROWSER_MEMORY_LIMIT` (default `5g`), and `BROWSER_MEMORY_RESERVATION` (default `512m`) to size the fleet. See [cluster mode](./cluster-mode.md#environment-variables). Setting `REDIS_URL` enables automatic cookie-jar reconciliation every second, including website changes and deletions. Other profile state is not shared.
+The [cluster compose file](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/docker-compose.cluster.yml) defaults to five browser replicas and reads `NUM_REPLICAS`, `BROWSER_MEMORY_LIMIT` (default `5g`), `BROWSER_MEMORY_RESERVATION` (default `512m`), `QUEUE_TIMEOUT` (default `300`) and `TZ` (default `America/New_York` there, not `UTC`). See [cluster mode](./cluster-mode.md#environment-variables). Setting `REDIS_URL` enables automatic cookie-jar reconciliation every second, including website changes and deletions. Other profile state is not shared.
 
 ## CAPTCHA solver providers
 
@@ -73,7 +73,7 @@ volumes:
   browser-data:
 ```
 
-Direct keys work too, but Docker exposes environment values through container inspection. All providers except NopeCHA require a key. Startup fails on conflicting settings or when an extension cannot be downloaded, verified, safely extracted, or configured.
+Direct keys work too, but Docker exposes environment values through container inspection. All providers except NopeCHA require a key. Setting any of the four `CAPTCHA_SOLVER_*` variables, even to an empty string, turns validation on, so a Compose file that passes `CAPTCHA_SOLVER_PROVIDER: ${CAPTCHA_SOLVER_PROVIDER:-}` through stops startup with `CAPTCHA_SOLVER_PROVIDER is required` when it is empty. Leave the variables out entirely to disable solving. Startup fails on conflicting settings or when an extension cannot be downloaded, verified, safely extracted, or configured.
 
 An extension has access to every page and sends supported challenge data to its provider. Firefox can cache its configuration in the profile. Protect `/userdata`, remove it when rotating a key, review the provider's terms, and use solving only where authorized. The project does not promise accuracy, quotas, uptime, or compatibility.
 
@@ -128,6 +128,10 @@ The browser API is now on `http://127.0.0.1:8090`. `proxy_url` is a short-lived 
 When pr0xteus runs on another machine and serves its proxies on a Tailscale name (its [Tailscale sidecar](https://github.com/psyb0t/pr0xteus/blob/main/docs/deploy.md)), the returned URL already points at that name, so the browser needs no host network:
 
 ```bash
+# The token is PR0XTEUS_API_TOKEN from the pr0xteus .env on the other machine.
+read -rsp 'pr0xteus API token: ' token
+echo
+
 allocation="$(
   curl --fail-with-body --request POST \
     --header "Authorization: Bearer $token" \
@@ -161,14 +165,6 @@ docker run -d -e XVFB_RESOLUTION=1280x720 -p 8080:8080 psyb0t/stealthy-auto-brow
 docker run -d -e USE_VIEWPORT=true -e XVFB_RESOLUTION=375x812 -p 8080:8080 psyb0t/stealthy-auto-browse
 ```
 
-**Recording (mount /recordings to collect mp4 files):**
-
-```bash
-mkdir -p ./recordings
-docker run -d -p 8080:8080 -v ./recordings:/recordings psyb0t/stealthy-auto-browse
-# Then drive `start_recording` / `stop_recording` via the API; files land in ./recordings/<slug>.mp4
-```
-
 **Virtual camera and microphone (file-backed `getUserMedia()`):**
 
 ```bash
@@ -181,7 +177,7 @@ docker run -d -p 8080:8080 \
   psyb0t/stealthy-auto-browse
 ```
 
-The files are supplied only to page `navigator.mediaDevices.getUserMedia()` calls; they do not create native devices in `enumerateDevices()`. When virtual media is configured, the browser also makes `getUserMedia()` available to HTTP pages so controlled local test fixtures can report camera/microphone results directly. Requests for a kind without a configured source fail with `NotFoundError` rather than using hardware; virtual tracks retain the source file's format and do not emulate incompatible exact media constraints. The browser resolves source paths at startup. They must stay inside `VIRTUAL_MEDIA_DIR` (including after symlink resolution), and require a browser restart to change. Treat the mounted media as test input for the pages you navigate to.
+When virtual media is configured, the browser also makes `getUserMedia()` available to HTTP pages so controlled local test fixtures can report camera/microphone results directly. The browser resolves source paths at startup. They must stay inside `VIRTUAL_MEDIA_DIR` (including after symlink resolution), and require a browser restart to change. Treat the mounted media as test input for the pages you navigate to. [Virtual camera and microphone](./api.md#virtual-camera-and-microphone) describes what pages receive.
 
 **Dynamic virtual media (runtime source switching):**
 
@@ -194,7 +190,7 @@ docker run -d -p 8080:8080 \
   psyb0t/stealthy-auto-browse
 ```
 
-Dynamic mode remains file-backed. `set_virtual_media_source` accepts an existing relative source name, and `upload_virtual_media` stores a bounded base64 upload inside `VIRTUAL_MEDIA_DIR`. Its filename must be a safe basename with a declared media type matching the requested kind; it supplies only the extension. The service generates and returns a collision-safe stored basename rather than overwriting a named source, and checks the decoded file with `ffprobe` for the requested stream before storage or activation. The directory must be writable for uploads; the decoded payload limit is `VIRTUAL_MEDIA_UPLOAD_MAX_BYTES` (50 MiB by default). A page that has already received a virtual stream keeps the same camera/microphone track identities while the source changes. Dynamic mode does not accept arbitrary host paths, remote URLs, WebSocket streams, or other live media ingress. Both actions use the normal Bearer authentication when `AUTH_TOKEN` is set. See [the API reference](./api.md#virtual-camera-and-microphone) for parameters and failure conditions.
+Dynamic mode remains file-backed: `set_virtual_media_source` picks an existing file and `upload_virtual_media` stores a new one inside `VIRTUAL_MEDIA_DIR`. For uploads, the mounted directory must be writable by `PUID`/`PGID`; create it as that user, because the entrypoint does not repair its ownership. See [the API reference](./api.md#virtual-camera-and-microphone) for parameters and failure conditions.
 
 ## Persistent profiles
 
@@ -240,10 +236,4 @@ Openbox runs by default as the X11 window manager. It adds title bars and resize
 
 ## VNC access
 
-Watch the browser in real-time through your web browser. The VNC viewer auto-connects when you open it.
-
-```bash
-docker run -d -p 5900:5900 -p 8080:8080 psyb0t/stealthy-auto-browse
-```
-
-Open `http://localhost:5900/` to see exactly what the browser sees. Useful for debugging automation scripts, watching logins, or just making sure things are working.
+noVNC on port 5900 shows the browser live and has no authentication. [Installation and security](installation.md#authentication-and-exposure) covers how to publish it safely.

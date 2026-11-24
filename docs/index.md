@@ -1,10 +1,8 @@
 ---
 title: Home
 description: Control a Dockerized Camoufox browser through HTTP or MCP, with OS-level input, persistent profiles, screenshots, and recording.
-nav_order: 0
-permalink: /
-seo:
-  type: WebSite
+sidebar_position: 1
+slug: /
 ---
 
 # stealthy-auto-browse
@@ -37,9 +35,9 @@ curl --fail-with-body http://localhost:8080/ \
 | Browser control | [Navigation, tabs and windows, dialogs, permissions, geolocation, cookies, and storage](api.md). |
 | Element targeting | [CSS, XPath, accessible roles, iframe chains, open shadow roots, and reusable element references](api.md#element-targets). |
 | Input | [DOM actions, OS-level mouse gestures, typing, scrolling, and visible reading pauses](api.md#humanized-input). |
-| Capture | [Text, HTML, accessibility snapshots, PNG screenshots, MP4 recording, network logs, and HAR export](api.md). |
+| Capture | [Text, HTML, accessibility snapshots](api.md#page-inspection), [PNG screenshots](api.md#screenshots), [MP4 recording](api.md#screen-recording), and [network logs and HAR export](api.md#network-logging). |
 | Browser events | [Bounded event history, waits, SSE delivery, and human handoff](api.md#events-and-human-handoff). |
-| Clipboard and media | [Text, HTML, PNG, file lists, file-backed camera and microphone streams, and runtime source switching](api.md). |
+| Clipboard and media | [Text, HTML, PNG and file lists](api.md#clipboard), and [file-backed camera and microphone streams with runtime source switching](api.md#virtual-camera-and-microphone). |
 | Challenges | [Best-effort detection](api.md#challenge-detection), [optional solver providers](configuration.md#captcha-solver-providers), and human takeover. |
 | Workflows | [Atomic multi-step requests and bounded YAML control flow](script-mode.md), plus [URL-triggered page loaders](page-loaders.md). |
 | Session identity | [Persistent profiles and fingerprint upgrades](configuration.md#persistent-profiles), [input models and their limits](stealth.md). |
@@ -50,4 +48,4 @@ curl --fail-with-body http://localhost:8080/ \
 
 [Configuration](configuration.md) owns settings and defaults. [Troubleshooting](troubleshooting.md) covers startup, authentication, browser recovery, and cluster problems. [Development](development.md) explains the source layout, build, deterministic tests, and opt-in external checks.
 
-The [source repository](https://github.com/psyb0t/docker-stealthy-auto-browse) contains the [license](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/LICENSE) and [changelog](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/CHANGELOG.md).
+AI agents can read [llms.txt](https://psyb0t.github.io/docker-stealthy-auto-browse/llms.txt), an index of these pages. The [source repository](https://github.com/psyb0t/docker-stealthy-auto-browse) contains the [license](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/LICENSE) and [changelog](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/CHANGELOG.md).

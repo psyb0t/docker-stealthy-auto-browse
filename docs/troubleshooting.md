@@ -1,7 +1,7 @@
 ---
 title: Troubleshooting
 description: Diagnose startup errors, rejected authentication, lost profiles, browser recovery, stale element references, and cluster routing failures.
-nav_order: 9
+sidebar_position: 10
 ---
 
 # Troubleshooting
@@ -29,7 +29,7 @@ After closing the last tab, `list_tabs` can report zero pages. The next page-dep
 
 An HTTP 200 response can still contain `success: false`. Inspect the JSON envelope, not just curl's HTTP status. Likewise, a script failing after several actions does not roll back those earlier actions.
 
-Handoff rejects mutating actions with `human handoff is active` until `end_handoff` runs. Viewer network access is configured separately. A new document can replace the page listeners used for activity counts.
+Handoff rejects every action except a short read-only list with `human handoff is active` until `end_handoff` runs; `detect_challenge`, `eval` and the waits are refused too. See [Events and human handoff](api.md#events-and-human-handoff) for the list. Viewer network access is configured separately. A new document can replace the page listeners used for activity counts.
 
 Profiles survive container recreation only when `/userdata` is mounted. Avoid sharing the same profile directory among live Firefox instances. Back it up while stopped before upgrades. [Configuration](configuration.md#persistent-profiles) describes identity migration.
 
@@ -39,4 +39,4 @@ Profiles survive container recreation only when `/userdata` is mounted. Avoid sh
 
 Cookie sharing requires every replica to reach the same Redis database. Reconciliation is eventual, not instantaneous. A website can bind sessions to more than cookies, so cookie propagation alone does not guarantee a usable login on another replica. See [Redis cookie sync](cluster-mode.md#redis-cookie-sync).
 
-HAProxy returns 503 after its queue timeout. Increase `QUEUE_TIMEOUT` only when the workload needs longer waits, or reduce request duration and add capacity. Long-lived event streams consume connections. Do not expose the unauthenticated stats dashboard to an untrusted network.
+HAProxy returns 503 after its queue timeout. Increase `QUEUE_TIMEOUT` only when requests need to wait longer for a free browser, or reduce request duration and add capacity. `QUEUE_TIMEOUT` does not extend a long request: HAProxy cuts off a request after 10 minutes with no response data, and `run_script` sends nothing until it finishes. An open `GET /events` stream sends keepalives, never times out, and holds its replica's only connection slot until the client disconnects, so other requests to that replica queue behind it. See [HAProxy queue-proxy](cluster-mode.md#haproxy-queue-proxy). Do not expose the unauthenticated stats dashboard to an untrusted network.

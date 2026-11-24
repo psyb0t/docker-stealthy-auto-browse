@@ -1,7 +1,9 @@
 # Example script showcasing all script mode features.
 #
-# Run:
+# Run (create ./output first and run as your own UID so the browser user can write it):
+#   mkdir -p ./output
 #   cat scripts/example_script.yaml | docker run --rm -i \
+#     -e PUID="$(id -u)" -e PGID="$(id -g)" \
 #     -e TARGET_URL=https://example.com \
 #     -v ./output:/output \
 #     psyb0t/stealthy-auto-browse --script > results.json
@@ -86,7 +88,7 @@ steps:
   #   text: "typed text"
   #   delay: 0.05
 
-  # --- System input (OS-level, undetectable) ---
+  # --- System input (OS-level, humanized timing) ---
   # - action: system_click
   #   x: 500
   #   y: 300

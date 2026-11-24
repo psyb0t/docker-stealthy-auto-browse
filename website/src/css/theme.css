@@ -1,0 +1,33 @@
+:root {
+  --ifm-font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --ifm-font-size-base: 106.25%;
+  --ifm-line-height-base: 1.65;
+  --ifm-link-hover-decoration: underline;
+  --ifm-color-primary: #1e66f5;
+  --ifm-link-color: #1452c3;
+}
+
+html[data-theme="dark"] {
+  --ifm-color-primary: #89b4fa;
+  --ifm-color-primary-dark: #74a7f8;
+  --ifm-color-primary-darker: #6a9df2;
+  --ifm-color-primary-darkest: #5286da;
+  --ifm-color-primary-light: #a1c3fa;
+  --ifm-color-primary-lighter: #afccfb;
+  --ifm-color-primary-lightest: #cadffc;
+  --ifm-link-color: #89b4fa;
+  --ifm-background-color: #1e1e2e;
+  --ifm-background-surface-color: #181825;
+  --ifm-navbar-background-color: #181825;
+  --ifm-font-color-base: #cdd6f4;
+  --ifm-heading-color: #e6e9f5;
+  --ifm-menu-color: #bac2de;
+  --ifm-menu-color-active: #89b4fa;
+  --ifm-menu-color-background-active: #313244;
+  --ifm-menu-color-background-hover: #313244;
+  --ifm-hr-border-color: #45475a;
+  --ifm-toc-border-color: #45475a;
+  --ifm-table-border-color: #45475a;
+  --ifm-code-background: #313244;
+  --ifm-breadcrumb-item-background-active: #313244;
+}

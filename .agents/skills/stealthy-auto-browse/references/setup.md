@@ -18,7 +18,7 @@ Before running anything beyond a throwaway local smoke test:
 3. **Pull the image before you start.** `docker pull psyb0t/stealthy-auto-browse:latest` gets the current release. Pull again and recreate the container to upgrade.
 4. **Don't mount the docker socket.** Don't run with `--privileged`. Don't grant the container egress beyond what the test target needs (use a Docker network with restricted egress where supported).
 5. **Don't persist real session data.** If you mount `/userdata`, use a dedicated test account, encrypt the volume host-side if it leaves the machine, and shred (`rm -rf`) it when the test concludes.
-6. **Disable the noVNC viewer if you don't need it.** Don't publish port 5900. If you do publish it for local debugging, bind it to `127.0.0.1` and never expose it on a public interface. The viewer gives full keyboard/mouse control of the browser, including any logged-in sessions.
+6. **Don't publish the noVNC viewer if you don't need it.** It always runs inside the container; leave port 5900 unpublished. If you do publish it for local debugging, bind it to `127.0.0.1` and never expose it on a public interface. The viewer gives full keyboard/mouse control of the browser, including any logged-in sessions.
 
 ## Quick start (localhost, no auth, for smoke tests only)
 
@@ -61,30 +61,36 @@ Notes:
 | Variable | Default | What it does |
 |----------|---------|-------------|
 | `XVFB_RESOLUTION` | `1920x1080` | Virtual display resolution. Any size works (e.g. `1920x1920`, `2560x1440`); the framebuffer is allocated to match, so screen recording captures this exact size. Larger = more memory. |
-| `XVFB_DEPTH` | `24` | Color depth (16/24/32). |
+| `XVFB_DEPTH` | `24` | Color depth, 16 or 24. `32` stops startup. |
 | `TZ` | `UTC` | Match your IP location for realistic test fingerprints. |
-| `PROXY_URL` | unset | Proxy for all browser traffic: `http://user:pass@host:port` or `socks5://host:port`. **Camoufox (Firefox) does not reliably support authenticated SOCKS5**, so use HTTP for any credentialed exit (unauthenticated SOCKS5 is fine). Only use exits you own or are authorized to use. [pr0xteus](https://github.com/psyb0t/pr0xteus) v0.11.0+ hands out an authenticated HTTP forward-proxy per lease (read `proxies.http`); reach it over the host network or a published address. |
+| `PROXY_URL` | unset | Proxy for all browser traffic: `http://user:pass@host:port` or `socks5://host:port`. **Camoufox (Firefox) does not reliably support authenticated SOCKS5**, so use HTTP for any credentialed exit (unauthenticated SOCKS5 is fine). The port is required. Write credentials unencoded: percent-escapes are passed through literally. The password may contain `@` and `:`; the username may not contain `:`; neither may contain `/`, `?` or `#`. Only use exits you own or are authorized to use. [pr0xteus](https://github.com/psyb0t/pr0xteus) v0.11.0+ hands out an authenticated HTTP forward-proxy per lease (read `proxies.http`); reach it over the host network or a published address. |
 | `LOADERS_DIR` | `/loaders` | Directory for page loader YAML files. |
 | `USE_VIEWPORT` | `false` | Playwright viewport control. Required for width < ~450px. Makes automation easier to fingerprint. |
 | `HTTP_LISTEN_HOST` | `0.0.0.0` | HTTP API bind address inside the container. Combine with a `127.0.0.1:8080:8080` port mapping to confine to localhost on the host. |
 | `HTTP_LISTEN_PORT` | `8080` | HTTP API port. |
 | `AUTH_TOKEN` | unset | **Set this for any non-trivial deployment.** Without it, anyone who can reach the port can control the browser. With it, requests need an `Authorization: Bearer <key>` header. |
 | `CAPTCHA_SOLVER_PROVIDER` | unset | Optional provider: `nopecha`, `capsolver`, `capmonster`, `nocaptchaai`, `yescaptcha`, `2captcha`, or `anticaptcha`. |
-| `CAPTCHA_SOLVER_ENABLED` | unset | Optional strict `true` or `false` switch. A selected provider already enables support. |
+| `CAPTCHA_SOLVER_ENABLED` | unset | Optional `true` or `false` switch (case-insensitive). A selected provider already enables support; `true` alone still needs a provider. Setting any `CAPTCHA_SOLVER_*` variable, even empty, turns validation on. |
 | `CAPTCHA_SOLVER_API_KEY` | unset | Direct provider key. Mutually exclusive with the key file and visible through `docker inspect`. NopeCHA alone permits no key. |
 | `CAPTCHA_SOLVER_API_KEY_FILE` | unset | Path to a mounted UTF-8 provider key file. |
 | `VIRTUAL_MEDIA_DIR` | `/media` | Directory containing virtual camera/microphone media. Configured and dynamic source paths must resolve within it. Mount it read-only for static sources; dynamic uploads require it to be writable. |
 | `VIRTUAL_CAMERA_FILE` | unset | Video file returned as the video track from page `getUserMedia()`. Relative to `VIRTUAL_MEDIA_DIR` or an absolute path inside it. A request for video without this source fails with `NotFoundError`. |
 | `VIRTUAL_MICROPHONE_FILE` | unset | Audio file returned as the audio track from page `getUserMedia()`. Relative to `VIRTUAL_MEDIA_DIR` or an absolute path inside it. A request for audio without this source fails with `NotFoundError`. |
-| `VIRTUAL_MEDIA_DYNAMIC` | `false` | Enables runtime file-backed source selection and upload for virtual camera/microphone tests. |
-| `VIRTUAL_MEDIA_UPLOAD_MAX_BYTES` | `50 MiB` | Maximum decoded upload size accepted by `upload_virtual_media` in dynamic mode. |
+| `VIRTUAL_MEDIA_DYNAMIC` | `false` | Enables runtime file-backed source selection and upload for virtual camera/microphone tests. Accepts `true`, `1`, `yes`, `false`, `0`, `no`. |
+| `VIRTUAL_MEDIA_UPLOAD_MAX_BYTES` | `52428800` (50 MiB) | Maximum decoded upload size accepted by `upload_virtual_media` in dynamic mode. |
 | `VNC_LISTEN_HOST` | `0.0.0.0` | VNC bind address inside the container. As above, prefer a `127.0.0.1:5900:5900` host port mapping. |
 | `VNC_LISTEN_PORT` | `5900` | noVNC web viewer port. **The viewer has no authentication of its own**, so only publish to localhost. |
 | `VNC_SHOW_CURSOR` | `true` | Shows the actual automated pointer position in noVNC. Set to `false` to hide it. Only `true` and `false` are accepted. |
-| `PUID` | `1000` | Run the container as this UID. At startup the container fixes ownership of `/userdata`, `/loaders`, `/recordings` to match. |
+| `PUID` | `1000` | Run the container as this UID. At startup the container fixes ownership of `/userdata`, `/loaders`, `/recordings` to match; `/media` and other mounts are not repaired. |
 | `PGID` | value of `PUID` | Run the container as this GID. |
 | `LANG` | `en_US.UTF-8` | Browser locale/language. |
-| `LOG_LEVEL` | `INFO` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR` for the JSON logger. |
+| `LOG_LEVEL` | `INFO` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` for the JSON logger. An unknown value falls back to `INFO`. |
+| `DESK_EXEC_ENABLED` | `false` | `true` enables `run_command` and `launch_app`, which run any command in the container. Leave it off unless `AUTH_TOKEN` is set and you need it. |
+| `DESK_DARK_MODE` | `false` | `true` makes the desktop and browser dark, and pages see `prefers-color-scheme: dark`. |
+| `DESK_SUDO_ENABLED` | `false` | `true` gives the browser user passwordless sudo inside the container. |
+| `KEYBINDINGS_FILE` | unset | Key map that replaces the window manager's keyboard shortcuts at startup. |
+| `REDIS_URL` | unset | Redis connection string for cross-instance cookie sync (cluster mode). |
+| `NUM_REPLICAS` | `1` | Above 1, MCP exposes only `run_script` and HTTP accepts only `run_script`, `ping` and `sleep`. The cluster compose file sets it. |
 | `LOG_FILE` | unset | If set, also write JSON logs to this file (10MB x 5 rotation) in addition to stderr. |
 
 Treat `/userdata` as sensitive while an extension provider is configured. Firefox can cache extension configuration in the persistent profile even when the key came from a mounted secret file.
@@ -106,7 +112,7 @@ docker run -d -p 127.0.0.1:8080:8080 \
 
 # For a private pr0xteus (v0.11.0+) HTTP proxy, allocate a lease, read its
 # proxies.http URL, and pass that as PROXY_URL (Camoufox can't reliably do authenticated SOCKS5).
-# The working allocation-to-browser command sequence is in docs/configuration.md.
+# The working allocation-to-browser command sequence is in https://psyb0t.github.io/docker-stealthy-auto-browse/configuration/
 # A lease lasts 15 minutes and PROXY_URL is read once at start, so allocate right before
 # the run and start a new container with a new lease next time. A pr0xteus on another
 # machine returns URLs on its Tailscale name, which needs no host network.
@@ -163,21 +169,9 @@ docker run -d -p 127.0.0.1:8080:8080 \
   psyb0t/stealthy-auto-browse:latest
 ```
 
-With `VIRTUAL_MEDIA_DYNAMIC=true`, use authenticated `set_virtual_media_source`
-requests to choose an existing relative source name under `VIRTUAL_MEDIA_DIR`, or
-authenticated `upload_virtual_media` requests to store bounded base64 content and
-optionally activate it. `kind` is `"camera"` or `"microphone"`; an upload filename
-must be a safe basename with a declared media type matching that kind. It supplies
-only the extension: the service generates and returns a collision-safe stored basename
-and never overwrites a named source. Decoded uploads are checked with `ffprobe` for
-the requested video or audio stream before storage or activation. Uploads are capped
-by `VIRTUAL_MEDIA_UPLOAD_MAX_BYTES` (50 MiB by default). A source switch preserves
-the tracks that a page already received from `getUserMedia()`.
+With `VIRTUAL_MEDIA_DYNAMIC=true`, use authenticated `set_virtual_media_source` requests to choose an existing relative source name under `VIRTUAL_MEDIA_DIR`, or authenticated `upload_virtual_media` requests to store bounded base64 content and optionally activate it. `kind` is `"camera"` or `"microphone"`; an upload filename must be a safe basename with a declared media type matching that kind. It supplies only the extension: the service generates and returns a collision-safe stored basename and never overwrites a named source. Decoded uploads are checked with `ffprobe` for the requested video or audio stream before storage or activation. Uploads are capped by `VIRTUAL_MEDIA_UPLOAD_MAX_BYTES` (52428800 bytes, 50 MiB, by default). A source switch preserves the tracks that a page already received from `getUserMedia()`.
 
-Only regular files contained by `VIRTUAL_MEDIA_DIR` are accepted. Dynamic mode does
-not accept arbitrary host paths, remote URLs, WebSocket streams, or other live
-ingress. When `AUTH_TOKEN` is set, send the same `Authorization: Bearer <key>` header
-used for every other action.
+Only regular files contained by `VIRTUAL_MEDIA_DIR` are accepted. Dynamic mode does not accept arbitrary host paths, remote URLs, WebSocket streams, or other live ingress. When `AUTH_TOKEN` is set, send the same `Authorization: Bearer <key>` header used for every other action.
 
 ## OpenClaw / ClawHub config
 

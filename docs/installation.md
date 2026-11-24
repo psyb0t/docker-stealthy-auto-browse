@@ -1,7 +1,7 @@
 ---
 title: Installation and security
 description: Start the Docker image, protect HTTP and noVNC access, retain browser data, update containers, and remove a deployment safely.
-nav_order: 1
+sidebar_position: 2
 ---
 
 # Installation and security
@@ -23,7 +23,7 @@ docker run -d --name browser \
 
 The viewer is `http://localhost:5900/`. The HTTP API is on port 8080 and the MCP endpoint is `/mcp/`. The API listens on `0.0.0.0` inside the container so Docker port forwarding works. The explicit `127.0.0.1` publish addresses restrict access on the host.
 
-The entrypoint initially runs as root to adjust writable-directory ownership, then switches to `PUID`/`PGID` through `gosu`. Mount only directories intended for the browser. A broad home-directory mount could expose unrelated credentials, and ownership repair is recursive under `/userdata`, `/loaders`, and `/recordings`.
+The entrypoint initially runs as root to adjust writable-directory ownership, then switches to `PUID`/`PGID` through `gosu`. Mount only directories intended for the browser. A broad home-directory mount could expose unrelated credentials, and ownership repair is recursive under `/userdata`, `/loaders`, and `/recordings`. `/media` and any other mount are not repaired, so make them writable by `PUID`/`PGID` yourself when the browser has to write there. Starting the container with `docker run --user` skips the ownership repair, the Camoufox GeoIP setup hook and the `DESK_SUDO_ENABLED` setup; use `PUID`/`PGID` instead.
 
 ## Authentication and exposure
 

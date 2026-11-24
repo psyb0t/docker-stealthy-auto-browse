@@ -18,6 +18,16 @@ plan.md
 .demo-recordings/
 .telemetry/
 .testing/
+
+# Documentation site build
+/website/.assets/
+/website/.content/
+/website/.corepack/
+/website/.docusaurus/
+/website/.pnpm-store/
+/website/build/
+/website/node_modules/
+
 .anustimes/
 .brutal_reviews/
 .secaudit/
@@ -69,3 +79,8 @@ vendor/
 scheduled_tasks.lock
 
 .tutorial-video/
+
+# Thumbnail drafts
+.thumbnails/
+.psyb0t-post/
+.discuss/

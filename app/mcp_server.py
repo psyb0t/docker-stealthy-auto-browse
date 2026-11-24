@@ -28,8 +28,8 @@ _cluster_mode = _num_replicas > 1
 _INSTRUCTIONS_SINGLE = (
     "Stealth browser automation in Docker. Camoufox (custom Firefox) with "
     "zero Chrome DevTools Protocol exposure and real OS-level mouse/keyboard "
-    "input via PyAutoGUI, undetectable by bot detection. "
-    "Passes Cloudflare, CreepJS, BrowserScan, Pixelscan, and all major bot detectors. "
+    "input via PyAutoGUI with human timing. No browser is undetectable: detection "
+    "results depend on the site, network exit, timezone, browser build and date. "
     "READING PAGE CONTENT: always use get_text() or get_html() first. They are fast and "
     "token-efficient. Only take a screenshot() when you cannot understand the page content "
     "from text alone (e.g. visual layout, images, canvas). "
@@ -38,9 +38,10 @@ _INSTRUCTIONS_SINGLE = (
     "CLICKING: always use click() with a CSS selector first. It is fast and reliable. "
     "Only use system_click() as a last resort when the site detects DOM event injection. "
     "Use get_interactive_elements to find selectors and coordinates. "
-    "TEXT INPUT: people paste far more than they type. Enter text with paste_text(): "
-    "it puts the text on the clipboard, clicks the field when given a selector or "
-    "coordinates, and presses ctrl+a, backspace and ctrl+v with human timing. "
+    "TEXT INPUT: people paste far more than they type. Enter text with paste_text(), "
+    "or fill() where DOM input is acceptable. paste_text() puts the text on the "
+    "clipboard, clicks the field when given a selector or coordinates, and presses "
+    "ctrl+a, backspace and ctrl+v with human timing. "
     "Use system_type() only for a few characters: a word, a short search, a small "
     "edit, or a field that blocks pasting. "
     "VISIBLE PAUSES: use human_pause() only when the task naturally needs reading, "
@@ -137,6 +138,9 @@ async def run_script(
 
     on_error: "stop" (default) halts on first failure, "continue" keeps going.
 
+    The top-level "success" is true whenever the script was valid and ran,
+    even if a step failed. Check data.success and data.step_results[].error.
+
     AVAILABLE ACTIONS AND PARAMETERS:
 
     ELEMENT TARGETS:
@@ -169,8 +173,9 @@ async def run_script(
             No parameters.
         detect_challenge: Detect documented challenge widgets and conservative generic
             challenge cues in the current page. Read-only: never clicks, solves, or
-            enters frames. Returns `absent`, `present`, or `unknown`, plus bounded
-            vendor, confidence, location, and sanitised frame-path evidence.
+            enters frames. Returns detected (bool) and status `absent`, `present`,
+            or `unknown`, plus bounded vendor, confidence, location, and
+            sanitised frame-path evidence.
             - scroll_into_view (bool): When true, scroll the first visible detected
               frame or widget into the viewport without clicking or focusing it.
         solve_captcha: Submit an Anti-Captcha API task and wait for its solution.
@@ -207,10 +212,17 @@ async def run_script(
             - activate (bool): Activate the uploaded source. Default false.
         get_interactive_elements: Find all interactive elements (buttons, links, inputs).
             - visible_only (bool): Only viewport-visible elements. Default true.
-            Returns: list of elements with x, y (centre), w, h, text, selector.
-              Pass x, y, w, h to system_click.
+            Returns: list of elements with x, y (centre), w, h, text, selector,
+              and element_id where one could be created. Pass x, y, w, h to
+              system_click. selector is a best-effort guess, may need an
+              xpath= prefix, and is not always unique; element_id is its
+              first match, so it can belong to another element. When the
+              selector is not unique, use x, y, w, h.
         eval: Execute JavaScript and return result.
             - expression (str, required): JS expression to evaluate.
+            - world (str): "page" (default) runs in the page's own world and can
+              read site globals; "isolated" sees only the DOM and page scripts
+              cannot observe it.
 
     CLICKING (prefer click over system_click):
         click: Click element by CSS selector or XPath. Fast and reliable.
@@ -427,7 +439,9 @@ async def run_script(
         list_windows, focus_window, move_resize_window: Inspect and control X11
             browser windows.
         wait_for_popup, close_window: Wait for or close browser pages/windows.
-        begin_handoff: Block mutating automation while noVNC remains usable.
+        begin_handoff: Refuse every action except a short read-only list
+            (page text, HTML and info, tabs, screenshots, events) while noVNC
+            remains usable.
         handoff_status: Return trusted pointer, keyboard, and wheel counts.
         end_handoff: End the handoff and resume automation.
 
@@ -591,7 +605,14 @@ if not _cluster_mode:
 
     @mcp.tool
     async def begin_handoff() -> str:
-        """Pause mutating automation while a person controls the browser."""
+        """Pause automation while a person controls the browser in noVNC.
+
+        Until end_handoff, every action is refused except a short read-only
+        list: get_text, get_html, get_page_info, list_tabs, list_windows,
+        save_screenshot (screenshot), get_events, wait_for_event,
+        handoff_status, end_handoff, ping, sleep and a few desktop reads.
+        detect_challenge, eval and the waits are refused too.
+        """
         return _text_result(await _call("begin_handoff"))
 
     @mcp.tool

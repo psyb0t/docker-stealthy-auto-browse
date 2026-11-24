@@ -20,17 +20,7 @@ the server requires one.
 
 ## Tools
 
-All stealthy-auto-browse MCP tools become available to your agent: navigate
-(`goto`), read the page (`get_text`, `get_html`, `get_interactive_elements`),
-take screenshots (`screenshot`), detect verification widgets
-(`detect_challenge`), Playwright DOM input (`click`, `fill`), OS-level input
-with human mouse paths and typing rhythm via PyAutoGUI (`system_click`,
-`system_type`, `send_key`, `mouse_move`, `scroll`), run JavaScript
-(`eval_js`), wait conditions
-(`wait_for_element`, `wait_for_text`), bundle multiple steps atomically
-(`run_script`), and a generic `browser_action` fallback for everything else
-(cookies, tabs, storage, dialogs, downloads, network/console logging, screen
-recording).
+All stealthy-auto-browse MCP tools become available to your agent: navigate (`goto`), read the page (`get_text`, `get_html`, `get_interactive_elements`), take screenshots (`screenshot`), detect verification widgets (`detect_challenge`) and solve them through Anti-Captcha when configured (`solve_captcha`), Playwright DOM input (`click`, `fill`), OS-level input with human mouse paths and typing rhythm via PyAutoGUI (`system_click`, `paste_text`, `system_type`, `send_key`, `mouse_move`, `scroll`, `human_pause`), the clipboard (`set_clipboard`, `set_clipboard_data`, `get_clipboard`), events and human handoff (`get_events`, `wait_for_event`, `begin_handoff`, `handoff_status`, `end_handoff`), run JavaScript (`eval_js`), wait conditions (`wait_for_element`, `wait_for_text`), bundle multiple steps atomically (`run_script`), and a generic `browser_action` fallback for everything else (cookies, tabs, storage, dialogs, downloads, network/console logging, screen recording).
 
 ## Configuration
 

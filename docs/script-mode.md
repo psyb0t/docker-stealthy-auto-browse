@@ -1,7 +1,7 @@
 ---
 title: Script mode
 description: Run YAML browser workflows with environment substitution, collected outputs, error policies, bounded loops, and conditions.
-nav_order: 5
+sidebar_position: 6
 ---
 
 # Script mode (run & exit)
@@ -68,15 +68,17 @@ The JSON printed to stdout looks like this:
 ```
 
 - **`outputs`** contains only steps that have an `output_id`. Screenshots are base64-encoded PNGs with a data URI prefix. Everything else is the step's `data` dict as-is.
-- **`step_results`** is the full execution log of every step (action, duration, success/error).
+- **`step_results`** is the full execution log of every step (action, duration, success/error). Each entry repeats the step's full `data`, so large results such as `get_html` appear twice in the output.
 - **Logs go to stderr**, so `> results.json` gives you clean JSON.
-- **Exit code** is 0 if all steps succeed, 1 if any fail.
+- **Exit code** is 0 if all steps succeed, 1 if any fail. A script that fails to load or validate exits 1 with nothing on stdout, so `> results.json` leaves an empty file; the reason is in the stderr log.
+- **Step errors from exceptions are generic.** When an action raises, for example a wait that times out or an `eval` whose script throws, its `error` is only `action dispatch failed`; the detail is in the stderr log.
+- **`run_script` over HTTP or MCP** returns this same object as `data`. Its top-level `success` only says the script was valid and ran; read `data.success` and `data.step_results[].error`.
 
 ## Key features
 
 - **`output_id`** on any step collects its result into the `outputs` dict. This is how you get data out.
-- **`${env.VAR_NAME}`** in any string value is replaced with the environment variable. Pass `-e VAR=value` to Docker.
-- **`save_screenshot`** captures the browser viewport (or full desktop with `type: desktop`). Supports `width`, `height`, `whLargest` for resize. Can also write to disk with `path: /output/file.png` (in addition to `output_id`).
+- **`${env.VAR_NAME}`** in any string value is replaced with the environment variable. Pass `-e VAR=value` to Docker. An unset variable becomes an empty string without an error.
+- **`save_screenshot`** captures the browser viewport (or full desktop with `type: desktop`). Supports `width`, `height`, `whLargest` for resize. Can also write to disk with `path: /output/file.png` (in addition to `output_id`). The browser user (`PUID`, default 1000) must be able to write that directory: create the host directory first (`mkdir -p ./output`) and mount it with `-v ./output:/output`, or Docker creates it owned by root and the step fails.
 - **`on_error: continue`** keeps going past failures. **`on_error: stop`** (default) halts on the first error.
 - **All HTTP API actions work as script steps**: iframe and role targeting, element references, DOM observation, trusted pointer gestures, handoff, windows, events, network rules, permissions, rich clipboard data, PNG capture, and the existing browser actions.
 - **Page loaders still fire** on `goto` if configured.
@@ -85,7 +87,7 @@ The JSON printed to stdout looks like this:
 
 Use `human_pause` only when a visible task naturally includes reading, reviewing, or composing. It keeps the pointer mostly still and can make sparse bounded drifts. Use `sleep` for ordinary waits, and do not add `human_pause` between every step.
 
-People paste far more than they type. Enter text with `paste_text`: it writes the real X11 clipboard, clicks the field, then presses `Ctrl+A`, `Backspace` and `Ctrl+V` with human timing. Use `system_type` only for a few characters, paste-hostile fields, or tests that need per-keystroke behavior.
+People paste far more than they type. Enter text with `paste_text`, or `fill` where DOM input is acceptable. `paste_text` writes the real X11 clipboard, clicks the field, then presses `Ctrl+A`, `Backspace` and `Ctrl+V` with human timing. Use `system_type` only for a few characters, paste-hostile fields, or tests that need per-keystroke behavior.
 
 ```yaml
 steps:
@@ -157,6 +159,8 @@ Conditions are mappings with a `type`. `timeout` is optional (0 by default), pol
 | `all` / `any` | `conditions` | Every / any nested condition matches. |
 | `not` | `condition` | Its nested condition does not match. |
 
+An `element` condition runs `document.querySelector` in the page's own JavaScript world, unlike element actions. It does not pierce shadow roots, enter `frames` or accept `xpath=`, page scripts can observe it, and it treats `opacity: 0` as hidden, unlike `wait_for_element`. A selector that needs any of those works for `click` but never matches here.
+
 Environment placeholders are substituted recursively, including strings in control blocks: `text: "${env.EXPECTED_TEXT}"`. Conditions use the existing page-evaluation capability; only use scripts on targets you are authorized to automate.
 
 ### Example: detect a challenge and pause for human review
@@ -182,7 +186,7 @@ steps:
           output_id: disposition
 ```
 
-`challenge.status` is `absent`, `present`, or `unknown`. When `scroll_into_view` is enabled, `challenge.scrolled_into_view` reports whether a detected target is in the viewport after the action. Treat `unknown` as an operational decision point rather than proof that a challenge is absent. See [api.md#challenge-detection](api.md#challenge-detection) for the bounded result schema and supported signatures.
+`challenge.detected` is `true` only when a challenge was found. `challenge.status` is `absent`, `present`, or `unknown`. When `scroll_into_view` is enabled, `challenge.scrolled_into_view` reports whether a detected target is in the viewport after the action. Treat `unknown` as an operational decision point rather than proof that a challenge is absent. See [api.md#challenge-detection](api.md#challenge-detection) for the bounded result schema and supported signatures.
 
 ## Example: screenshot a URL
 

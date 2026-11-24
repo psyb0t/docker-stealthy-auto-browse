@@ -1,12 +1,12 @@
 ---
 title: Development
 description: Build and lint the browser image in Docker, run unit and integration tests, inspect live detector checks, and preview the documentation site.
-nav_order: 10
+sidebar_position: 11
 ---
 
 # Development
 
-Docker, Make, Git, and a shell are the host tools. The [Makefile](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/Makefile) runs Python and shell tooling in the development image. Run `make help` for the command list.
+Docker, Make, Git, and a shell are the host tools, plus Python 3 for `make docs` and `make docs-preview`, which run `website/prepare.py` and the preview server on the host. The [Makefile](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/Makefile) runs Python and shell tooling in the development image. Run `make help` for the command list.
 
 ## Commands
 
@@ -24,7 +24,9 @@ Docker, Make, Git, and a shell are the host tools. The [Makefile](https://github
 | `make test-real` | Opt in to public detector and CAPTCHA-provider compatibility checks. |
 | `make sec` | Write security findings to `sec.sarif`. Findings and execution failures are separate concerns; inspect the report. |
 | `make generate` | No-op: this project has no generated application source. |
-| `make docs-build` | Build the Jekyll documentation into ignored local output. |
+| `make docs` | Build the Docusaurus documentation site into `website/build` and ignored local preview output. |
+| `make docs-preview` | Build the site, then serve it on `http://127.0.0.1:61328/docker-stealthy-auto-browse/`. |
+| `make docs-lock`, `make docs-audit` | Refresh the documentation lockfile, or check the locked packages against known advisories. |
 | `make clean` | Remove the local project image tags named in the target. Inspect them before using it. |
 
 The complete and live test targets mount the Docker socket to launch sibling containers. Lint, unit tests, formatting, and the documentation build do not need that socket. The [test harness](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/test.sh) owns its test containers and cleans them up. Do not run two suites using the same fixed container names concurrently.
@@ -43,6 +45,12 @@ The image is built on [auto-linux-desk](https://psyb0t.github.io/docker-auto-lin
 | [app/mcp_server.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/mcp_server.py) | MCP tools and instructions. |
 | [app/browser.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/browser.py) | Camoufox startup, persistent identity, recovery, windows, and virtual media. |
 | [app/redis_sync.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/redis_sync.py) | Shared cookie state and reconciliation. |
+| [app/dom_targets.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/dom_targets.py) | Element targets, frame chains and element references. |
+| [app/challenge_detector.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/challenge_detector.py) | Read-only challenge detection. |
+| [app/captcha_solver.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/captcha_solver.py) | Optional CAPTCHA solver configuration, extensions and the Anti-Captcha API. |
+| [app/loaders.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/loaders.py) | URL-matched page loaders. |
+| [app/get_elements.js](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/get_elements.js) | The interactive element scan. |
+| [app/main.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/main.py), [app/browser_events.py](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/app/browser_events.py) | Compatibility shims: the old start command and old event names. |
 | [tests](https://github.com/psyb0t/docker-stealthy-auto-browse/tree/main/tests) | Local fixtures, unit tests, browser integration tests, opt-in external checks, and the contract snapshot. |
 
 Humanized input timing lives in the base; change it there and bump the pinned base. Pass `BASE_IMAGE=psyb0t/auto-linux-desk:local` to `make build`, `make dev-image` or `make build-test` to build on a local base image.
@@ -55,4 +63,4 @@ The [Dockerfile](https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main
 
 ## Documentation changes
 
-Keep settings, action parameters, defaults, examples, and limitations aligned with the implementation. Every page needs unique front matter, a useful description, and one H1. Link between pages with relative `.md` paths; link repository files outside this site with full GitHub URLs. README documentation links use the published site URL. Protect Liquid-looking code examples with raw blocks. Run `make docs-build`, check rendered links and anchors, and review the dark layout and search in a browser before publication.
+Keep settings, action parameters, defaults, examples, and limitations aligned with the implementation. The pages are plain Markdown in `docs/`; [website](https://github.com/psyb0t/docker-stealthy-auto-browse/tree/main/website) builds them with Docusaurus from exact package versions, a pnpm lockfile and a digest-pinned Node image, and the build itself runs with no network. Every page needs front matter with `title`, a 50 to 170 character `description` and `sidebar_position` (the home page also has `slug: /`), and one H1. Liquid is refused. Link between pages with relative `.md` paths; link repository files outside this site with full GitHub URLs. README documentation links use the published site URL. Run `make docs`, which fails on a broken link or anchor, then `make docs-preview` and review the layout at desktop and phone widths and search before publication. After changing a package version, run `make docs-lock` and `make docs-audit`.

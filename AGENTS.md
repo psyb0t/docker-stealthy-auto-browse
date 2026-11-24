@@ -15,7 +15,7 @@ Users are mostly AI agents driving the browser through MCP or the HTTP API (the 
 
 - **Stay in scope.** Do the change you were asked for. Propose anything extra; do not do it.
 - **Humanized input only touches the OS-level actions.** `system_click`, `mouse_click`, `mouse_move`, `system_type`, `send_key`, `scroll`, `scroll_to_bottom_humanized`. Playwright `click`, `type`, `fill` and the JS `scroll_to_bottom` stay exactly as they are.
-- **Every humanized default is overridable per request.** New timing knobs get a validated request parameter, an MCP parameter, and a row in `docs/api.md` "Humanized input".
+- **Every humanized default is overridable per request.** New timing knobs get a validated request parameter, an MCP parameter, a row with range and default in the base's Humanized input page, and their name in the matching option list in `docs/api.md` "Humanized input".
 - **Never vendor third-party code or data.** Detectors and research datasets are fetched at pinned commits in test-only images, or not at all. Models fitted to human data ship as small parameter sets with the source cited, never as copied tables.
 - **No real data in prompts, fixtures or docs.** Use placeholders. Test credentials must be obviously fake (`test.user@example.com`, `not-a-real-password!`).
 - **Releases are cut by the maintainer.** Do not commit, push, tag, or edit a released CHANGELOG section unless told to in that turn. Released versions are immutable; changes go in a new section.
@@ -56,6 +56,8 @@ app/
   mcp_server.py          # Browser MCP tools and instructions; replaces the base tools
   browser.py             # Camoufox launch, identity persistence and upgrade, window fitting, relaunch/recovery, color scheme, virtual media
   challenge_detector.py  # Read-only CAPTCHA/challenge detection
+  captcha_solver.py      # Optional CAPTCHA solver config, pinned extensions, Anti-Captcha API
+  dom_targets.py         # Element targets, frame chains, element references
   loaders.py             # URL-triggered page loaders
   redis_sync.py          # Cluster cookie sync
   browser_events.py      # Old names for the base event bus
@@ -134,8 +136,13 @@ The planners and the executor live in auto-linux-desk (`autolinuxdesk/human_*.py
 
 ## Docs
 
-User docs live in `README.md` and `docs/` (`api.md`, `configuration.md`, `script-mode.md`, `page-loaders.md`, `cluster-mode.md`, `stealth.md`), plus the published skill in `.agents/skills/stealthy-auto-browse/`. Any behavior, parameter, default, or env var change updates all affected files and the MCP tool descriptions in the same change.
+User docs live in `README.md` and `docs/` (`index.md`, `installation.md`, `configuration.md`, `api.md`, `agents.md`, `script-mode.md`, `page-loaders.md`, `cluster-mode.md`, `stealth.md`, `troubleshooting.md`, `development.md`), plus the published skill in `.agents/skills/stealthy-auto-browse/`. Any behavior, parameter, default, or env var change updates all affected files and the MCP tool descriptions in the same change.
 
+The site at https://psyb0t.github.io/docker-stealthy-auto-browse/ is built from `docs/*.md` by Docusaurus in `website/` (exact versions in `website/package.json` and the pnpm lockfile, a digest-pinned Node image, no network during the build). `.github/workflows/docs.yml` deploys `website/build`. `website/src/css/theme.css` is shared with the other psyb0t project sites.
+
+- Every page has front matter with `title`, a 50 to 170 character `description` and `sidebar_position` (the home page also has `slug: /`). The sidebar follows `sidebar_position`; page URLs are `/<file name>/`. Pages are plain Markdown; `website/prepare.py` refuses Liquid and writes `llms.txt`.
+- Link other pages by their relative `.md` path. Links from `docs/` to repository files use full `https://github.com/psyb0t/docker-stealthy-auto-browse/blob/main/<path>` URLs (`tree/` for directories). README and skill links to the site use full `https://psyb0t.github.io/docker-stealthy-auto-browse/...` URLs.
+- After a docs change, run `make docs` (it fails on a broken link or anchor), then `make docs-preview` and check desktop and phone widths and search. After changing a package version, run `make docs-lock` and `make docs-audit`.
 - One prose paragraph per source line; let Markdown wrap.
 - Plain, exact, active voice. No em dashes, no AI vocabulary, no filler.
 - Observed detection results are labeled as observed, never promised.
@@ -156,11 +163,11 @@ POST `/` with `{"action": "<name>", ...params}`. Also `GET /screenshot/browser`,
 
 ## MCP server
 
-Streamable HTTP at `/mcp` (fastmcp). `run_script` is always registered; single-instance mode adds `goto`, `get_text`, `get_html`, `detect_challenge`, `get_interactive_elements`, `screenshot`, `system_click`, `system_type`, `send_key`, `mouse_move`, `scroll`, `click`, `fill`, `eval_js`, `wait_for_element`, `wait_for_text`, and the generic `browser_action`. `mcp_server.py` gets the dispatcher through `set_dispatcher`, and its lifespan is delegated to the FastAPI app. Keep tool parameters and descriptions in sync with the HTTP actions.
+Streamable HTTP at `/mcp` (fastmcp). `run_script` is always registered; single-instance mode adds `goto`, `get_text`, `get_html`, `set_clipboard`, `get_clipboard`, `set_clipboard_data`, `get_events`, `wait_for_event`, `begin_handoff`, `handoff_status`, `end_handoff`, `detect_challenge`, `solve_captcha`, `get_interactive_elements`, `screenshot`, `system_click`, `system_type`, `paste_text`, `send_key`, `mouse_move`, `scroll`, `human_pause`, `click`, `fill`, `eval_js`, `wait_for_element`, `wait_for_text`, and the generic `browser_action`. `mcp_server.register(registry)` takes `registry.call` as its dispatcher, replaces the base MCP tools and instructions, and sets script-only mode in cluster mode; the base serves `/mcp`. Keep tool parameters and descriptions in sync with the HTTP actions.
 
 ## Cluster mode
 
-`docker-compose.cluster.yml` runs `NUM_REPLICAS` browsers behind HAProxy with sticky sessions and Redis cookie sync. With more than one replica, HTTP and MCP accept only `run_script`, `ping` and `sleep`, so a step sequence runs on one instance. See `docs/cluster-mode.md`.
+`docker-compose.cluster.yml` runs `NUM_REPLICAS` browsers behind HAProxy with sticky sessions and Redis cookie sync. With more than one replica, MCP exposes only `run_script` and `POST /` accepts only `run_script`, `ping` and `sleep`, so a step sequence runs on one instance. See `docs/cluster-mode.md`.
 
 ## Environment variables
 

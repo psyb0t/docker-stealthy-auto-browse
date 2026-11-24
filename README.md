@@ -9,6 +9,10 @@ Stealth browser automation that actually works. One Docker container runs Camouf
 
 The image avoids Chromium CDP signals and keeps its generated Linux font and WebGL fingerprints internally consistent. Detection results still depend on the site, network exit, timezone, browser build, and test date.
 
+The video walkthrough starts the container, watches it in noVNC, drives it over HTTP with real OS-level input, and runs the bundled examples:
+
+[![stealthy-auto-browse: stealth Firefox in Docker, driven with curl](https://img.youtube.com/vi/EtlkxOHKnc8/maxresdefault.jpg)](https://www.youtube.com/watch?v=EtlkxOHKnc8)
+
 ## Contents
 
 - [Quick start](#quick-start)
@@ -49,7 +53,7 @@ curl -X POST http://localhost:8080 \
 # Click with OS-level input
 curl -X POST http://localhost:8080 \
   -H "Content-Type: application/json" \
-  -d '{"action":"system_click","selector":"button#submit"}'
+  -d '{"action":"system_click","selector":"body"}'
 
 # Capture a token-sized screenshot
 curl "http://localhost:8080/screenshot/browser?whLargest=512" -o screenshot.png
@@ -87,7 +91,7 @@ The desktop, VNC, the HTTP and MCP server, script mode, recording, the clipboard
 
 The image includes uBlock Origin, LocalCDN, ClearURLs, and Consent-O-Matic. Optional CAPTCHA solver integrations are disabled unless configured.
 
-Two input modes are available. Playwright actions such as `click` and `fill` are fast DOM operations. System actions such as `system_click`, `system_type`, `mouse_move`, and `scroll` send OS-level input with paths and timing fitted to published human input data. `human_pause` represents visible reading, review, or composition time without continuously jiggling the pointer. Use the system actions when trusted input or behavior matters. See [Stealth and detection evasion](https://psyb0t.github.io/docker-stealthy-auto-browse/stealth/) and [Humanized input](https://psyb0t.github.io/docker-stealthy-auto-browse/api/#humanized-input).
+Two input modes are available. Playwright actions such as `click` and `fill` are fast DOM operations. System actions such as `system_click`, `system_type`, `mouse_move`, and `scroll` send OS-level input with paths and timing fitted to published human input data. `human_pause` represents visible reading, review, or composition time without continuously jiggling the pointer. Use the system actions when trusted input or behavior matters. See [Stealth and input behavior](https://psyb0t.github.io/docker-stealthy-auto-browse/stealth/) and [Humanized input](https://psyb0t.github.io/docker-stealthy-auto-browse/api/#humanized-input).
 
 ## HTTP API
 
@@ -101,7 +105,7 @@ Useful read endpoints:
 - `GET /screenshot/browser`
 - `GET /screenshot/desktop`
 
-`detect_challenge` reports bounded evidence for known challenge widgets without clicking or solving them. Set `scroll_into_view: true` to bring the first visible match into the viewport for a noVNC handoff. See [Challenge detection](https://psyb0t.github.io/docker-stealthy-auto-browse/api/#challenge-detection).
+`detect_challenge` reports known challenge widgets without clicking or solving them. See [Challenge detection](https://psyb0t.github.io/docker-stealthy-auto-browse/api/#challenge-detection).
 
 ## MCP and agent integrations
 
@@ -114,8 +118,8 @@ The source skill is under [`.agents/skills/stealthy-auto-browse`](.agents/skills
 ## Optional features
 
 - **Script mode:** Pipe YAML to `docker run --rm -i ... --script` and receive JSON on stdout. Conditions, branches, bounded loops, and output references are supported. See [Script mode](https://psyb0t.github.io/docker-stealthy-auto-browse/script-mode/).
-- **Page loaders:** Run URL-matched YAML actions after navigation to handle repeated page cleanup. See [Page loaders](https://psyb0t.github.io/docker-stealthy-auto-browse/page-loaders/).
-- **Clipboard:** `set_clipboard` and `get_clipboard` use the real X11 clipboard shared by Camoufox and noVNC. They support UTF-8 text, HTML, PNG, and file URI lists. People paste far more than they type, so enter text with `paste_text`, which sets the clipboard, clicks the field and presses `ctrl+a`, `backspace` and `ctrl+v` with human timing; keep `system_type` for a few characters. See [Clipboard](https://psyb0t.github.io/docker-stealthy-auto-browse/api/#clipboard).
+- **Page loaders:** Run URL-matched YAML actions in place of navigation to handle repeated page cleanup. See [Page loaders](https://psyb0t.github.io/docker-stealthy-auto-browse/page-loaders/).
+- **Clipboard:** `set_clipboard` and `get_clipboard` use the real X11 clipboard shared by Camoufox and noVNC. They support UTF-8 text, HTML, PNG, and file URI lists. Enter text with `paste_text`, which pastes it with human timing, or `fill` where DOM input is acceptable; keep `system_type` for a few characters. See [Clipboard](https://psyb0t.github.io/docker-stealthy-auto-browse/api/#clipboard).
 - **Virtual camera and microphone:** Mount media under `/media` and configure static or dynamic sources for `getUserMedia()` tests. See [Virtual camera and microphone](https://psyb0t.github.io/docker-stealthy-auto-browse/api/#virtual-camera-and-microphone) and [Configuration](https://psyb0t.github.io/docker-stealthy-auto-browse/configuration/).
 - **Recording:** `start_recording` and `stop_recording` write collision-safe MP4 files to a mounted `/recordings` directory. See [Screen recording](https://psyb0t.github.io/docker-stealthy-auto-browse/api/#screen-recording).
 - **CAPTCHA solver providers:** Configure one supported provider through environment variables. Official Firefox extensions are checksum-verified before use. Anti-Captcha uses its official HTTP API. No provider is installed or contacted by default. See [CAPTCHA solver providers](https://psyb0t.github.io/docker-stealthy-auto-browse/configuration/#captcha-solver-providers).
@@ -161,18 +165,23 @@ make sec
 
 Observed results are not a promise for every site or future detector version. Test the exact image, proxy, timezone, and target flow you plan to use.
 
-The live suite checks fingerprint consistency on [liarjs.dev](https://liarjs.dev/) and compares humanized system input against Playwright, synthetic DOM, and raw PyAutoGUI controls on DeviceAndBrowserInfo and FCaptcha. The deterministic suite also runs open-source behavioral detectors with robotic controls that must be caught. Current methods and observed results are in [Stealth and detection evasion](https://psyb0t.github.io/docker-stealthy-auto-browse/stealth/).
+The live suite checks fingerprint consistency on [liarjs.dev](https://liarjs.dev/) and compares humanized system input against Playwright, synthetic DOM, and raw PyAutoGUI controls on DeviceAndBrowserInfo and FCaptcha. The deterministic suite also runs open-source behavioral detectors with robotic controls that must be caught. Current methods and observed results are in [Stealth and input behavior](https://psyb0t.github.io/docker-stealthy-auto-browse/stealth/).
 
 ## Documentation
 
 [Full documentation](https://psyb0t.github.io/docker-stealthy-auto-browse/) covers installation, the complete action reference, agent integrations, configuration, workflows, clusters, testing, and troubleshooting.
 
-- [HTTP API reference](https://psyb0t.github.io/docker-stealthy-auto-browse/api/)
+- [Installation and security](https://psyb0t.github.io/docker-stealthy-auto-browse/installation/)
 - [Configuration](https://psyb0t.github.io/docker-stealthy-auto-browse/configuration/)
+- [HTTP API reference](https://psyb0t.github.io/docker-stealthy-auto-browse/api/)
+- [MCP and agent integrations](https://psyb0t.github.io/docker-stealthy-auto-browse/agents/)
 - [Script mode](https://psyb0t.github.io/docker-stealthy-auto-browse/script-mode/)
 - [Page loaders](https://psyb0t.github.io/docker-stealthy-auto-browse/page-loaders/)
 - [Cluster mode](https://psyb0t.github.io/docker-stealthy-auto-browse/cluster-mode/)
 - [Stealth and input behavior](https://psyb0t.github.io/docker-stealthy-auto-browse/stealth/)
+- [Troubleshooting](https://psyb0t.github.io/docker-stealthy-auto-browse/troubleshooting/)
+- [Development](https://psyb0t.github.io/docker-stealthy-auto-browse/development/)
+- [llms.txt](https://psyb0t.github.io/docker-stealthy-auto-browse/llms.txt), the page index for AI agents
 - [Changelog](CHANGELOG.md)
 
 ## Sponsor
