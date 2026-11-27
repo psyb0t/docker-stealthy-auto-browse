@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.9.5] 2026-11-27
+
+### Changed
+
+- The published skill now covers only using a browser that is already running: the HTTP API, the MCP server and the actions for pages, input and screenshots. Install steps, container commands and operator setup are out of the skill and stay in the [documentation](https://psyb0t.github.io/docker-stealthy-auto-browse/) and the README. `references/setup.md` is removed.
+- The ClawHub publish job no longer sets `pin_images` or `pin_source_urls`, so publishing no longer rewrites the skill's image reference or links to the release.
+
 ## [3.9.4] 2026-11-27
 
 ### Changed

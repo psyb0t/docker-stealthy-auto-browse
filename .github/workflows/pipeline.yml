@@ -92,8 +92,6 @@ jobs:
     with:
       skill_names: '["stealthy-auto-browse"]'
       plugin_names: '["stealthy-auto-browse"]'
-      pin_images: '["psyb0t/stealthy-auto-browse"]'
-      pin_source_urls: true
 
     secrets:
       clawhub_token: ${{ secrets.CLAWHUB_TOKEN }}

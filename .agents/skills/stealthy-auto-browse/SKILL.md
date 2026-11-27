@@ -1,33 +1,31 @@
 ---
 name: stealthy-auto-browse
-description: Headless-detection-resistant browser automation in Docker for authorized QA, compatibility testing, and defensive security research. Camoufox + OS-level input + persistent fingerprints. Use only with sites you own or have written authorization to test.
+description: Headless-detection-resistant browser automation through an already-running stealthy-auto-browse instance (Camoufox, OS-level input, persistent fingerprints), driven over its HTTP API or MCP endpoint for authorized QA, compatibility testing and defensive security research. Use when the user asks to drive that browser, and only with sites you own or have written authorization to test.
 homepage: https://github.com/psyb0t/docker-stealthy-auto-browse
 user-invocable: true
 permissions:
-  shell: runs `docker pull`, `docker run` and `docker rm` for the browser container, `docker compose` for the optional cluster file, and `curl` against the container's HTTP API
-  network: calls the HTTP API and MCP endpoint at STEALTHY_AUTO_BROWSE_URL (default http://127.0.0.1:8080); the browser inside the container sends traffic to the sites it is told to visit, to PROXY_URL when set, and to the CAPTCHA provider when one is configured; docker pull and the optional cluster compose download use Docker Hub and github.com
-  filesystem: writes a local env file with AUTH_TOKEN and optional host directories mounted into the container (profile, loaders, recordings, media); screenshots and script results are written where the user directs
+  shell: runs `curl` against the browser's HTTP API
+  network: calls the HTTP API and MCP endpoint at STEALTHY_AUTO_BROWSE_URL (default http://127.0.0.1:8080); the browser itself sends traffic to the sites it is told to visit, through the proxy the operator configured, and to the CAPTCHA provider when one is configured
+  filesystem: screenshots and script results are written where the user directs
 metadata:
-  { "openclaw": { "emoji": "🕵️", "primaryEnv": "STEALTHY_AUTO_BROWSE_URL", "requires": { "bins": ["docker", "curl"] } } }
+  { "openclaw": { "emoji": "🕵️", "primaryEnv": "STEALTHY_AUTO_BROWSE_URL", "requires": { "bins": ["curl"] } } }
 ---
 
 # stealthy-auto-browse
 
 Browser automation in Docker built for QA against anti-bot stacks, compatibility testing of detection libraries (CreepJS, BrowserScan, Pixelscan, Cloudflare), and defensive security research where standard headless browsers produce false-positive blocks. Uses Camoufox (custom Firefox, no CDP signals) + PyAutoGUI for OS-level input.
 
-For installation, configuration, and container setup, see [references/setup.md](references/setup.md).
-
-Optional CAPTCHA providers are configured with `CAPTCHA_SOLVER_PROVIDER` and either a direct key or mounted key file. NopeCHA, CapSolver, CapMonster Cloud, NoCaptchaAI, YesCaptcha, and 2Captcha use official pinned Firefox extensions. Anti-Captcha uses the `solve_captcha` action. Enabling an extension gives it access to every page, so protect `/userdata` and use solving only on authorized sites. See [references/setup.md](references/setup.md).
+If the user's instance has a CAPTCHA provider configured, extension-based providers work on their own and Anti-Captcha uses the `solve_captcha` action. Use solving only on authorized sites.
 
 ## Security & safety
 
 - **Authorized targets only.** This tool is built for QA/testing against sites and systems you own or have written authorization to test. It is not for scraping or automating third-party sites without permission. See "Authorized use only" below before pointing it at anything.
 - **Data capture is powerful, so scope it.** `get_text`, `get_html`, `get_interactive_elements`, `eval`, and the screenshot/`save_screenshot` actions can extract full page content, DOM structure, and rendered pixels in one call. Only capture what the authorized test actually needs; don't sweep pages outside scope just because the API makes it easy.
 - **Dialogs auto-accept by default, which can approve destructive actions.** The browser accepts `alert()`, `confirm()`, `prompt()` and `beforeunload` dialogs automatically unless you called `handle_dialog` with `accept: false` first. That setting covers only the next dialog, so an agent must call `handle_dialog` with `accept: false` before each step that might raise a dialog whenever it is acting on a stateful site (one with real data, real accounts, or irreversible actions behind a confirm prompt), and must never drive this tool against a site where an accidental confirm would be harmful. See "Dialogs" below.
-- **No auth when `AUTH_TOKEN` is unset.** With it empty the HTTP API and MCP server are **unauthenticated**. Anyone who can reach the port gets full browser control (navigation, input, cookies, screenshots, script execution). **Never** expose such an instance beyond localhost; set `AUTH_TOKEN` and bind to `127.0.0.1` or put it behind an authenticating proxy. See [references/setup.md](references/setup.md).
-- **Where data goes.** The container serves the HTTP API and MCP endpoint; publish them on `127.0.0.1` only. Page content, screenshots and cookies stay on your machine unless you send them elsewhere. The browser sends requests to the sites you point it at, through `PROXY_URL` when set. With a CAPTCHA provider configured, the challenge and the provider key go to that provider's service. `docker pull` contacts Docker Hub over HTTPS.
-- **Destructive operations.** Delete only the container and profile directory this task created, and only when the user asked for the clean-up. `run_command` and `launch_app` stay off (`DESK_EXEC_ENABLED=false`) and passwordless sudo stays off (`DESK_SUDO_ENABLED=false`) unless the user asked for them; see [references/setup.md](references/setup.md).
-- **Loaders execute automatically on matching URLs.** Only mount loader YAML you wrote or audited. See "Page loaders" below.
+- **No auth when `AUTH_TOKEN` is unset.** With it empty the HTTP API and MCP server are **unauthenticated**. Anyone who can reach the port gets full browser control (navigation, input, cookies, screenshots, script execution). If the user's instance is open, tell them rather than relying on it, and never point this tool at an instance exposed beyond localhost without a token.
+- **Where data goes.** Page content, screenshots and cookies stay on your machine unless you send them elsewhere. The browser sends requests to the sites you point it at, through the proxy the operator configured. With a CAPTCHA provider configured, the challenge goes to that provider's service.
+- **Destructive operations.** `close` shuts the browser and ends the container, so send it only when the user asked. `run_command` and `launch_app` run commands inside the container; use them only if the user's instance has them enabled and the user asked for them.
+- **Loaders execute automatically on matching URLs.** Only rely on loader YAML the user wrote or audited. See "Page loaders" below.
 
 ## Authorized use only
 
@@ -60,21 +58,13 @@ If you're unsure whether your use case is authorized, it isn't. Stop and get wri
 
 ## Setup
 
-The API should already be running. Set the base URL:
-
-```bash
-export STEALTHY_AUTO_BROWSE_URL=http://127.0.0.1:8080
-```
-
-**Verify:** `curl $STEALTHY_AUTO_BROWSE_URL/health` returns `ok`.
-
-Recommended defaults: bind to `127.0.0.1`, set `AUTH_TOKEN` to a strong random value, and do not expose port 5900 to anything beyond localhost. See [references/setup.md](references/setup.md).
+The browser must already be installed and running; this skill only covers using it. Installation and configuration are in the docs at https://psyb0t.github.io/docker-stealthy-auto-browse/ and the README at https://github.com/psyb0t/docker-stealthy-auto-browse. Read `STEALTHY_AUTO_BROWSE_URL` (for example `http://127.0.0.1:8080`) and, if the instance has one, `AUTH_TOKEN` from the environment the user set. **Verify:** `curl $STEALTHY_AUTO_BROWSE_URL/health` returns `ok`.
 
 ## HTTP API
 
 All commands: `POST $STEALTHY_AUTO_BROWSE_URL/` with JSON body `{"action": "name", ...params}`.
 
-**`AUTH_TOKEN` is required for any non-localhost deployment.** When set, include it on every request (except `/health`):
+When the instance has an `AUTH_TOKEN`, include it on every request (except `/health`):
 
 ```
 Authorization: Bearer <key>
@@ -224,9 +214,9 @@ Use an `output_id` plus a script `if` output condition to decide whether your or
 
 ### Virtual camera and microphone
 
-For authorized camera/microphone compatibility tests, mount test media at `/media` and configure `VIRTUAL_CAMERA_FILE` and/or `VIRTUAL_MICROPHONE_FILE` before the browser starts. A page's `navigator.mediaDevices.getUserMedia()` call then receives tracks captured from those files. A request for an unconfigured kind fails with `NotFoundError` rather than falling back to hardware. This virtualizes streams only; it does not add native devices to `enumerateDevices()`. Source files must remain within `VIRTUAL_MEDIA_DIR` (default `/media`) and the browser must restart after static-source changes.
+For authorized camera/microphone compatibility tests, an instance whose operator configured virtual media returns tracks captured from files when a page calls `navigator.mediaDevices.getUserMedia()`. A request for an unconfigured kind fails with `NotFoundError` rather than falling back to hardware. This virtualizes streams only; it does not add native devices to `enumerateDevices()`.
 
-Set `VIRTUAL_MEDIA_DYNAMIC=true` to switch file-backed sources at runtime. `set_virtual_media_source` takes `kind` (`"camera"` or `"microphone"`) plus an existing relative `source` name; `upload_virtual_media` takes `kind`, a safe `filename` whose declared media type matches that kind, strict base64 `content_base64`, and optional `activate`. The filename supplies only the extension: the service generates and returns a collision-safe stored basename and never overwrites a named source. It checks decoded uploads with `ffprobe` for the requested video or audio stream before storage or activation. Uploads are limited to `VIRTUAL_MEDIA_UPLOAD_MAX_BYTES` (52428800 bytes, 50 MiB, by default) and need a writable `VIRTUAL_MEDIA_DIR`. Already acquired page streams retain their track identities after a source switch. The service accepts only files inside the configured media directory, never arbitrary paths, remote URLs, WebSocket streams, or other live ingress. These actions require the same Bearer authorization as every other action when `AUTH_TOKEN` is set. See [references/setup.md](references/setup.md).
+If the instance allows dynamic sources, `set_virtual_media_source` takes `kind` (`"camera"` or `"microphone"`) plus an existing relative `source` name; `upload_virtual_media` takes `kind`, a safe `filename` whose declared media type matches that kind, strict base64 `content_base64`, and optional `activate`. The filename supplies only the extension: the service generates and returns a collision-safe stored basename and never overwrites a named source. Decoded uploads are checked with `ffprobe` for the requested video or audio stream, and are size-limited (50 MiB by default). Already acquired page streams retain their track identities after a source switch. The service accepts only files inside its media directory, never arbitrary paths, remote URLs, WebSocket streams, or other live ingress. These actions need the same Bearer authorization as every other action.
 
 ### Screenshots
 
@@ -249,11 +239,11 @@ Via action (for script mode, returns base64 with `output_id`):
 {"action": "save_screenshot", "path": "/output/page.png"}
 ```
 
-`path` writes inside the container, over HTTP too. The browser user (`PUID`, default 1000) must be able to write the directory, so create a mounted host directory before starting the container.
+`path` writes inside the container, over HTTP too, and the browser user must be able to write that directory.
 
 ### Screen recording
 
-Captures actual rendered pixels (ffmpeg `x11grab` against the Xvfb display) including the OS-level mouse cursor, so PyAutoGUI moves are visible. One active recording per container; a second `start_recording` while one is active returns an error. **Requires `/recordings` mounted as a host volume.** See [references/setup.md](references/setup.md). If not mounted (or not writable), `start_recording` fails fast.
+Captures actual rendered pixels (ffmpeg `x11grab` against the Xvfb display) including the OS-level mouse cursor, so PyAutoGUI moves are visible. One active recording per container; a second `start_recording` while one is active returns an error. **Requires the operator to have mounted `/recordings`.** If it is not mounted (or not writable), `start_recording` fails fast.
 
 ```json
 {"action": "start_recording"}
@@ -456,20 +446,20 @@ curl $STEALTHY_AUTO_BROWSE_URL/state      # {"status", "url", "title", "window_o
 The browser exposes all actions as MCP tools via Streamable HTTP at `/mcp/` on the same port as the HTTP API.
 
 ```
-http://127.0.0.1:8080/mcp/
+$STEALTHY_AUTO_BROWSE_URL/mcp/
 ```
 
 Connect any MCP-compatible client to that URL. All actions from the HTTP API are available through dedicated tools or `browser_action`. Dedicated tools include `goto`, `screenshot`, `system_click`, `paste_text`, `system_type`, `human_pause`, `eval_js`, `get_text`, `set_clipboard`, `set_clipboard_data`, `get_clipboard`, `get_events`, `wait_for_event`, `begin_handoff`, `handoff_status`, `end_handoff`, `detect_challenge`, `click`, `fill`, and `run_script`.
 
-If `AUTH_TOKEN` is set, configure the MCP client to send `Authorization: Bearer <key>` when connecting to `http://127.0.0.1:8080/mcp/`.
+If `AUTH_TOKEN` is set, configure the MCP client to send `Authorization: Bearer <key>` when connecting to `$STEALTHY_AUTO_BROWSE_URL/mcp/`.
 
 Works in both standalone and cluster mode. In cluster mode, MCP exposes only `run_script`; the HTTP API also accepts `ping` and `sleep`.
 
 ## Cluster mode
 
-Run multiple browser instances behind HAProxy with a request queue, sticky sessions, and Redis cookie sync. For setup see [references/setup.md](references/setup.md).
+An instance may run as several browsers behind HAProxy with a request queue, sticky sessions, and Redis cookie sync.
 
-Entry point is `http://127.0.0.1:8080`, with the same API. HAProxy queues requests when all instances are busy instead of returning errors.
+The entry point is the same `STEALTHY_AUTO_BROWSE_URL`, with the same API. HAProxy queues requests when all instances are busy instead of returning errors.
 
 **Script-only enforcement:** When `NUM_REPLICAS > 1`, MCP exposes only `run_script`, and the HTTP API only accepts `run_script`, `ping`, and `sleep`. Both reject all other individual actions. Use `run_script` to bundle multiple actions into a single atomic request. One request = one routing decision = one browser instance handles the entire sequence. All actions remain available as steps inside `run_script`.
 
@@ -479,14 +469,7 @@ Entry point is `http://127.0.0.1:8080`, with the same API. HAProxy queues reques
 
 ## Script mode
 
-Pipe a YAML script via stdin, get JSON results on stdout, container exits. No HTTP server.
-
-```bash
-cat my-script.yaml | docker run --rm -i \
-  -e TARGET_URL=https://example.com \
-  psyb0t/stealthy-auto-browse:latest \
-  --script > results.json
-```
+A script is a YAML list of actions. Send it to a running instance with `run_script` (`"yaml": "..."`), or the operator can run a one-shot container that reads it from stdin with `--script` and prints JSON results; see the [script mode docs](https://psyb0t.github.io/docker-stealthy-auto-browse/script-mode/).
 
 ### Script format
 
@@ -495,7 +478,7 @@ name: Scrape Example
 on_error: stop    # "stop" (default) or "continue"
 steps:
   - action: goto
-    url: ${env.TARGET_URL}
+    url: https://staging.your-site.example
     wait_until: networkidle
   - action: sleep
     duration: 2
@@ -527,54 +510,16 @@ steps:
 ```
 
 - **`output_id`** on any step collects its result into `outputs`. Screenshots become base64 data URIs.
-- **`${env.VAR_NAME}`** substitutes environment variables.
+- **`${env.VAR_NAME}`** substitutes environment variables of the instance.
 - **`on_error: continue`** keeps going past failures. `stop` (default) halts.
 - **Control flow:** `if` conditions can inspect elements, text, URL globs, JavaScript booleans, and prior outputs. `repeat` and `while` require explicit bounds (1-100 iterations); a `while` that remains true at its bound fails visibly. See the [control-flow reference](https://psyb0t.github.io/docker-stealthy-auto-browse/script-mode/#control-flow) for the complete schema and limits.
 - **All HTTP API actions** work as script steps.
-- **Logs go to stderr**, stdout is clean JSON.
-- **Exit code** 0 on success, 1 on failure.
-
-### Example: screenshot + extract (against your own site)
-
-```bash
-cat <<'EOF' | docker run --rm -i -e URL=https://staging.your-site.example \
-  psyb0t/stealthy-auto-browse:latest \
-  --script > results.json
-name: Quick Scrape
-steps:
-  - action: goto
-    url: ${env.URL}
-    wait_until: networkidle
-  - action: save_screenshot
-    output_id: screenshot
-    whLargest: 1024
-  - action: get_text
-    output_id: text
-  - action: eval
-    expression: "document.title"
-    output_id: title
-EOF
-```
 
 ## Page loaders (URL-triggered automation)
 
-Mount YAML files to `/loaders`. When `goto` hits a matching URL, the loader's steps execute instead of normal navigation. Works in both API and script mode.
+An instance can have loader YAML files from its operator. When `goto` hits a matching URL, the loader's steps execute instead of normal navigation. Works in both API and script mode.
 
-> **Loaders run automatically the moment the browser visits a matching URL**, with no fresh confirmation at that point, and their steps can modify page state (`eval`, clicks, form fills). Only mount loaders you wrote or audited, and **review every loader YAML before mounting it.** Don't mount loader files from an untrusted source.
-
-```bash
-docker run -d -p 127.0.0.1:8080:8080 -v ./my-loaders:/loaders \
-  psyb0t/stealthy-auto-browse:latest
-```
-
-In script mode:
-
-```bash
-cat script.yaml | docker run --rm -i \
-  -v ./my-loaders:/loaders \
-  psyb0t/stealthy-auto-browse:latest \
-  --script
-```
+> **Loaders run automatically the moment the browser visits a matching URL**, with no fresh confirmation at that point, and their steps can modify page state (`eval`, clicks, form fills). Only rely on loaders the user wrote or audited, and tell the user if a loader you did not expect changes what a page does.
 
 ### Loader format
 
@@ -599,11 +544,11 @@ Set at least one match field; all specified fields must match. A misspelled fiel
 
 ## Account & session hygiene
 
-Persistent profiles let cookies, sessions, and fingerprints survive restarts. Use them responsibly:
+A persistent profile lets cookies, sessions, and fingerprints survive restarts. Use it responsibly:
 
-- **Test accounts only.** Provision isolated accounts dedicated to QA on your own systems. Never persist sessions for real (production / personal / customer) accounts you don't own.
-- **Treat the profile volume as a secret.** It contains live session cookies. Back it up encrypted or not at all, and delete it when the test run is done (see the clean-up guardrail in Security & safety).
-- **Don't share profile volumes across environments.** A profile built against staging shouldn't be reused against prod or vice versa.
+- **Test accounts only.** Use isolated accounts dedicated to QA on your own systems. Never persist sessions for real (production / personal / customer) accounts you don't own.
+- **Treat the profile as a secret.** It contains live session cookies.
+- **Don't share a profile across environments.** A profile built against staging shouldn't be reused against prod or vice versa.
 - **Rotate credentials after authorized testing concludes** if humans also use the same accounts.
 
 ## Tips
@@ -612,6 +557,5 @@ Persistent profiles let cookies, sessions, and fingerprints survive restarts. Us
 2. **Screenshots: use `whLargest=512`.** Full resolution wastes tokens; fine detail is rarely needed
 3. **Prefer `click` with CSS selector.** It is reliable and fast; use `system_click` only when scope requires OS-level input
 4. **Always `get_interactive_elements` before clicking.** It gets both selectors and coordinates
-5. **Match TZ to IP location.** A timezone mismatch is a fingerprint inconsistency that breaks realistic test scenarios
-6. **Wait conditions over sleep:** `wait_for_element`, `wait_for_text`, `wait_for_url`
-7. **`handle_dialog` before the trigger.** Otherwise the browser auto-accepts dialogs
+5. **Wait conditions over sleep:** `wait_for_element`, `wait_for_text`, `wait_for_url`
+6. **`handle_dialog` before the trigger.** Otherwise the browser auto-accepts dialogs
