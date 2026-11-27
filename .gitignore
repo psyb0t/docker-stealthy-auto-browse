@@ -33,6 +33,7 @@ plan.md
 .secaudit/
 .plan-and-delegate/
 .captcha-visual-assistant-details/
+.findings/
 sec.sarif
 
 # Codex and agent scratch

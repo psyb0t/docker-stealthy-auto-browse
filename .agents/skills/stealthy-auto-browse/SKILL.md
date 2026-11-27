@@ -121,17 +121,17 @@ Element actions accept one of `selector`, `role` plus optional accessible `name`
 
 ### Which to use
 
-- **Clicking:** always try `click` with a CSS selector first. It is fast and reliable. Only fall back to `system_click` if your authorized test target requires OS-level input. It re-measures the window position itself, so no `calibrate` call is needed.
-- **Typing:** `fill` for inputs when DOM input is acceptable. When the test target requires OS-level input, use `paste_text` (see Clipboard below); keep `system_type` for a few characters or a field that blocks pasting.
-- **No detection layer in scope?** Playwright input (`click`, `fill`) is fine.
-- **Testing OS-input behavior of your own detection stack?** Use system input.
+- **Input:** default to the OS-level actions (`system_click`, `paste_text`, `system_type`, `scroll`). They send trusted events with human timing and leave no DOM injection trail. Use `click`, `fill` and other DOM input only when the user asked for it or speed matters more than stealth.
+- **Clicking:** use `system_click` with a selector, `element_id`, or the `x`, `y`, `w`, `h` from `get_interactive_elements`. It re-measures the window position itself, so no `calibrate` call is needed.
+- **Typing:** `paste_text` (see Clipboard below); keep `system_type` for a few characters or a field that blocks pasting.
+- **Speed over stealth, or the user asked for DOM input?** Playwright input (`click`, `fill`) is fine.
 
 ## Typical workflow
 
 1. `goto` → load the page
 2. `get_text` → read what's on the page
 3. `get_interactive_elements` → find buttons/inputs with selectors and x,y coords
-4. `click` (CSS selector) → interact; fall back to `system_click` only when test scope requires
+4. `system_click` / `paste_text` → interact; `click` / `fill` only when the user asked for DOM input or speed matters more than stealth
 5. `wait_for_element` / `wait_for_text` → wait for results
 6. `get_text` → verify
 
@@ -340,7 +340,7 @@ Call `handle_dialog` **before** the action that triggers the dialog.
 
 These actions use the real X11 clipboard shared by Camoufox and noVNC. Formats are `text`, `html`, `image/png`, and `files`. Clipboard payloads are bounded and are not written to request logs.
 
-People paste far more than they type. Enter text with `paste_text`, or `fill` where DOM input is acceptable. `paste_text` puts the text on the clipboard, clicks the field when given a target or coordinates, and presses `ctrl+a`, `backspace` and `ctrl+v` with human timing. Use `system_type` only for a few characters: a word, a short search, a small edit, or a field that blocks pasting.
+People paste far more than they type. Enter text with `paste_text`; use `fill` only when the caller asked for DOM input or speed matters more than stealth. `paste_text` puts the text on the clipboard, clicks the field when given a target or coordinates, and presses `ctrl+a`, `backspace` and `ctrl+v` with human timing. Use `system_type` only for a few characters: a word, a short search, a small edit, or a field that blocks pasting.
 
 ```json
 {"action": "set_clipboard", "text": "paste me"}

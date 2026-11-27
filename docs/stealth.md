@@ -49,11 +49,10 @@ These use Playwright's element automation with CSS, XPath, role, or reference ta
 
 ### Which to use
 
-- **Default:** use `click` with a CSS selector. It's fast, reliable, and works for most sites.
-- **Site explicitly detects and blocks DOM event injection?** Fall back to system input.
+- **Default:** system input. `system_click` and `paste_text` send trusted events with human timing and leave no DOM injection trail, which is what this browser is for.
 - **Pass `w` and `h` with `system_click`.** `get_interactive_elements` returns them; with them the click lands at a human offset inside the element instead of near its centre.
-- **Entering text on a protected site?** Use `paste_text` with the field's target or coordinates. Keep `system_type` for a few characters, a field that blocks pasting, or a test of per-keystroke behavior.
-- **Just scraping?** Playwright input (`click`, `fill`) is fine.
+- **Entering text:** use `paste_text` with the field's target or coordinates. Keep `system_type` for a few characters, a field that blocks pasting, or a test of per-keystroke behavior.
+- **Speed matters more than stealth, or the caller asked for DOM input?** Playwright input (`click`, `fill`) is fine.
 
 ## Bot detection test results
 

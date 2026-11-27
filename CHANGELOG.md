@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.9.3] 2026-11-27
+
+### Changed
+
+- The MCP instructions, tool descriptions, docs and the published skill now tell agents to default to OS-level input: `system_click` to click and `paste_text` to enter text, with `system_type` for a few characters. `click`, `fill` and other DOM input are for when the caller asked for them or speed matters more than stealth. They used to say the opposite, with `click` as the preferred method and `system_click` as a last resort. No action or parameter changed.
+
 ## [3.9.2] 2026-11-24
 
 ### Changed

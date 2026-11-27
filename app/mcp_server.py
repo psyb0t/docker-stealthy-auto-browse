@@ -35,13 +35,15 @@ _INSTRUCTIONS_SINGLE = (
     "from text alone (e.g. visual layout, images, canvas). "
     "SCREENSHOTS: always pass whLargest=512 unless you need fine detail. "
     "Full-resolution screenshots waste tokens and provide no extra information for most tasks. "
-    "CLICKING: always use click() with a CSS selector first. It is fast and reliable. "
-    "Only use system_click() as a last resort when the site detects DOM event injection. "
-    "Use get_interactive_elements to find selectors and coordinates. "
+    "INPUT: default to the OS-level actions. They send trusted X11 events with human "
+    "timing and leave no DOM injection trail, which is the point of this browser. "
+    "Use click(), fill() and other DOM input only when the user asked for it or when "
+    "speed matters more than stealth. "
+    "CLICKING: use system_click() with a selector, element_id, or the x, y, w, h from "
+    "get_interactive_elements. "
     "TEXT INPUT: people paste far more than they type. Enter text with paste_text(), "
-    "or fill() where DOM input is acceptable. paste_text() puts the text on the "
-    "clipboard, clicks the field when given a selector or coordinates, and presses "
-    "ctrl+a, backspace and ctrl+v with human timing. "
+    "which puts the text on the clipboard, clicks the field when given a selector or "
+    "coordinates, and presses ctrl+a, backspace and ctrl+v with human timing. "
     "Use system_type() only for a few characters: a word, a short search, a small "
     "edit, or a field that blocks pasting. "
     "VISIBLE PAUSES: use human_pause() only when the task naturally needs reading, "
@@ -224,8 +226,10 @@ async def run_script(
               read site globals; "isolated" sees only the DOM and page scripts
               cannot observe it.
 
-    CLICKING (prefer click over system_click):
-        click: Click element by CSS selector or XPath. Fast and reliable.
+    CLICKING (default to system_click; use click only when the user asked
+    for DOM input or speed matters more than stealth):
+        click: Click element by CSS selector or XPath. Fast, but a DOM event
+            a page can tell apart from a real click.
             - selector, element_id, or role plus optional name and frames.
         hover, double_click, right_click, drag_and_drop: DOM pointer actions
             using the shared target format. Drag accepts source and target.
@@ -265,6 +269,8 @@ async def run_script(
               optional w and h: The field to click first.
             - replace (bool): Default true. False pastes at the caret.
         fill: Set input field value instantly (clears first, no keystrokes).
+            DOM input: only when the user asked for it or speed matters more
+            than stealth.
             - selector (str, required): CSS selector of input element.
             - value (str, required): Value to set.
         type: Type into element with per-key delay (generates keystroke events).
@@ -751,10 +757,11 @@ if not _cluster_mode:
     ) -> str:
         """Click at viewport coordinates using real OS-level mouse movement.
 
-        PREFER click() with a CSS selector instead. It is faster and more reliable.
-        Only use system_click when the site detects DOM event injection and
-        blocks it. The window position is re-measured before every move, so it
-        stays correct after fullscreen, new tabs and browser relaunches.
+        The default way to click: a trusted OS-level click with human movement,
+        which leaves no DOM injection trail. Use click() instead only when the
+        user asked for DOM input or speed matters more than stealth. The window
+        position is re-measured before every move, so it stays correct after
+        fullscreen, new tabs and browser relaunches.
 
         Args:
             x: Viewport X coordinate of the target centre (from
@@ -1035,10 +1042,11 @@ if not _cluster_mode:
         name: str | None = None,
         frames: list[str] | None = None,
     ) -> str:
-        """Click an element by CSS selector or XPath. PREFER THIS over system_click.
+        """Click an element by CSS selector or XPath with a DOM event (fast, not stealthy).
 
-        Reliable, fast, and works on most sites. Only fall back to
-        system_click if the site explicitly detects and blocks DOM event injection.
+        Use system_click by default: it sends a trusted OS-level click a page
+        cannot tell from a person's. Use this only when the user asked for DOM
+        input or speed matters more than stealth.
         XPath example: "xpath=//button[@id='submit']".
 
         Args:
@@ -1064,9 +1072,12 @@ if not _cluster_mode:
         name: str | None = None,
         frames: list[str] | None = None,
     ) -> str:
-        """Set an input field's value instantly by CSS selector.
+        """Set an input field's value instantly by CSS selector (fast, not stealthy).
 
-        Clears existing content first. Does not generate individual keystrokes.
+        Clears existing content first. Does not generate individual keystrokes
+        or a paste, so a page can tell it apart from a person. Use paste_text
+        by default; use this only when the user asked for DOM input or speed
+        matters more than stealth.
 
         Args:
             selector: CSS selector of the input element.

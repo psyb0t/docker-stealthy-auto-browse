@@ -87,7 +87,7 @@ The JSON printed to stdout looks like this:
 
 Use `human_pause` only when a visible task naturally includes reading, reviewing, or composing. It keeps the pointer mostly still and can make sparse bounded drifts. Use `sleep` for ordinary waits, and do not add `human_pause` between every step.
 
-People paste far more than they type. Enter text with `paste_text`, or `fill` where DOM input is acceptable. `paste_text` writes the real X11 clipboard, clicks the field, then presses `Ctrl+A`, `Backspace` and `Ctrl+V` with human timing. Use `system_type` only for a few characters, paste-hostile fields, or tests that need per-keystroke behavior.
+People paste far more than they type. Enter text with `paste_text`; use `fill` only when the caller asked for DOM input or speed matters more than stealth. `paste_text` writes the real X11 clipboard, clicks the field, then presses `Ctrl+A`, `Backspace` and `Ctrl+V` with human timing. Use `system_type` only for a few characters, paste-hostile fields, or tests that need per-keystroke behavior.
 
 ```yaml
 steps:
