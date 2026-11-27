@@ -3,6 +3,10 @@ name: stealthy-auto-browse
 description: Headless-detection-resistant browser automation in Docker for authorized QA, compatibility testing, and defensive security research. Camoufox + OS-level input + persistent fingerprints. Use only with sites you own or have written authorization to test.
 homepage: https://github.com/psyb0t/docker-stealthy-auto-browse
 user-invocable: true
+permissions:
+  shell: runs `docker pull`, `docker run` and `docker rm` for the browser container, `docker compose` for the optional cluster file, and `curl` against the container's HTTP API
+  network: calls the HTTP API and MCP endpoint at STEALTHY_AUTO_BROWSE_URL (default http://127.0.0.1:8080); the browser inside the container sends traffic to the sites it is told to visit, to PROXY_URL when set, and to the CAPTCHA provider when one is configured; docker pull and the optional cluster compose download use Docker Hub and github.com
+  filesystem: writes a local env file with AUTH_TOKEN and optional host directories mounted into the container (profile, loaders, recordings, media); screenshots and script results are written where the user directs
 metadata:
   { "openclaw": { "emoji": "🕵️", "primaryEnv": "STEALTHY_AUTO_BROWSE_URL", "requires": { "bins": ["docker", "curl"] } } }
 ---
@@ -21,6 +25,8 @@ Optional CAPTCHA providers are configured with `CAPTCHA_SOLVER_PROVIDER` and eit
 - **Data capture is powerful, so scope it.** `get_text`, `get_html`, `get_interactive_elements`, `eval`, and the screenshot/`save_screenshot` actions can extract full page content, DOM structure, and rendered pixels in one call. Only capture what the authorized test actually needs; don't sweep pages outside scope just because the API makes it easy.
 - **Dialogs auto-accept by default, which can approve destructive actions.** The browser accepts `alert()`, `confirm()`, `prompt()` and `beforeunload` dialogs automatically unless you called `handle_dialog` with `accept: false` first. That setting covers only the next dialog, so an agent must call `handle_dialog` with `accept: false` before each step that might raise a dialog whenever it is acting on a stateful site (one with real data, real accounts, or irreversible actions behind a confirm prompt), and must never drive this tool against a site where an accidental confirm would be harmful. See "Dialogs" below.
 - **No auth when `AUTH_TOKEN` is unset.** With it empty the HTTP API and MCP server are **unauthenticated**. Anyone who can reach the port gets full browser control (navigation, input, cookies, screenshots, script execution). **Never** expose such an instance beyond localhost; set `AUTH_TOKEN` and bind to `127.0.0.1` or put it behind an authenticating proxy. See [references/setup.md](references/setup.md).
+- **Where data goes.** The container serves the HTTP API and MCP endpoint; publish them on `127.0.0.1` only. Page content, screenshots and cookies stay on your machine unless you send them elsewhere. The browser sends requests to the sites you point it at, through `PROXY_URL` when set. With a CAPTCHA provider configured, the challenge and the provider key go to that provider's service. `docker pull` contacts Docker Hub over HTTPS.
+- **Destructive operations.** Delete only the container and profile directory this task created, and only when the user asked for the clean-up. `run_command` and `launch_app` stay off (`DESK_EXEC_ENABLED=false`) and passwordless sudo stays off (`DESK_SUDO_ENABLED=false`) unless the user asked for them; see [references/setup.md](references/setup.md).
 - **Loaders execute automatically on matching URLs.** Only mount loader YAML you wrote or audited. See "Page loaders" below.
 
 ## Authorized use only
@@ -596,7 +602,7 @@ Set at least one match field; all specified fields must match. A misspelled fiel
 Persistent profiles let cookies, sessions, and fingerprints survive restarts. Use them responsibly:
 
 - **Test accounts only.** Provision isolated accounts dedicated to QA on your own systems. Never persist sessions for real (production / personal / customer) accounts you don't own.
-- **Treat the profile volume as a secret.** It contains live session cookies. Back it up encrypted or not at all, and shred it (`rm -rf ./profile`) when the test run is done.
+- **Treat the profile volume as a secret.** It contains live session cookies. Back it up encrypted or not at all, and delete it when the test run is done (see the clean-up guardrail in Security & safety).
 - **Don't share profile volumes across environments.** A profile built against staging shouldn't be reused against prod or vice versa.
 - **Rotate credentials after authorized testing concludes** if humans also use the same accounts.
 

@@ -7,7 +7,7 @@ This skill is intended for authorized QA, compatibility testing, and defensive s
 ## Requirements
 
 - Docker
-- curl
+- curl, used only to call the container's local HTTP API and, for cluster mode, to download the compose file from github.com
 
 ## Secure defaults: apply these first
 
@@ -16,8 +16,8 @@ Before running anything beyond a throwaway local smoke test:
 1. **Bind to loopback.** Map ports as `-p 127.0.0.1:8080:8080` (and `127.0.0.1:5900:5900` if you need the viewer) so the API is not reachable from other machines on the network.
 2. **Set `AUTH_TOKEN` to a strong random value.** `-e AUTH_TOKEN=$(openssl rand -hex 32)`. Required as soon as the service is reachable beyond localhost. Pass it via `Authorization: Bearer <key>` headers.
 3. **Pull the image before you start.** `docker pull psyb0t/stealthy-auto-browse:latest` gets the current release. Pull again and recreate the container to upgrade.
-4. **Don't mount the docker socket.** Don't run with `--privileged`. Don't grant the container egress beyond what the test target needs (use a Docker network with restricted egress where supported).
-5. **Don't persist real session data.** If you mount `/userdata`, use a dedicated test account, encrypt the volume host-side if it leaves the machine, and shred (`rm -rf`) it when the test concludes.
+4. **Keep the container unprivileged.** Don't mount the Docker socket and don't give the container extended host privileges. Don't grant the container egress beyond what the test target needs (use a Docker network with restricted egress where supported).
+5. **Don't persist real session data.** If you mount `/userdata`, use a dedicated test account, encrypt the volume host-side if it leaves the machine, and delete the directory when the test concludes (see Tear-down).
 6. **Don't publish the noVNC viewer if you don't need it.** It always runs inside the container; leave port 5900 unpublished. If you do publish it for local debugging, bind it to `127.0.0.1` and never expose it on a public interface. The viewer gives full keyboard/mouse control of the browser, including any logged-in sessions.
 
 ## Quick start (localhost, no auth, for smoke tests only)
@@ -85,9 +85,9 @@ Notes:
 | `PGID` | value of `PUID` | Run the container as this GID. |
 | `LANG` | `en_US.UTF-8` | Browser locale/language. |
 | `LOG_LEVEL` | `INFO` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` for the JSON logger. An unknown value falls back to `INFO`. |
-| `DESK_EXEC_ENABLED` | `false` | `true` enables `run_command` and `launch_app`, which run any command in the container. Leave it off unless `AUTH_TOKEN` is set and you need it. |
+| `DESK_EXEC_ENABLED` | `false` | Opt-in. `true` enables `run_command` and `launch_app`, which run any command in the container as the browser user. Enable it only when the task needs it and `AUTH_TOKEN` is set. |
 | `DESK_DARK_MODE` | `false` | `true` makes the desktop and browser dark, and pages see `prefers-color-scheme: dark`. |
-| `DESK_SUDO_ENABLED` | `false` | `true` gives the browser user passwordless sudo inside the container. |
+| `DESK_SUDO_ENABLED` | `false` | Opt-in. `true` gives the browser user passwordless sudo inside the container, so anything running as that user is root inside it. Enable it only when the task needs it. |
 | `KEYBINDINGS_FILE` | unset | Key map that replaces the window manager's keyboard shortcuts at startup. |
 | `REDIS_URL` | unset | Redis connection string for cross-instance cookie sync (cluster mode). |
 | `NUM_REPLICAS` | `1` | Above 1, MCP exposes only `run_script` and HTTP accepts only `run_script`, `ping` and `sleep`. The cluster compose file sets it. |
@@ -123,14 +123,14 @@ docker run -d -p 127.0.0.1:8080:8080 \
   --env-file .env.browser \
   psyb0t/stealthy-auto-browse:latest
 
-# Persistent profile: TEST ACCOUNTS ONLY, shred when done
+# Persistent profile: TEST ACCOUNTS ONLY, delete when done
 mkdir -p ./profile && chmod 700 ./profile
 docker run -d -p 127.0.0.1:8080:8080 \
   -v ./profile:/userdata \
   --env-file .env.browser \
   psyb0t/stealthy-auto-browse:latest
 # When the test run ends:
-docker rm -f browser && rm -rf ./profile
+docker rm -f browser && rm -r ./profile
 
 # Custom listen ports
 docker run -d -p 127.0.0.1:9090:9090 -p 127.0.0.1:6900:6900 \
@@ -177,7 +177,7 @@ Only regular files contained by `VIRTUAL_MEDIA_DIR` are accepted. Dynamic mode d
 
 ```bash
 export STEALTHY_AUTO_BROWSE_URL=http://127.0.0.1:8080
-export AUTH_TOKEN=$(cat .env.browser | grep AUTH_TOKEN | cut -d= -f2)
+export AUTH_TOKEN="<the AUTH_TOKEN value you gave the container>"
 ```
 
 Or via `~/.openclaw/openclaw.json`:
@@ -235,8 +235,10 @@ When a test run is done:
 
 ```bash
 docker rm -f browser           # stop + remove the container
-rm -rf ./profile               # shred persisted session data if you mounted /userdata
-rm -f .env.browser             # rotate / remove the AUTH_TOKEN file
+rm -r ./profile                # delete persisted session data if you mounted /userdata
+rm -f .env.browser             # remove the AUTH_TOKEN file
 ```
+
+Remove only the container and directories this task created, and only when the user asked for the clean-up.
 
 If humans also use the test accounts the run exercised, rotate their credentials.

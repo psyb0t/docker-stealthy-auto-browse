@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.9.4] 2026-11-27
+
+### Changed
+
+- The published skill and its setup guide are safer to follow as written. They say where data goes, declare the commands, network access and files the skill uses, tell an agent to delete only the container and profile directory the task created and only when the user asked for the clean-up, and keep `run_command`, `launch_app` and passwordless sudo off unless the user asked for them. The setup guide no longer tells an agent to `shred` the profile or to read the token out of `.env.browser` with `grep`.
+- When the skill is published to ClawHub on a release, a bare or `:latest` reference to `psyb0t/stealthy-auto-browse` becomes the exact release tag and digest, and links to files on `main` point at the release tag. The repository keeps its references.
+- The image build and publish job runs only on pushes to the default branch. It also sets the Docker Hub repository to public and sets its short description from the GitHub description.
+
 ## [3.9.3] 2026-11-27
 
 ### Changed
